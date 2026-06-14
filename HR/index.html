@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Staffing</title>
+<script src="../lib/data-source.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#1a1a2e; color:#e0e0e0; }
+#header { background:#16213e; padding:10px 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #0f3460; position:sticky; top:0; z-index:100; flex-wrap:wrap; gap:8px; }
+#header h1 { font-size:1.2rem; color:#4ecca3; }
+.controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.toggle-group { display:flex; gap:0; border:1px solid #2a3a5e; border-radius:4px; overflow:hidden; }
+.toggle-group button { padding:4px 10px; font-size:0.75rem; background:#16213e; color:#aaa; border:none; cursor:pointer; }
+.toggle-group button.active { background:#0f3460; color:#4ecca3; }
+.btn { padding:4px 10px; font-size:0.75rem; background:#0f3460; color:#ccc; border:1px solid #555; border-radius:4px; cursor:pointer; }
+.btn.primary { color:#4ecca3; border-color:#4ecca3; }
+#chips { display:flex; gap:6px; padding:8px 20px; background:#101828; border-bottom:1px solid #0f3460; flex-wrap:wrap; }
+.chip { padding:6px 10px; background:#16213e; border:1px solid #2a3a5e; border-radius:4px; font-size:0.75rem; display:flex; align-items:center; gap:6px; }
+.chip .dot { width:8px; height:8px; border-radius:50%; }
+.chip .lbl { color:#888; }
+.chip .val { color:#e0e0e0; font-weight:600; }
+.chip .delta { font-size:0.7rem; }
+.delta.pos { color:#4ecca3; }
+.delta.neg { color:#e74c3c; }
+.delta.zero { color:#888; }
+#main { padding:14px 20px 60px; }
+#chartBox { background:#16213e; border:1px solid #2a3a5e; border-radius:6px; padding:10px; height:340px; margin-bottom:14px; }
+#layout { display:flex; gap:12px; align-items:stretch; }
+#tableWrap { background:#16213e; border:1px solid #2a3a5e; border-radius:6px; overflow:auto; max-height:calc(100vh - 130px); flex:1; }
+#chartWrap { background:#16213e; border:1px solid #2a3a5e; border-radius:6px; padding:10px; flex:1; min-height:520px; height:calc(100vh - 130px); }
+body.collapsed table#grid { table-layout:auto; }
+body.collapsed table#grid colgroup { display:none; }
+body.collapsed .sec-25:not(.sec-end-25),
+body.collapsed .sec-bdg:not(.sec-end-bdg),
+body.collapsed td.sec-act:not(:last-child),
+body.collapsed th.sec-act:not(:last-child) { display:none; }
+body.collapsed tr.hdr-section th.sec-25,
+body.collapsed tr.hdr-section th.sec-bdg,
+body.collapsed tr.hdr-section th.sec-act { display:table-cell !important; }
+table { width:100%; border-collapse:collapse; font-size:0.78rem; table-layout:fixed; }
+th, td { padding:4px 8px; text-align:right; border-bottom:1px solid #0f3460; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+col.col-pp     { width:90px; }
+col.col-data   { width:70px; }
+col.col-tot    { width:80px; }
+col.col-tot26  { width:110px; }
+th { background:#0f3460; color:#aaa; font-weight:600; font-size:0.72rem; }
+thead tr.hdr-section th { position:sticky; top:0; z-index:3; background:#0a2440; font-size:0.78rem; text-align:center; }
+thead tr.hdr-cols    th { position:sticky; top:28px; z-index:3; text-align:right; }
+tr.totals td { background:#0d2a4f !important; font-weight:700; color:#fff; position:sticky; z-index:4; }
+tr.totals.tr-full td { top:54px; box-shadow: inset 0 2px 0 #4ecca3; }
+tr.totals.tr-ytd  td { top:80px; box-shadow: inset 0 -2px 0 #4ecca3; }
+tr.totals.tr-full td:first-child { box-shadow: inset 2px 2px 0 #4ecca3; }
+tr.totals.tr-full td:last-child  { box-shadow: inset -2px 2px 0 #4ecca3; }
+tr.totals.tr-ytd  td:first-child { box-shadow: inset 2px -2px 0 #4ecca3; }
+tr.totals.tr-ytd  td:last-child  { box-shadow: inset -2px -2px 0 #4ecca3; }
+th:first-child, td:first-child { text-align:left; padding-left:12px; position:sticky; left:0; background:#0f3460; z-index:1; }
+tr.totals td:first-child { background:#0d2a4f !important; z-index:6; color:#fff; font-weight:700; }
+td:first-child { background:#16213e; color:#e0e0e0; font-weight:600; }
+.sec-25  { background:rgba(135,135,135,0.05); }
+.sec-bdg { background:rgba(155,89,182,0.06); }
+.sec-act { background:rgba(78,204,163,0.05); }
+th.sec-25  { background:#0a2a3a; color:#bbb; }
+th.sec-bdg { background:#241834; color:#c7a3e0; }
+th.sec-act { background:#0a3525; color:#9bdfc4; }
+.sec-end-25, .sec-end-bdg { border-right:2px solid #2a3a5e; }
+tr.future td.sec-act { color:#444; }
+tr:hover td:not(.totals) { filter:brightness(1.15); }
+.cell-val { color:#e0e0e0; }
+.cell-bdg { color:#666; font-size:0.7rem; }
+.cell-delta { font-size:0.7rem; margin-left:4px; }
+.cell-edit { background:#0a1c3a !important; padding:2px 4px; }
+input.bdg-input { width:55px; background:#0a1c3a; color:#e0e0e0; border:1px solid #4ecca3; border-radius:3px; padding:2px 4px; text-align:right; font-size:0.78rem; font-family:inherit; }
+input.bdg-input:focus { outline:none; border-color:#fff; background:#1c2a4a; }
+.future { opacity:0.85; }
+#status { font-size:0.7rem; color:#888; }
+#issue { padding:6px 14px; background:#3a2a1a; color:#e8b87a; font-size:0.72rem; border-bottom:1px solid #5a3a1a; display:none; }
+tbody tr td.sec-25, tbody tr td.sec-act { cursor:pointer; }
+tbody tr:hover td.sec-25, tbody tr:hover td.sec-act { background:rgba(78,204,163,0.08); }
+#modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1000; align-items:flex-start; justify-content:center; padding:60px 20px; }
+#modal.show { display:flex; }
+#modalBox { background:#16213e; border:1px solid #2a3a5e; border-radius:8px; padding:14px 18px; min-width:680px; max-width:92vw; max-height:80vh; overflow:auto; }
+#modal h2 { font-size:1rem; color:#4ecca3; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+#modal h2 button { padding:2px 10px; font-size:0.7rem; background:#0f3460; color:#ccc; border:1px solid #555; border-radius:4px; cursor:pointer; }
+#modal table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+#modal th { background:#0f3460; color:#aaa; font-weight:600; font-size:0.72rem; padding:6px 10px; text-align:left; border-bottom:1px solid #2a3a5e; }
+#modal td { padding:5px 10px; border-bottom:1px solid #0f3460; text-align:left; }
+#modal th.num, #modal td.num { text-align:right; font-variant-numeric:tabular-nums; }
+#modal tfoot td { font-weight:700; color:#fff; border-top:2px solid #4ecca3; }
+/* ===== By Task view ===== */
+body.task-view .labor-only { display:none !important; }
+.task-only { display:none; }
+body.task-view .task-only { display:flex; }
+#grid.task thead th { position:sticky; top:0; z-index:3; background:#0f3460; }
+#grid.task tr.ttot td { position:sticky; top:27px; z-index:4; background:#0d2a4f !important; color:#fff; font-weight:700; box-shadow: inset 0 -2px 0 #4ecca3; }
+#grid.task tr.ttot td:first-child { z-index:6; }
+#grid.task td.sec-act { color:#9bdfc4; }
+#grid.task tr.ttot .pp-chg { font-size:0.9em; font-weight:400; color:#8fa6c2; margin-right:5px; }
+#grid.task tr:hover td:not(.ttot) { filter:brightness(1.15); }
+#grid.task td.tcell { cursor:pointer; }
+#grid.task td.tcell:hover { background:#13325a; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Staffing</h1>
+  <div class="controls">
+    <div class="toggle-group" id="viewToggle">
+      <button data-view="labor" class="active">By Labor</button>
+      <button data-view="task">By Task</button>
+    </div>
+    <div class="toggle-group task-only" id="taskMetricToggle">
+      <button data-tmetric="hours" class="active">Hours</button>
+      <button data-tmetric="prodhours">ProdHours</button>
+    </div>
+    <div class="toggle-group labor-only" id="metricToggle">
+      <button data-metric="headcount" class="active">Headcount</button>
+      <button data-metric="hours">Hours</button>
+      <button data-metric="prodhours">ProdHours</button>
+      <button data-metric="disc_ot">DiscOT</button>
+      <button data-metric="cost_total">Total Cost</button>
+      <button data-metric="dollar_per_hour">$/hr</button>
+    </div>
+    <select id="versionSel" class="btn labor-only" title="Budget version" style="cursor:pointer"></select>
+    <button id="movementBtn" class="btn labor-only">Joined / Left</button>
+    <button id="collapseBtn" class="btn labor-only">Focus Totals</button>
+    <button id="editBtn" class="btn labor-only">Edit Budget</button>
+    <span id="status">Loading…</span>
+    <span id="version" style="font-size:0.7rem;color:#e0e0e0"></span>
+  </div>
+</div>
+
+<div id="main">
+  <div id="layout">
+    <div id="tableWrap"><table id="grid"></table></div>
+    <div id="chartWrap" style="display:none"><canvas id="chart"></canvas></div>
+  </div>
+</div>
+
+<div id="modal" onclick="if(event.target===this)closeModal()">
+  <div id="modalBox">
+    <h2><span id="modalTitle"></span><button onclick="closeModal()">Close ✕</button></h2>
+    <div id="modalBody">Loading…</div>
+  </div>
+</div>
+
+<script>
+// ========= Constants =========
+const LABOR = ['local','wfe','h2a','f_local','fuerte'];
+const LABOR_LABEL = { local:'Local', wfe:'WFE', h2a:'H2A', f_local:'F(local)', fuerte:'Fuerte' };
+const LABOR_COLOR = { local:'#4ecca3', wfe:'#3498db', h2a:'#f39c12', f_local:'#9b59b6', fuerte:'#e74c3c' };
+const AUTH_TO_LABOR = {
+  'Local':'local', 'WFE':'wfe', 'H2A':'h2a', 'FUERTE (Local)':'f_local', 'FUERTE':'fuerte'
+};
+const PP_COUNT = 26;
+
+// By-task view: 5 QB-account buckets, hours only (allocated from schedule).
+// Data begins Jan 2025 — when the task-scheduling system came into use.
+const TASK = ['GH','PH','Lettuce'];
+const TASK_LABEL = { GH:'GH', PH:'PH', Lettuce:'Lettuce' };
+const TASK_COLOR = { GH:'#4ecca3', PH:'#3498db', Lettuce:'#f39c12' };
+
+// ========= State =========
+let state = {
+  view: 'labor',     // 'labor' | 'task'
+  metric: 'headcount',
+  taskMetric: 'hours', // task view: 'hours' | 'prodhours'
+  editMode: false,
+  budgetDirty: false,
+  collapsed: false,
+};
+let taskData = null;   // { dates:[...], rows:[{h:{task},p:{task},_th,_tp}], byYear:{2025:[idx],2026:[idx]} }
+let chart = null;
+let budgets = { 2026: null }; // 2025 has no budget; 2026 = expanded selected version
+let budgetVersionsRaw = {}; // raw {versionDate: sparseObj} loaded from JSON
+let activeVersion = null;   // string date of the currently selected version
+let actuals = { 2025: null, 2026: null }; // [pp][labor] = {headcount, hours, cost_total, cost_gross}
+let ppDates = { 2025: [], 2026: [] }; // [pp-1] = check_date string
+let currentPP = { 2025: 26, 2026: 1 };
+
+// ========= Draft persistence (survives reload) =========
+const DRAFT_KEY = 'hr_budget_draft_2026';
+function saveDraft() {
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({
+    ts: Date.now(), basedOn: activeVersion, budget: budgets[2026]
+  })); } catch {}
+}
+function loadDraft() {
+  try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); }
+  catch { return null; }
+}
+function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch {} }
+
+// ========= Loaders =========
+async function loadBudget() {
+  const client = await DataSource.getClient();
+  const { data, error } = await client
+    .from('hr_budgets').select('*').eq('year', 2026);
+  if (error) throw error;
+  // Group rows by saved_at into sparse {pp: {labor: hc}}
+  budgetVersionsRaw = {};
+  for (const r of data || []) {
+    const key = r.saved_at;
+    const pp = Number(r.pp);
+    if (!budgetVersionsRaw[key]) budgetVersionsRaw[key] = {};
+    const sp = budgetVersionsRaw[key];
+    if (!sp[pp]) sp[pp] = {};
+    sp[pp][r.labor_type] = Number(r.headcount);
+  }
+  const keys = Object.keys(budgetVersionsRaw).sort();
+  if (!keys.length) throw new Error('no budget versions in hr_budgets table');
+  activeVersion = keys[keys.length - 1];
+  applyActiveVersion();
+}
+
+// Pretty-print an ISO timestamp version key as "MM-DD HH:MM HST"
+function fmtVersion(iso) {
+  const d = new Date(iso);
+  const hst = new Date(d.getTime() - 10 * 3600 * 1000);
+  const p = n => String(n).padStart(2, '0');
+  return `${hst.getUTCFullYear()}-${p(hst.getUTCMonth()+1)}-${p(hst.getUTCDate())} ${p(hst.getUTCHours())}:${p(hst.getUTCMinutes())}`;
+}
+
+function applyActiveVersion() {
+  const sparse = budgetVersionsRaw[activeVersion] || {};
+  const expanded = {};
+  let last = null;
+  for (let pp = 1; pp <= PP_COUNT; pp++) {
+    if (sparse[String(pp)]) last = sparse[String(pp)];
+    if (last) expanded[pp] = { ...last };
+  }
+  budgets[2026] = expanded;
+}
+
+function renderVersionDropdown() {
+  const sel = document.getElementById('versionSel');
+  const dates = Object.keys(budgetVersionsRaw).sort();
+  sel.innerHTML = dates.map(d => {
+    const isLatest = d === dates[dates.length - 1];
+    return `<option value="${d}"${d === activeVersion ? ' selected' : ''}>${fmtVersion(d)}${isLatest ? ' (latest)' : ''}</option>`;
+  }).join('');
+}
+
+async function loadActuals() {
+  const client = await DataSource.getClient();
+  const { data, error } = await client
+    .from('hr_staffing_pp_v')
+    .select('*')
+    .gte('year', 2025);
+  if (error) throw error;
+  actuals[2025] = {}; actuals[2026] = {};
+  const ppDateByYear = { 2025: new Map(), 2026: new Map() };
+  for (const r of data) {
+    if (!actuals[r.year]) actuals[r.year] = {};
+    if (!actuals[r.year][r.pp]) actuals[r.year][r.pp] = {};
+    actuals[r.year][r.pp][r.labor_type] = {
+      headcount: r.headcount,
+      hours: parseFloat(r.hours) || 0,
+      cost_total: parseFloat(r.cost_total) || 0,
+      cost_gross: parseFloat(r.cost_gross) || 0,
+      disc_ot:    parseFloat(r.disc_ot) || 0,
+    };
+    if (ppDateByYear[r.year]) ppDateByYear[r.year].set(r.pp, r.check_date);
+  }
+  for (const yr of [2025, 2026]) {
+    const maxPP = Math.max(0, ...ppDateByYear[yr].keys());
+    ppDates[yr] = [];
+    for (let pp = 1; pp <= maxPP; pp++) ppDates[yr].push(ppDateByYear[yr].get(pp) || '');
+    currentPP[yr] = maxPP;
+    for (let pp = 1; pp <= maxPP; pp++) {
+      if (!actuals[yr][pp]) actuals[yr][pp] = {};
+      for (const labor of LABOR) {
+        if (!actuals[yr][pp][labor]) {
+          actuals[yr][pp][labor] = { headcount:0, hours:0, cost_total:0, cost_gross:0, disc_ot:0 };
+        }
+      }
+    }
+  }
+}
+
+// ========= Forecast rates (2026 only) =========
+// Per-labor-type avg $/hr and avg hours/headcount/PP, derived from 2026 actuals
+let rates = {}; // rates[labor] = {dollar_per_hour_total, dollar_per_hour_gross, hours_per_head_pp}
+function computeRates() {
+  rates = {};
+  if (!actuals[2026] || !actuals[2025]) return;
+  for (const labor of LABOR) {
+    // $/hr rates: derived from 2026 YTD actuals (used for budget cost forecast)
+    let h26 = 0, ct = 0, cg = 0;
+    for (let pp = 1; pp <= currentPP[2026]; pp++) {
+      const a = actuals[2026][pp]?.[labor];
+      if (!a) continue;
+      h26 += a.hours;
+      ct  += a.cost_total;
+      cg  += a.cost_gross;
+    }
+    // hours_per_head_pp: derived from full 2025 actuals (used for budget hours forecast)
+    let h25 = 0, hcSum25 = 0;
+    for (let pp = 1; pp <= 26; pp++) {
+      const a = actuals[2025][pp]?.[labor];
+      if (!a) continue;
+      h25 += a.hours;
+      hcSum25 += a.headcount;
+    }
+    rates[labor] = {
+      dollar_per_hour_total: h26 > 0 ? ct / h26 : 0,
+      dollar_per_hour_gross: h26 > 0 ? cg / h26 : 0,
+      hours_per_head_pp: hcSum25 > 0 ? h25 / hcSum25 : 0,
+    };
+  }
+}
+
+// ========= Value lookups =========
+function getActual(year, pp, labor) {
+  return actuals[year]?.[pp]?.[labor] || null;
+}
+function getBudgetHC(year, pp, labor) {
+  return budgets[year]?.[pp]?.[labor] ?? null;
+}
+function metricValue(year, pp, labor, isFuture) {
+  const m = state.metric;
+  const a = getActual(year, pp, labor);
+  const bHC = getBudgetHC(year, pp, labor);
+  if (!isFuture && a) {
+    if (m === 'headcount')  return a.headcount;
+    if (m === 'hours')      return a.hours;
+    if (m === 'cost_total') return a.cost_total;
+    if (m === 'cost_gross') return a.cost_gross;
+  }
+  if (year !== 2026 || bHC == null) return null;
+  if (m === 'headcount')  return bHC;
+  const r = rates[labor];
+  if (!r) return null;
+  const fHours = bHC * r.hours_per_head_pp;
+  if (m === 'hours')      return fHours;
+  if (m === 'cost_total') return fHours * r.dollar_per_hour_total;
+  if (m === 'cost_gross') return fHours * r.dollar_per_hour_gross;
+  return null;
+}
+function budgetValue(year, pp, labor) {
+  if (year !== 2026) return null;
+  const bHC = getBudgetHC(year, pp, labor);
+  if (bHC == null) return null;
+  const m = state.metric;
+  if (m === 'headcount')  return bHC;
+  const r = rates[labor];
+  if (!r) return null;
+  const fHours = bHC * r.hours_per_head_pp;
+  if (m === 'hours')      return fHours;
+  if (m === 'cost_total') return fHours * r.dollar_per_hour_total;
+  if (m === 'cost_gross') return fHours * r.dollar_per_hour_gross;
+  return null;
+}
+
+// ========= Formatting =========
+function fmt(v) {
+  if (v == null) return '';
+  if (state.metric === 'headcount') return Math.round(v).toString();
+  if (state.metric === 'hours' || state.metric === 'prodhours' || state.metric === 'disc_ot') return Math.round(v).toLocaleString();
+  if (state.metric === 'dollar_per_hour') return '$' + v.toFixed(2);
+  // cost
+  if (Math.abs(v) >= 1000) return '$' + Math.round(v / 1000).toLocaleString() + 'k';
+  return '$' + Math.round(v).toLocaleString();
+}
+function fmtDelta(v) {
+  if (v == null || isNaN(v)) return '';
+  const sign = v > 0 ? '+' : '';
+  if (state.metric === 'headcount') return sign + Math.round(v);
+  if (state.metric === 'hours' || state.metric === 'prodhours' || state.metric === 'disc_ot') return sign + Math.round(v).toLocaleString();
+  if (state.metric === 'dollar_per_hour') return sign + '$' + v.toFixed(2);
+  if (Math.abs(v) >= 1000) return sign + '$' + Math.round(v / 1000).toLocaleString() + 'k';
+  return sign + '$' + Math.round(v).toLocaleString();
+}
+
+// ========= Cell value helpers (year-agnostic) =========
+const PROD_MULT = { local:1, wfe:1.2, h2a:1.2, f_local:1.2, fuerte:1.2 };
+function actualMetricVal(year, pp, labor) {
+  const a = actuals[year]?.[pp]?.[labor];
+  if (!a) return null;
+  if (state.metric === 'headcount')  return a.headcount;
+  if (state.metric === 'hours')      return a.hours;
+  if (state.metric === 'cost_total') return a.cost_total;
+  if (state.metric === 'cost_gross') return a.cost_gross;
+  if (state.metric === 'dollar_per_hour') return a.hours > 0 ? a.cost_total / a.hours : null;
+  if (state.metric === 'prodhours')  return a.hours * PROD_MULT[labor];
+  if (state.metric === 'disc_ot')    return a.disc_ot || 0;
+  return null;
+}
+function budgetMetricVal(pp, labor) {
+  if (state.metric === 'disc_ot') return null; // no budget for DiscOT
+  const bHC = getBudgetHC(2026, pp, labor);
+  if (bHC == null) return null;
+  if (state.metric === 'headcount') return bHC;
+  const r = rates[labor];
+  if (!r) return null;
+  if (state.metric === 'dollar_per_hour') return r.dollar_per_hour_total;
+  const fHours = bHC * r.hours_per_head_pp;
+  if (state.metric === 'hours')      return fHours;
+  if (state.metric === 'prodhours')  return fHours * PROD_MULT[labor];
+  if (state.metric === 'cost_total') return fHours * r.dollar_per_hour_total;
+  if (state.metric === 'cost_gross') return fHours * r.dollar_per_hour_gross;
+  return null;
+}
+// Raw cost & hours accessors used to compute weighted-avg $/hr for Tot cells
+function actualCostHours(year, pp, labor) {
+  const a = actuals[year]?.[pp]?.[labor];
+  if (!a) return null;
+  return { cost: a.cost_total, hours: a.hours };
+}
+function budgetCostHours(pp, labor) {
+  const bHC = getBudgetHC(2026, pp, labor);
+  if (bHC == null) return null;
+  const r = rates[labor];
+  if (!r) return null;
+  const hrs = bHC * r.hours_per_head_pp;
+  return { cost: hrs * r.dollar_per_hour_total, hours: hrs };
+}
+
+// ========= Combined PP table: 2025 act | 2026 bdg | 2026 act+Δ =========
+function renderTable() {
+  const isHC = state.metric === 'headcount';
+  const isRate = state.metric === 'dollar_per_hour';
+
+  function yrAgg(year, mode, ppMin, ppMax) {
+    const perLabor = {}; for (const l of LABOR) perLabor[l] = { sum:0, count:0, cost:0, hrs:0 };
+    let totVal = 0, ppCount = 0, totCost = 0, totHrs = 0;
+    const lo = ppMin || 1;
+    const hi = ppMax || PP_COUNT;
+    for (let pp = lo; pp <= hi; pp++) {
+      let ppHas = false, ppTot = 0;
+      for (const l of LABOR) {
+        // For rate metric, accumulate raw cost+hours per labor for weighted avg
+        if (isRate) {
+          const ch = (mode === 'actual') ? actualCostHours(year, pp, l) : budgetCostHours(pp, l);
+          if (ch && ch.hours > 0) {
+            perLabor[l].cost += ch.cost; perLabor[l].hrs += ch.hours;
+            totCost += ch.cost; totHrs += ch.hours;
+            ppHas = true;
+          }
+          continue;
+        }
+        const v = (mode === 'actual') ? actualMetricVal(year, pp, l) : budgetMetricVal(pp, l);
+        if (v == null) continue;
+        perLabor[l].sum += v; perLabor[l].count++;
+        ppTot += v; ppHas = true;
+      }
+      if (ppHas) { totVal += ppTot; ppCount++; }
+    }
+    const out = { perLabor: {}, perLaborAvg: {}, total: 0, pp_count: ppCount };
+    if (isRate) {
+      for (const l of LABOR) out.perLabor[l] = out.perLaborAvg[l] = perLabor[l].hrs > 0 ? perLabor[l].cost / perLabor[l].hrs : 0;
+      out.total = totHrs > 0 ? totCost / totHrs : 0;
+    } else {
+      for (const l of LABOR) {
+        const c = perLabor[l].count;
+        out.perLabor[l]    = isHC ? (c ? perLabor[l].sum / c : 0) : perLabor[l].sum;
+        out.perLaborAvg[l] =        (c ? perLabor[l].sum / c : 0);
+      }
+      out.total = isHC ? (ppCount ? totVal / ppCount : 0) : totVal;
+    }
+    return out;
+  }
+
+  const ppA = currentPP[2026];
+
+  // Full year
+  const tot25_full  = yrAgg(2025, 'actual');
+  const totB26_full = yrAgg(2026, 'budget');
+  // YTD (1..ppA)
+  const tot25_ytd   = yrAgg(2025, 'actual', 1, ppA);
+  const totB26_ytd  = yrAgg(2026, 'budget', 1, ppA);
+  const totA26_ytd  = yrAgg(2026, 'actual', 1, ppA);
+
+  function pctTag(actual, base) {
+    if (base == null || base === 0 || actual == null) return '';
+    const d = (actual - base) / base * 100;
+    const sign = d > 0 ? '+' : '';
+    const cls = d > 0 ? 'pos' : d < 0 ? 'neg' : 'zero';
+    return ' <span class="delta ' + cls + '" style="font-size:0.7rem;font-weight:500">' + sign + Math.round(d) + '%</span>';
+  }
+  function totalsRow(label, cls, t25, tB, tA) {
+    let row = '<tr class="totals ' + cls + '"><td>' + label + '</td>';
+    // 2025: 5 per-labor avg/PP cells + Tot cell (sum, or avg for HC)
+    if (t25) {
+      for (const l of LABOR) row += '<td class="sec-25">' + fmt(t25.perLaborAvg[l]) + '</td>';
+      row += '<td class="sec-25 sec-end-25">' + fmt(t25.total) + '</td>';
+    } else {
+      for (let i = 0; i < 5; i++) row += '<td class="sec-25"></td>';
+      row += '<td class="sec-25 sec-end-25"></td>';
+    }
+    // 2026 budget: per-labor avg/PP + Tot with +% vs 25
+    if (tB) {
+      for (const l of LABOR) row += '<td class="sec-bdg">' + fmt(tB.perLaborAvg[l]) + '</td>';
+    } else {
+      for (let i = 0; i < 5; i++) row += '<td class="sec-bdg"></td>';
+    }
+    const bdgPct = (tB && t25) ? pctTag(tB.total, t25.total) : '';
+    row += '<td class="sec-bdg sec-end-bdg" style="text-align:right">' + (tB ? fmt(tB.total) : '') + bdgPct + '</td>';
+    // 2026 actual: per-labor avg/PP + Tot with +% vs 26B
+    if (tA) {
+      for (const l of LABOR) row += '<td class="sec-act">' + fmt(tA.perLaborAvg[l]) + '</td>';
+    } else {
+      for (let i = 0; i < 5; i++) row += '<td class="sec-act"></td>';
+    }
+    const actPct = (tA && tB) ? pctTag(tA.total, tB.total) : '';
+    row += '<td class="sec-act" style="text-align:right">' + (tA ? fmt(tA.total) + actPct : '') + '</td>';
+    row += '</tr>';
+    return row;
+  }
+
+  // Build the full HTML — totals rows live in thead so they sit ABOVE headers
+  // Cols: PP | 5 labor (25) + Tot25 | 5 labor (26B) + Tot26B (wider) | 5 labor (26A) + Tot26A (wider)
+  let html = '<colgroup><col class="col-pp">';
+  for (let i = 0; i < 5; i++) html += '<col class="col-data">';
+  html += '<col class="col-tot">';
+  for (let i = 0; i < 5; i++) html += '<col class="col-data">';
+  html += '<col class="col-tot26">';
+  for (let i = 0; i < 5; i++) html += '<col class="col-data">';
+  html += '<col class="col-tot26">';
+  html += '</colgroup><thead>';
+  // Section header row — when collapsed, colspan=1 over the Tot col so labels align
+  html += '<tr class="hdr-section"><th rowspan="2"></th>';
+  if (state.collapsed) {
+    for (let i = 0; i < 5; i++) html += '<th style="display:none"></th>';
+    html += '<th class="sec-25 sec-end-25">2025 Actual</th>';
+    for (let i = 0; i < 5; i++) html += '<th style="display:none"></th>';
+    html += '<th class="sec-bdg sec-end-bdg">2026 Budget</th>';
+    for (let i = 0; i < 5; i++) html += '<th style="display:none"></th>';
+    html += '<th class="sec-act">2026 Actual</th>';
+  } else {
+    html += '<th class="sec-25" colspan="6">2025 Actual</th>';
+    html += '<th class="sec-bdg" colspan="6">2026 Budget</th>';
+    html += '<th class="sec-act" colspan="6">2026 Actual</th>';
+  }
+  html += '</tr>';
+  // Column header row
+  html += '<tr class="hdr-cols">';
+  for (const l of LABOR) html += '<th class="sec-25">' + LABOR_LABEL[l] + '</th>';
+  html += '<th class="sec-25 sec-end-25">Tot</th>';
+  for (const l of LABOR) html += '<th class="sec-bdg">' + LABOR_LABEL[l] + '</th>';
+  html += '<th class="sec-bdg sec-end-bdg">Tot</th>';
+  for (const l of LABOR) html += '<th class="sec-act">' + LABOR_LABEL[l] + '</th>';
+  html += '<th class="sec-act">Tot</th>';
+  html += '</tr>';
+  html += totalsRow('Full year', 'tr-full', tot25_full, totB26_full, null);
+  html += totalsRow('YTD',       'tr-ytd',  tot25_ytd,  totB26_ytd,  totA26_ytd);
+  html += '<tr class="spacer"><td colspan="19" style="height:10px;background:transparent;border:none"></td></tr>';
+  html += '</thead><tbody>';
+
+  for (let pp = 1; pp <= PP_COUNT; pp++) {
+    const date25 = ppDates[2025][pp - 1] || '';
+    const date26 = ppDates[2026][pp - 1] || '';
+    const isFuture26 = pp > currentPP[2026];
+    const dateLbl = date26 ? date26.slice(5) : (date25 ? date25.slice(5) : '');
+    html += '<tr class="' + (isFuture26 ? 'future' : '') + '" data-pp="' + pp + '"><td>' + pp;
+    if (dateLbl) html += ' <span style="color:#bbb;font-size:0.7rem;font-weight:400">' + dateLbl + '</span>';
+    html += '</td>';
+
+    let tot25row = 0, any25 = false, c25 = 0, h25 = 0;
+    for (const l of LABOR) {
+      const v = actualMetricVal(2025, pp, l);
+      if (v != null) { tot25row += v; any25 = true; }
+      if (isRate) {
+        const ch = actualCostHours(2025, pp, l);
+        if (ch && ch.hours > 0) { c25 += ch.cost; h25 += ch.hours; }
+      }
+      html += '<td class="sec-25">' + (v != null ? fmt(v) : '') + '</td>';
+    }
+    const tot25cell = isRate ? (h25 > 0 ? c25 / h25 : null) : (any25 ? tot25row : null);
+    html += '<td class="sec-25 sec-end-25">' + (tot25cell != null ? fmt(tot25cell) : '') + '</td>';
+
+    let totB26row = 0, anyB = false, cB = 0, hB = 0;
+    for (const l of LABOR) {
+      const v = budgetMetricVal(pp, l);
+      if (v != null) { totB26row += v; anyB = true; }
+      if (isRate) {
+        const ch = budgetCostHours(pp, l);
+        if (ch && ch.hours > 0) { cB += ch.cost; hB += ch.hours; }
+      }
+      if (state.editMode && isHC) {
+        const bHC = getBudgetHC(2026, pp, l) ?? 0;
+        html += '<td class="sec-bdg cell-edit"><input class="bdg-input" type="number" min="0" value="' + bHC + '" data-pp="' + pp + '" data-labor="' + l + '" /></td>';
+      } else {
+        html += '<td class="sec-bdg">' + (v != null ? fmt(v) : '') + '</td>';
+      }
+    }
+    const totBcell = isRate ? (hB > 0 ? cB / hB : null) : (anyB ? totB26row : null);
+    html += '<td class="sec-bdg sec-end-bdg">' + (totBcell != null ? fmt(totBcell) : '') + '</td>';
+
+    let totA26row = 0, anyA = false, cA = 0, hA = 0;
+    if (!isFuture26) {
+      const showLaborDelta = isHC && pp === currentPP[2026];
+      for (const l of LABOR) {
+        const v = actualMetricVal(2026, pp, l);
+        if (v != null) { totA26row += v; anyA = true; }
+        if (isRate) {
+          const ch = actualCostHours(2026, pp, l);
+          if (ch && ch.hours > 0) { cA += ch.cost; hA += ch.hours; }
+        }
+        let cellHTML = v != null ? fmt(v) : '';
+        if (showLaborDelta && v != null) {
+          const b = budgetMetricVal(pp, l);
+          if (b != null) {
+            const d = v - b;
+            const dcls = d > 0 ? 'pos' : d < 0 ? 'neg' : 'zero';
+            cellHTML = '<span class="delta ' + dcls + '" style="font-size:0.7rem">' + fmtDelta(d) + '</span> ' + cellHTML;
+          }
+        }
+        html += '<td class="sec-act">' + cellHTML + '</td>';
+      }
+      const totAcell = isRate ? (hA > 0 ? cA / hA : null) : (anyA ? totA26row : null);
+      let totCellHTML = totAcell != null ? fmt(totAcell) : '';
+      if (showLaborDelta && totAcell != null && anyB) {
+        const d = totA26row - totB26row;
+        const dcls = d > 0 ? 'pos' : d < 0 ? 'neg' : 'zero';
+        totCellHTML = '<span class="delta ' + dcls + '" style="font-size:0.7rem">' + fmtDelta(d) + '</span> ' + totCellHTML;
+      }
+      html += '<td class="sec-act">' + totCellHTML + '</td>';
+    } else {
+      for (let i = 0; i < 6; i++) html += '<td class="sec-act"></td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody>';
+  document.getElementById('grid').innerHTML = html;
+  if (state.editMode && isHC) wireBudgetInputs();
+  wireDetailClicks();
+}
+
+function wireDetailClicks() {
+  document.querySelectorAll('#grid tbody tr').forEach(tr => {
+    const pp = parseInt(tr.dataset.pp, 10);
+    if (!pp) return;
+    tr.querySelectorAll('td.sec-25').forEach(td => {
+      td.onclick = (e) => { e.stopPropagation(); openDetail(2025, pp); };
+    });
+    tr.querySelectorAll('td.sec-act').forEach(td => {
+      td.onclick = (e) => { e.stopPropagation(); if (pp <= currentPP[2026]) openDetail(2026, pp); };
+    });
+  });
+}
+
+async function openDetail(year, pp) {
+  document.getElementById('modal').classList.add('show');
+  document.getElementById('modalTitle').textContent = `${year} PP ${pp} — employees`;
+  document.getElementById('modalBody').textContent = 'Loading…';
+  try {
+    const client = await DataSource.getClient();
+    const { data, error } = await client
+      .from('hr_staffing_pp_detail_v')
+      .select('*')
+      .eq('year', year)
+      .eq('pp', pp)
+      .order('hr_work_authorization_id')
+      .order('employee_name');
+    if (error) throw error;
+    if (!data || !data.length) {
+      document.getElementById('modalBody').innerHTML = '<div style="color:#888">No employees.</div>';
+      return;
+    }
+    let rows = '';
+    let totH = 0, totC = 0;
+    for (const r of data) {
+      const h = parseFloat(r.total_hours) || 0;
+      const c = parseFloat(r.total_cost) || 0;
+      totH += h; totC += c;
+      rows += `<tr>
+        <td>${r.employee_name || ''}</td>
+        <td>${r.hr_department_id || ''}</td>
+        <td>${r.hr_work_authorization_id || ''}</td>
+        <td class="num">${h.toFixed(2)}</td>
+        <td class="num">$${c.toLocaleString(undefined, {maximumFractionDigits:2})}</td>
+      </tr>`;
+    }
+    document.getElementById('modalBody').innerHTML = `
+      <table>
+        <thead><tr><th>Name</th><th>Dept</th><th>Status</th><th class="num">Hours</th><th class="num">Total Cost</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr>
+          <td colspan="3">${data.length} employees</td>
+          <td class="num">${totH.toFixed(2)}</td>
+          <td class="num">$${totC.toLocaleString(undefined, {maximumFractionDigits:2})}</td>
+        </tr></tfoot>
+      </table>`;
+  } catch (e) {
+    document.getElementById('modalBody').innerHTML = '<div style="color:#e74c3c">Error: ' + e.message + '</div>';
+  }
+}
+
+async function openTaskDetail(checkDate, task) {
+  document.getElementById('modal').classList.add('show');
+  const ppLabel = checkDate.slice(5) + " '" + checkDate.slice(2, 4);
+  const scope = task ? TASK_LABEL[task] : 'All tasks';
+  document.getElementById('modalTitle').textContent = `${ppLabel} · ${scope} — people`;
+  document.getElementById('modalBody').textContent = 'Loading…';
+  try {
+    const client = await DataSource.getClient();
+    let q = client.from('hr_payroll_by_task_detail').select('*').eq('check_date', checkDate);
+    if (task) q = q.eq('task', task);
+    const { data, error } = await q;
+    if (error) throw error;
+    if (!data || !data.length) {
+      document.getElementById('modalBody').innerHTML = '<div style="color:#888">No people.</div>';
+      return;
+    }
+    // Sum hours per person (Total cell spans multiple task rows per person).
+    const byPerson = new Map();
+    for (const r of data) {
+      const k = r.employee_name || '';
+      if (!byPerson.has(k)) byPerson.set(k, { name: k, status: r.status, h: 0 });
+      byPerson.get(k).h += parseFloat(r.total_hours) || 0;
+    }
+    const people = [...byPerson.values()].sort((a, b) => b.h - a.h);
+    let rows = '', totH = 0;
+    for (const p of people) {
+      totH += p.h;
+      rows += `<tr><td>${p.name}</td><td>${p.status || ''}</td><td class="num">${p.h.toFixed(1)}</td></tr>`;
+    }
+    document.getElementById('modalBody').innerHTML = `
+      <table>
+        <thead><tr><th>Name</th><th>Status</th><th class="num">Hours</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="2">${people.length} people</td><td class="num">${totH.toFixed(1)}</td></tr></tfoot>
+      </table>`;
+  } catch (e) {
+    document.getElementById('modalBody').innerHTML = '<div style="color:#e74c3c">Error: ' + e.message + '</div>';
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('show');
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('modal').classList.contains('show')) {
+    closeModal();
+  }
+});
+
+async function openMovement() {
+  document.getElementById('modal').classList.add('show');
+  document.getElementById('modalTitle').textContent = 'Hourly movement: 2024 → 2025 → 2026';
+  document.getElementById('modalBody').textContent = 'Loading…';
+  try {
+    const client = await DataSource.getClient();
+    // Pull 24/25/26 detail rows, paginated
+    const all = [];
+    let page = 0; const PAGE = 1000;
+    while (true) {
+      const { data, error } = await client
+        .from('hr_staffing_pp_detail_v').select('*').gte('year', 2024).lte('year', 2026)
+        .order('check_date').range(page*PAGE, (page+1)*PAGE - 1);
+      if (error) throw error;
+      if (!data || !data.length) break;
+      all.push(...data);
+      if (data.length < PAGE) break;
+      page++;
+    }
+    // Build per-employee per-year summary
+    const ppl = {};
+    for (const r of all) {
+      const k = r.employee_name;
+      if (!ppl[k]) ppl[k] = {};
+      const slot = 'y' + r.year;
+      if (!ppl[k][slot]) ppl[k][slot] = { firstPP: r.pp, lastPP: r.pp, dept: r.hr_department_id, status: r.hr_work_authorization_id };
+      else {
+        ppl[k][slot].firstPP = Math.min(ppl[k][slot].firstPP, r.pp);
+        ppl[k][slot].lastPP  = Math.max(ppl[k][slot].lastPP, r.pp);
+      }
+    }
+    const latestPP26 = currentPP[2026];
+    const inLatest26 = new Set(all.filter(r => r.year === 2026 && r.pp === latestPP26).map(r => r.employee_name));
+    const inLastPP25 = new Set(all.filter(r => r.year === 2025 && r.pp === 26).map(r => r.employee_name));
+
+    const joined26 = [], left26 = [], joined25 = [], left25 = [];
+    for (const name of Object.keys(ppl)) {
+      const p = ppl[name];
+      // 2026 movement
+      if (p.y2026 && !p.y2025) joined26.push({ name, ...p.y2026, firstPP: p.y2026.firstPP });
+      if (p.y2026 && !inLatest26.has(name)) left26.push({ name, ...p.y2026, lastPP: p.y2026.lastPP });
+      // 2025 movement
+      if (p.y2025 && !p.y2024) joined25.push({ name, ...p.y2025, firstPP: p.y2025.firstPP });
+      if (p.y2025 && !inLastPP25.has(name)) left25.push({ name, ...p.y2025, lastPP: p.y2025.lastPP });
+    }
+    [joined26, joined25].forEach(arr => arr.sort((a,b) => a.firstPP - b.firstPP || a.name.localeCompare(b.name)));
+    [left26, left25].forEach(arr => arr.sort((a,b) => a.lastPP - b.lastPP || a.name.localeCompare(b.name)));
+
+    function tbl(title, rows, ppKey, ppLabel) {
+      if (!rows.length) return `<h3 style="margin:14px 0 6px;color:#aaa;font-size:0.85rem">${title} (0)</h3>`;
+      let body = rows.map(r => `<tr>
+        <td>${r.name}</td>
+        <td>${r.dept || ''}</td>
+        <td>${r.status || ''}</td>
+        <td class="num">PP ${r[ppKey]}</td>
+      </tr>`).join('');
+      return `<h3 style="margin:14px 0 6px;color:#aaa;font-size:0.85rem">${title} (${rows.length})</h3>
+        <table><thead><tr><th>Name</th><th>Dept</th><th>Status</th><th class="num">${ppLabel}</th></tr></thead>
+        <tbody>${body}</tbody></table>`;
+    }
+    document.getElementById('modalBody').innerHTML =
+      '<div style="color:#4ecca3;font-weight:600;margin-bottom:4px">2026</div>' +
+      tbl('Joined in 2026 (not in 2025)', joined26, 'firstPP', 'First PP') +
+      tbl(`Left during 2026 (not in PP ${latestPP26})`, left26, 'lastPP', 'Last PP') +
+      '<div style="color:#bbb;font-weight:600;margin:24px 0 4px;border-top:1px solid #2a3a5e;padding-top:14px">2025</div>' +
+      tbl('Joined in 2025 (not in 2024)', joined25, 'firstPP', 'First PP') +
+      tbl('Left during 2025 (not in PP 26)', left25, 'lastPP', 'Last PP');
+  } catch (e) {
+    document.getElementById('modalBody').innerHTML = '<div style="color:#e74c3c">Error: ' + e.message + '</div>';
+  }
+}
+document.getElementById('movementBtn').onclick = openMovement;
+
+
+function wireBudgetInputs() {
+  document.querySelectorAll('input.bdg-input').forEach(inp => {
+    const pp = parseInt(inp.dataset.pp, 10);
+    const labor = inp.dataset.labor;
+    const writeValue = () => {
+      const v = parseInt(inp.value, 10);
+      if (isNaN(v) || v < 0) return;
+      if (!budgets[2026]) budgets[2026] = {};
+      if (!budgets[2026][pp]) budgets[2026][pp] = {};
+      if (budgets[2026][pp][labor] === v) return;
+      budgets[2026][pp][labor] = v;
+      // Auto-fill forward: propagate this value to all later PPs for the
+      // same labor type, and update their inputs in place.
+      for (let p = pp + 1; p <= PP_COUNT; p++) {
+        if (!budgets[2026][p]) budgets[2026][p] = {};
+        budgets[2026][p][labor] = v;
+        const fwd = document.querySelector(
+          `input.bdg-input[data-pp="${p}"][data-labor="${labor}"]`);
+        if (fwd && document.activeElement !== fwd) fwd.value = v;
+      }
+      state.budgetDirty = true;
+      saveDraft();
+      scheduleAutosave();
+    };
+    // Write on every keystroke so values can never be lost
+    inp.addEventListener('input', writeValue);
+    inp.addEventListener('change', writeValue);
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        writeValue();
+        // Move to next input in the same row, or first input of next row
+        const all = [...document.querySelectorAll('input.bdg-input')];
+        const idx = all.indexOf(inp);
+        if (idx >= 0 && idx < all.length - 1) all[idx + 1].focus();
+      }
+    });
+  });
+}
+
+
+// ========= Save (Supabase, 60-min rolling window) =========
+async function saveBudget() {
+  // Safety: only save when we have a fully-expanded budget across all 26 PPs.
+  // Otherwise a partially-populated budgets[2026] would erase the saved version.
+  let populated = 0;
+  for (let pp = 1; pp <= PP_COUNT; pp++) if (budgets[2026]?.[pp]) populated++;
+  if (populated < PP_COUNT) {
+    console.warn('saveBudget skipped — budgets[2026] missing PPs', populated);
+    return;
+  }
+  // Compress current expanded budget to sparse (only PPs where the row changes)
+  const sparse = {};
+  let prev = null;
+  for (let pp = 1; pp <= PP_COUNT; pp++) {
+    const r = budgets[2026][pp];
+    if (!r) continue;
+    const sig = LABOR.map(l => r[l]).join(',');
+    if (sig !== prev) { sparse[pp] = { ...r }; prev = sig; }
+  }
+  // Build rows: one per (pp, labor) in the sparse set
+  const savedAt = new Date().toISOString();
+  const rows = [];
+  for (const [pp, r] of Object.entries(sparse)) {
+    for (const l of LABOR) {
+      rows.push({ year: 2026, saved_at: savedAt, pp: +pp, labor_type: l, headcount: r[l] ?? 0 });
+    }
+  }
+  const client = await DataSource.getClient();
+  // Drop any version saved within the last 60 minutes, then insert this one.
+  const cutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const setStatus = (t) => { document.getElementById('status').textContent = t; };
+  setStatus('Saving…');
+  try {
+    const { error: delErr } = await client.from('hr_budgets')
+      .delete().eq('year', 2026).gt('saved_at', cutoff);
+    if (delErr) throw delErr;
+    const { error: insErr } = await client.from('hr_budgets').insert(rows);
+    if (insErr) throw insErr;
+    // Reload versions from DB so the dropdown reflects the rolling-window state.
+    // loadBudget() sets activeVersion to whatever the latest key in the DB is
+    // (using the DB's own timestamp formatting, which won't match our local
+    // ISO string). Trust it — don't override.
+    await loadBudget();
+    renderVersionDropdown();
+    state.budgetDirty = false;
+    clearDraft();
+    setStatus('Saved ' + fmtVersion(savedAt));
+    setTimeout(() => { if (document.getElementById('status').textContent.startsWith('Saved')) setStatus(''); }, 3000);
+  } catch (e) {
+    setStatus('Save failed: ' + e.message);
+  }
+}
+
+// Debounced autosave — fires 5s after last edit
+let autosaveTimer = null;
+function scheduleAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => { saveBudget(); }, 5000);
+}
+
+// ========= By Task view =========
+async function loadTaskData() {
+  const client = await DataSource.getClient();
+  const all = [];
+  let page = 0; const PAGE = 1000;
+  while (true) {
+    const { data, error } = await client
+      .from('hr_payroll_by_task')
+      .select('check_date, task, total_hours, status')
+      .order('check_date').range(page * PAGE, (page + 1) * PAGE - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    page++;
+  }
+  const TASK_SET = new Set(TASK);
+  // Productive-hours multiplier by work authorization (matches PROD_MULT in
+  // the labor view): foreign labor counts 1.2x, local/unknown 1x.
+  const PROD_MULT_BY_STATUS = { 'Local':1, 'WFE':1.2, 'H2A':1.2, 'FUERTE (Local)':1.2, 'FUERTE':1.2 };
+  const byDate = new Map(); // date -> { h:{task}, p:{task}, _th, _tp }
+  for (const r of all) {
+    if (!TASK_SET.has(r.task)) continue; // skip tasks not shown (e.g. Maint, Corp)
+    const d = r.check_date;
+    if (!byDate.has(d)) byDate.set(d, { h: {}, p: {}, _th: 0, _tp: 0 });
+    const o = byDate.get(d);
+    const h = parseFloat(r.total_hours) || 0;
+    const ph = h * (PROD_MULT_BY_STATUS[r.status] ?? 1);
+    o.h[r.task] = (o.h[r.task] || 0) + h;
+    o.p[r.task] = (o.p[r.task] || 0) + ph;
+    o._th += h; o._tp += ph;
+  }
+  // Drop off-cycle supplemental checks (totals far below the regular biweekly run).
+  const totals = [...byDate.values()].map(o => o._th).sort((a,b) => a - b);
+  const median = totals.length ? totals[Math.floor(totals.length / 2)] : 0;
+  const dates = [...byDate.keys()].filter(d => byDate.get(d)._th >= median * 0.5).sort();
+  const rows = dates.map(d => byDate.get(d));
+  const byYear = { 2025: [], 2026: [] };
+  dates.forEach((d, i) => { const y = +d.slice(0, 4); if (byYear[y]) byYear[y].push(i); });
+  taskData = { dates, rows, byYear };
+}
+
+function renderTaskView() {
+  document.body.classList.add('task-view');
+  const grid = document.getElementById('grid');
+  grid.classList.add('task');
+  if (!taskData) { grid.innerHTML = '<tbody><tr><td style="padding:14px;color:#888">Loading…</td></tr></tbody>'; return; }
+
+  const fmtH = v => v == null ? '' : Math.round(v).toLocaleString();
+  const ppLbl = d => d.slice(5) + " '" + d.slice(2, 4); // MM-DD 'YY
+  const m = state.taskMetric;                       // 'hours' | 'prodhours'
+  const cell = (r, t) => (m === 'hours' ? r.h : r.p)[t]; // metric value for a task
+  const tot  = r => m === 'hours' ? r._th : r._tp;       // metric row total
+
+  // Per-year avg/PP per task (denominator = # pay periods that year)
+  const COLS = [...TASK, '_total'];
+  function avgVals(idxs) {
+    const n = idxs.length;
+    const v = {}; let total = 0;
+    for (const t of TASK) {
+      const sum = idxs.reduce((s, i) => s + (cell(taskData.rows[i], t) || 0), 0);
+      const avg = n ? sum / n : 0; v[t] = avg; total += avg;
+    }
+    v._total = total;
+    return v;
+  }
+  // YoY % change shown to the left of each 2026 value (vs 2025).
+  const pctChg = (cur, prev) => {
+    if (!prev) return '';
+    const p = (cur - prev) / prev * 100;
+    return '<span class="pp-chg">' + (p >= 0 ? '+' : '') + p.toFixed(1) + '%</span> ';
+  };
+  function avgRow(label, vals, prev) {
+    let row = '<tr class="ttot"><td>' + label + '</td>';
+    for (const t of COLS) {
+      const chg = prev ? pctChg(vals[t], prev[t]) : '';
+      row += '<td class="sec-act">' + chg + fmtH(vals[t]) + '</td>';
+    }
+    return row + '</tr>';
+  }
+
+  let html = '<colgroup><col class="col-pp">';
+  for (let i = 0; i < TASK.length; i++) html += '<col class="col-data">';
+  html += '<col class="col-tot"></colgroup><thead>';
+  html += '<tr class="hdr-cols"><th>Pay period</th>';
+  for (const t of TASK) html += '<th>' + TASK_LABEL[t] + '</th>';
+  html += '<th>Total</th></tr>';
+  const v25 = taskData.byYear[2025].length ? avgVals(taskData.byYear[2025]) : null;
+  const v26 = taskData.byYear[2026].length ? avgVals(taskData.byYear[2026]) : null;
+  if (v25) html += avgRow('2025 avg/PP', v25, null);
+  if (v26) html += avgRow('2026 avg/PP', v26, v25);
+  html += '</thead><tbody>';
+  taskData.dates.forEach((d, i) => {
+    const r = taskData.rows[i];
+    html += '<tr><td>' + ppLbl(d) + '</td>';
+    for (const t of TASK) html += `<td class="sec-act tcell" data-d="${d}" data-task="${t}">` + fmtH(cell(r, t)) + '</td>';
+    html += `<td class="sec-act tcell" data-d="${d}" data-task="" style="font-weight:600">` + fmtH(tot(r)) + '</td></tr>';
+  });
+  html += '</tbody>';
+  grid.innerHTML = html;
+  grid.querySelectorAll('td.tcell').forEach(td => {
+    td.onclick = () => openTaskDetail(td.dataset.d, td.dataset.task);
+  });
+  renderTaskChart();
+}
+
+function renderTaskChart() {
+  const wrap = document.getElementById('chartWrap');
+  wrap.style.display = '';
+  const m = state.taskMetric;
+  const labels = taskData.dates.map(d => d.slice(5) + "/" + d.slice(2, 4));
+  const datasets = TASK.map(t => ({
+    label: TASK_LABEL[t],
+    data: taskData.rows.map(r => (m === 'hours' ? r.h : r.p)[t] ?? 0),
+    borderColor: TASK_COLOR[t], backgroundColor: TASK_COLOR[t],
+    borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.25,
+  }));
+  const cvs = document.getElementById('chart');
+  if (chart) chart.destroy();
+  chart = new Chart(cvs, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#aaa', font: { size: 11 }, usePointStyle: true, pointStyle: 'circle', boxWidth: 8 } },
+        tooltip: { bodyFont: { size: 11 }, titleFont: { size: 12 } },
+        title: { display: true, color: '#aaa', text: (m === 'hours' ? 'Hours' : 'Productive hours') + ' by task per pay period' }
+      },
+      scales: {
+        x: { ticks: { color: '#888', font: { size: 11 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: '#888', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+      }
+    }
+  });
+}
+
+// ========= Wire UI =========
+async function rerender() {
+  if (state.view === 'task') {
+    if (!taskData) { try { await loadTaskData(); } catch (e) { document.getElementById('status').textContent = 'Error: ' + e.message; return; } }
+    renderTaskView();
+    return;
+  }
+  document.body.classList.remove('task-view');
+  const grid = document.getElementById('grid');
+  grid.classList.remove('task');
+  computeRates();
+  renderTable();
+  renderChart();
+}
+
+function renderChart() {
+  const wrap = document.getElementById('chartWrap');
+  if (!state.collapsed) { wrap.style.display = 'none'; if (chart) { chart.destroy(); chart = null; } return; }
+  wrap.style.display = '';
+  const isHC = state.metric === 'headcount';
+  const isRate = state.metric === 'dollar_per_hour';
+  const labels = []; for (let pp = 1; pp <= PP_COUNT; pp++) labels.push('PP' + pp);
+
+  function ppTotal(year, mode, pp) {
+    if (isRate) {
+      let c=0, h=0;
+      for (const l of LABOR) {
+        const ch = mode==='actual' ? actualCostHours(year, pp, l) : budgetCostHours(pp, l);
+        if (ch && ch.hours > 0) { c += ch.cost; h += ch.hours; }
+      }
+      return h > 0 ? c / h : null;
+    }
+    let s = 0, any = false;
+    for (const l of LABOR) {
+      const v = mode==='actual' ? actualMetricVal(year, pp, l) : budgetMetricVal(pp, l);
+      if (v != null) { s += v; any = true; }
+    }
+    return any ? s : null;
+  }
+
+  const data25 = [], data26B = [], data26A = [];
+  for (let pp = 1; pp <= PP_COUNT; pp++) {
+    data25.push(ppTotal(2025, 'actual', pp));
+    data26B.push(ppTotal(2026, 'budget', pp));
+    data26A.push(pp <= currentPP[2026] ? ppTotal(2026, 'actual', pp) : null);
+  }
+
+  const cvs = document.getElementById('chart');
+  if (chart) chart.destroy();
+  chart = new Chart(cvs, {
+    type: 'line',
+    data: { labels, datasets: [
+      { label:'2025 Actual', data:data25, borderColor:'#bbb', backgroundColor:'#bbb', borderWidth:1.5, pointRadius:0, spanGaps:true },
+      { label:'2026 Budget', data:data26B, borderColor:'#c7a3e0', backgroundColor:'#c7a3e0', borderWidth:1.5, pointRadius:0, borderDash:[5,4], spanGaps:true },
+      { label:'2026 Actual', data:data26A, borderColor:'#4ecca3', backgroundColor:'#4ecca3', borderWidth:2, pointRadius:0, spanGaps:false },
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode:'index', intersect:false },
+      plugins: {
+        legend: { labels:{ color:'#aaa', font:{size:11}, usePointStyle:true, pointStyle:'circle', boxWidth:8 } },
+        tooltip: { bodyFont:{size:11}, titleFont:{size:12} },
+        title: { display:true, color:'#aaa',
+          text: ({headcount:'Headcount', hours:'Hours', cost_total:'Total Cost', dollar_per_hour:'$/hr', prodhours:'ProdHours', disc_ot:'DiscOT'}[state.metric]||state.metric) + ' — total per PP' }
+      },
+      scales: {
+        x: { ticks:{ color:'#888', font:{size:11}, maxRotation:0 }, grid:{ display:false } },
+        y: { ticks:{ color:'#888', font:{size:11},
+            callback: v => state.metric==='cost_total' ? '$'+(v/1000).toFixed(0)+'k' : v },
+          grid:{ color:'rgba(255,255,255,0.05)' } }
+      }
+    }
+  });
+}
+
+
+document.querySelectorAll('#viewToggle button').forEach(b => {
+  b.onclick = () => {
+    state.view = b.dataset.view;
+    document.querySelectorAll('#viewToggle button').forEach(x => x.classList.toggle('active', x === b));
+    rerender();
+  };
+});
+document.querySelectorAll('#metricToggle button').forEach(b => {
+  b.onclick = () => {
+    state.metric = b.dataset.metric;
+    document.querySelectorAll('#metricToggle button').forEach(x => x.classList.toggle('active', x === b));
+    rerender();
+  };
+});
+document.querySelectorAll('#taskMetricToggle button').forEach(b => {
+  b.onclick = () => {
+    state.taskMetric = b.dataset.tmetric;
+    document.querySelectorAll('#taskMetricToggle button').forEach(x => x.classList.toggle('active', x === b));
+    rerender();
+  };
+});
+document.getElementById('editBtn').onclick = () => {
+  state.editMode = !state.editMode;
+  const b = document.getElementById('editBtn');
+  b.textContent = state.editMode ? 'Stop Editing' : 'Edit Budget';
+  b.classList.toggle('primary', state.editMode);
+  // Force metric to headcount when editing — only headcount is editable
+  if (state.editMode && state.metric !== 'headcount') {
+    state.metric = 'headcount';
+    document.querySelectorAll('#metricToggle button').forEach(x => x.classList.toggle('active', x.dataset.metric === 'headcount'));
+  }
+  // If leaving edit mode with pending edits, flush immediately
+  if (!state.editMode && state.budgetDirty) { clearTimeout(autosaveTimer); saveBudget(); }
+  rerender();
+};
+document.getElementById('collapseBtn').onclick = () => {
+  state.collapsed = !state.collapsed;
+  document.body.classList.toggle('collapsed', state.collapsed);
+  const b = document.getElementById('collapseBtn');
+  b.textContent = state.collapsed ? 'Show All Cols' : 'Focus Totals';
+  b.classList.toggle('primary', state.collapsed);
+  rerender();
+};
+document.getElementById('versionSel').onchange = (e) => {
+  activeVersion = e.target.value;
+  applyActiveVersion();
+  rerender();
+};
+
+// ========= Init =========
+async function init() {
+  try {
+    document.getElementById('status').textContent = 'Loading…';
+    await Promise.all([loadBudget(), loadActuals()]);
+    // Surface the data anomaly if present
+    const issues = [];
+    for (const yr of [2025, 2026]) {
+      // Check for collisions: same date appearing once is fine; the issue is when
+      // bogus pay_period_start was attached to the same check_date in DB
+    }
+    // The known issue: 2026 PP6/PP7 share check_date. Since we now key by
+    // check_date, both rows merge into one PP automatically — but flag it.
+    // (Skipping a runtime check; detection lives at the source.)
+    // Restore unsaved edits from a previous session (only if newer than the
+    // latest saved version). The autosave will flush them shortly after.
+    const draft = loadDraft();
+    const latestTs = activeVersion ? new Date(activeVersion).getTime() : 0;
+    if (draft && draft.budget && draft.ts > latestTs) {
+      budgets[2026] = draft.budget;
+      state.budgetDirty = true;
+      const ageMin = Math.round((Date.now() - draft.ts) / 60000);
+      document.getElementById('status').textContent =
+        `Restored unsaved edits (${ageMin}m ago) — autosaving…`;
+      scheduleAutosave();
+    } else {
+      clearDraft();
+      document.getElementById('status').textContent = '';
+    }
+    renderVersionDropdown();
+    rerender();
+  } catch (e) {
+    document.getElementById('status').textContent = 'Error: ' + e.message;
+    console.error(e);
+  }
+}
+
+// Version stamp
+fetch('index.html', { method:'HEAD' }).then(r => {
+  const d = new Date(r.headers.get('last-modified'));
+  const pad = n => String(n).padStart(2, '0');
+  // HST = UTC-10
+  const hst = new Date(d.getTime() - 10 * 3600 * 1000);
+  document.getElementById('version').textContent =
+    `${pad(hst.getUTCMonth()+1)}-${pad(hst.getUTCDate())} ${pad(hst.getUTCHours())}:${pad(hst.getUTCMinutes())}`;
+}).catch(() => {});
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="../lib/data-source.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+  #header { background: #16213e; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #0f3460; }
+  #header h1 { font-size: 1.3rem; color: #4ecca3; }
+  #header .info { font-size: 0.8rem; color: #888; }
+  #loading { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 1.2rem; color: #4ecca3; }
+  #main { display: flex; flex: 1; overflow: hidden; }
+  #left { width: 35%; border-right: 1px solid #0f3460; overflow-y: auto; padding: 12px; }
+  #right { width: 65%; padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+  .chart-box { flex: 1; min-height: 0; background: #16213e; border-radius: 8px; padding: 12px; position: relative; }
+  .chart-box h3 { font-size: 0.9rem; color: #aaa; margin-bottom: 4px; }
+  .chart-box canvas { width: 100% !important; }
+
+  /* Table styles */
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { text-align: left; padding: 6px 8px; border-bottom: 2px solid #0f3460; color: #4ecca3; position: sticky; top: 0; background: #1a1a2e; }
+  th.num, td.num { text-align: right; }
+  .group-row { cursor: pointer; }
+  .group-row td { padding: 6px 8px; border-bottom: 1px solid #0f3460; font-weight: 600; }
+  .group-row:hover { background: #16213e; }
+  .group-row.selected { background: #0f3460; }
+  .cust-row { cursor: pointer; }
+  .cust-row td { padding: 4px 8px 4px 28px; border-bottom: 1px solid rgba(15,52,96,0.4); font-size: 0.8rem; color: #bbb; }
+  .cust-row:hover { background: #16213e; }
+  .cust-row.selected { background: #0f3460; color: #fff; }
+  .cust-row.hidden { display: none; }
+  .arrow { display: inline-block; transition: transform 0.2s; margin-right: 4px; font-size: 0.7rem; }
+  .arrow.open { transform: rotate(90deg); }
+  .pos { color: #4ecca3; }
+  .neg { color: #e74c3c; }
+  .no-data { display: flex; align-items: center; justify-content: center; height: 100%; color: #666; font-size: 0.95rem; }
+
+  /* Mobile: stack vertically */
+  @media (max-width: 768px) {
+    body { height: auto; min-height: 100vh; }
+    #main { flex-direction: column; overflow: visible; }
+    #left { width: 100%; border-right: none; border-bottom: 1px solid #0f3460; overflow: visible; max-height: none; }
+    #right { width: 100%; overflow: visible; padding: 12px; }
+    .chart-box { height: 300px; flex: none; }
+    #header h1 { font-size: 1.1rem; }
+    table { font-size: 0.8rem; }
+    .group-row td { padding: 8px 6px; }
+    .cust-row td { padding: 6px 6px 6px 20px; }
+    th { position: static; }
+  }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Sales Dashboard</h1>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <button id="toggle25" onclick="toggle25Lines()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer;">Show '25</button>
+    <button id="toggleUnit" onclick="toggleUnit()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer;">Cases</button>
+    <button id="toggleByCust" onclick="toggleByCust()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer;">By Customer</button>
+    <div id="productFilterWrap" style="display:none;position:relative;">
+      <button id="productFilterBtn" onclick="toggleProductDropdown()" style="padding:4px 8px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer;white-space:nowrap;">All Products ▾</button>
+      <div id="productDropdown" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#0f3460;border:1px solid #555;border-radius:4px;z-index:100;min-width:140px;max-height:240px;overflow-y:auto;"></div>
+    </div>
+    <button id="toggleAll" onclick="toggleAllLines()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Clear All</button>
+    <div class="info" id="status">Loading data...</div>
+    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">04-18 00:30</span>
+  </div>
+</div>
+
+<div id="loading">Loading invoice data...</div>
+
+<div id="main" style="display:none;">
+  <div id="left">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer Group</th>
+          <th class="num">2025 FY</th>
+          <th class="num">2025 YTD</th>
+          <th class="num">2026 YTD</th>
+          <th class="num">% Chg</th>
+          <th class="num">Cuke %</th>
+          <th class="num">Lett %</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div id="right">
+    <div class="chart-box">
+      <h3 id="cuke-title">Cuke — Select a group or customer</h3>
+      <canvas id="cukeChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3 id="lettuce-title">Lettuce — Select a group or customer</h3>
+      <canvas id="lettuceChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+// Data source (sheets | dev | prod) comes from DataSource module
+// (see ../lib/data-source.js + ../lib/README.md).
+
+// Current ISO week for YTD cutoff
+function currentISOWeek() {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+}
+// Include current week only after noon HST on Friday; otherwise use prior week
+function maxWeek() {
+  const now = new Date();
+  // HST is UTC-10
+  const hst = new Date(now.getTime() - 10 * 60 * 60 * 1000);
+  const day = hst.getUTCDay(); // 0=Sun, 5=Fri, 6=Sat
+  const hour = hst.getUTCHours();
+  const includeCurrentWeek = (day === 5 && hour >= 12) || day === 6 || day === 0;
+  return includeCurrentWeek ? currentISOWeek() : currentISOWeek() - 1;
+}
+const MAX_WEEK = maxWeek();
+const _hst = new Date(new Date().getTime() - 10 * 3600000);
+const MAX_MD = (_hst.getUTCMonth() + 1) * 100 + _hst.getUTCDate(); // e.g. 327 for March 27
+
+let allRows = [];
+let cukeChart, lettuceChart;
+let show25 = false;
+let byCust = false;
+let lastGroup = null, lastCust = null;
+let productFilter = new Set();
+let unitMode = 'cases'; // cycles: cases -> dollars -> pounds
+
+// Virtual customers: combine multiple CustomerNames into one
+const VIRTUAL_CUSTOMERS = {
+  'Foodland/AP': ['Foodland', 'AP - Foodland', 'AP Kona - Foodland']
+};
+// Build reverse lookup: original name -> virtual name
+const CUSTOMER_REMAP = {};
+const VIRTUAL_GROUPS = new Set(Object.keys(VIRTUAL_CUSTOMERS));
+Object.entries(VIRTUAL_CUSTOMERS).forEach(([virtual, originals]) => {
+  originals.forEach(name => { CUSTOMER_REMAP[name] = virtual; });
+});
+
+function toggle25Lines() {
+  show25 = !show25;
+  const btn = document.getElementById('toggle25');
+  btn.textContent = show25 ? "Hide '25" : "Show '25";
+  btn.style.borderColor = show25 ? '#4ecca3' : '#555';
+  [cukeChart, lettuceChart].forEach(chart => {
+    if (!chart) return;
+    chart.data.datasets.forEach((ds, i) => {
+      if (ds.year === 2025) chart.setDatasetVisibility(i, show25);
+    });
+    chart.update();
+  });
+}
+
+function toggleUnit() {
+  const order = ['cases', 'dollars', 'pounds'];
+  unitMode = order[(order.indexOf(unitMode) + 1) % 3];
+  const btn = document.getElementById('toggleUnit');
+  const labels = { cases: 'Cases', dollars: '$s', pounds: 'Lbs' };
+  btn.textContent = labels[unitMode];
+  btn.style.borderColor = unitMode !== 'cases' ? '#4ecca3' : '#555';
+  buildTable();
+  updateCharts(lastGroup, lastCust);
+}
+
+function toggleByCust() {
+  byCust = !byCust;
+  const btn = document.getElementById('toggleByCust');
+  btn.textContent = byCust ? 'By Product' : 'By Customer';
+  btn.style.borderColor = byCust ? '#4ecca3' : '#555';
+  if (lastGroup || lastCust) updateCharts(lastGroup, lastCust);
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('productFilterWrap');
+  if (wrap && !wrap.contains(e.target)) document.getElementById('productDropdown').style.display = 'none';
+});
+function toggleProductDropdown() {
+  const dd = document.getElementById('productDropdown');
+  dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
+function toggleProductFilter(code) {
+  if (productFilter.has(code)) productFilter.delete(code); else productFilter.add(code);
+  updateProductFilterUI();
+  buildTable();
+  updateCharts(lastGroup, lastCust);
+}
+function updateProductFilterUI() {
+  const btn = document.getElementById('productFilterBtn');
+  btn.style.borderColor = productFilter.size ? '#4ecca3' : '#555';
+  btn.textContent = productFilter.size ? `${productFilter.size} Product${productFilter.size > 1 ? 's' : ''} ▾` : 'All Products ▾';
+  document.querySelectorAll('#productDropdown label').forEach(lbl => {
+    const cb = lbl.querySelector('input');
+    cb.checked = productFilter.has(cb.value);
+  });
+}
+
+// Parse gviz JSON response into array of objects
+function parseGvizTable(table) {
+  const cols = table.cols.map(c => c.label);
+  // Identify numeric columns we need as integers
+  const intCols = new Set(['Cases','Year','Month','ISOYear','ISOWeek','DOW','Grade']);
+  const numCols = new Set(['Dollars','Pounds']);
+  return table.rows.map(r => {
+    const obj = {};
+    r.c.forEach((cell, i) => {
+      const col = cols[i];
+      if (!col) return;
+      if (!cell || cell.v === null || cell.v === undefined) { obj[col] = ''; return; }
+      // Date cells: parse month/day for YTD cutoff, store formatted string
+      if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
+        const dm = cell.v.match(/Date\((\d+),(\d+),(\d+)\)/);
+        if (dm && col === 'InvoiceDate') obj._md = (parseInt(dm[2]) + 1) * 100 + parseInt(dm[3]); // 1-indexed month * 100 + day
+        obj[col] = cell.f || cell.v;
+      } else if (intCols.has(col) && typeof cell.v === 'number') {
+        obj[col] = Math.round(cell.v);
+      } else if (numCols.has(col) && typeof cell.v === 'number') {
+        obj[col] = cell.v;
+      } else {
+        obj[col] = cell.v;
+      }
+    });
+    return obj;
+  }).filter(r => r.CustomerGroup && r.ProductCode !== 'Sales');
+}
+
+async function loadData() {
+  const table = await DataSource.fetchTable('invoices');
+  allRows = parseGvizTable(table);
+  // Create virtual group by duplicating rows (originals stay untouched)
+  const virtualRows = [];
+  allRows.forEach(r => {
+    if (CUSTOMER_REMAP[r.CustomerName]) {
+      virtualRows.push({ ...r, CustomerGroup: CUSTOMER_REMAP[r.CustomerName] });
+    }
+  });
+  allRows = allRows.concat(virtualRows);
+  // Populate product filter dropdown
+  const allProducts = [...new Set(allRows.filter(r => r.Year === 2025 || r.Year === 2026).map(r => r.ProductCode))].filter(p => p !== 'KWC').sort();
+  const dd = document.getElementById('productDropdown');
+  allProducts.forEach(p => {
+    const lbl = document.createElement('label');
+    lbl.style.cssText = 'display:block;padding:4px 10px;cursor:pointer;font-size:0.75rem;color:#ccc;white-space:nowrap;';
+    lbl.onmouseenter = () => lbl.style.background = '#1a4a7a';
+    lbl.onmouseleave = () => lbl.style.background = '';
+    lbl.innerHTML = `<input type="checkbox" value="${p}" onchange="toggleProductFilter('${p}')" style="margin-right:6px;vertical-align:middle;"> ${p}`;
+    dd.appendChild(lbl);
+  });
+  document.getElementById('status').textContent =
+    `${allRows.length.toLocaleString()} invoices | YTD through ${Math.floor(MAX_MD/100)}/${MAX_MD%100}`;
+  buildTable();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('main').style.display = 'flex';
+  document.getElementById('toggle25').style.display = 'inline-block';
+  document.getElementById('toggleUnit').style.display = 'inline-block';
+  document.getElementById('toggleByCust').style.display = 'inline-block';
+  document.getElementById('productFilterWrap').style.display = 'inline-block';
+  document.getElementById('toggleAll').style.display = 'inline-block';
+  // Start with blank charts
+}
+
+let allVisible = true;
+
+function toggleAllLines() {
+  allVisible = !allVisible;
+  const btn = document.getElementById('toggleAll');
+  btn.textContent = allVisible ? 'Clear All' : 'Select All';
+  [cukeChart, lettuceChart].forEach(chart => {
+    if (!chart) return;
+    chart.data.datasets.forEach((ds, i) => {
+      if (ds.year === 2025 && !show25) return;
+      chart.setDatasetVisibility(i, allVisible);
+    });
+    chart.update();
+  });
+}
+
+function getFilteredRows() {
+  if (!productFilter.size) return allRows;
+  return allRows.filter(r => productFilter.has(r.ProductCode));
+}
+
+// Group data for the left table (YTD cases or dollars)
+function valField(r) {
+  if (unitMode === 'dollars') return Number(r.Dollars) || 0;
+  if (unitMode === 'pounds') return Number(r.Pounds) || 0;
+  return Number(r.Cases) || 0;
+}
+function unitLabel() { return unitMode === 'dollars' ? 'Dollars' : unitMode === 'pounds' ? 'Pounds' : 'Cases'; }
+
+function fyCases(rows, year) {
+  return rows
+    .filter(r => r.Year === year)
+    .reduce((sum, r) => sum + valField(r), 0);
+}
+
+function ytdCases(rows, year) {
+  return rows
+    .filter(r => r.Year === year && r._md <= MAX_MD)
+    .reduce((sum, r) => sum + valField(r), 0);
+}
+
+function ytdCasesByFarm(rows, year, farm) {
+  return rows
+    .filter(r => r.Year === year && r._md <= MAX_MD && r.Farm === farm)
+    .reduce((sum, r) => sum + valField(r), 0);
+}
+
+function fmtVal(v) {
+  return Math.round(v).toLocaleString();
+}
+
+function fmtPct(cur, prev) {
+  if (prev === 0) return '—';
+  const pct = Math.round((cur - prev) / prev * 100);
+  return (pct >= 0 ? '+' : '') + pct + '%';
+}
+
+function buildTable() {
+  const rows = getFilteredRows();
+  const groups = {};
+  rows.forEach(r => {
+    const g = r.CustomerGroup || 'Unknown';
+    const c = r.CustomerName || 'Unknown';
+    if (!groups[g]) groups[g] = {};
+    if (!groups[g][c]) groups[g][c] = [];
+    groups[g][c].push(r);
+  });
+
+  // Sort groups by 2026 YTD desc, but pin "Small" to the bottom
+  const sorted = Object.entries(groups).sort((a, b) => {
+    const aSmall = a[0].toLowerCase() === 'small' ? 1 : 0;
+    const bSmall = b[0].toLowerCase() === 'small' ? 1 : 0;
+    if (aSmall !== bSmall) return aSmall - bSmall;
+    const aRows = Object.values(a[1]).flat();
+    const bRows = Object.values(b[1]).flat();
+    return ytdCases(bRows, 2026) - ytdCases(aRows, 2026);
+  });
+
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+
+  const EXPANDABLE_GROUPS = ['costco', 'armstrong produce', "sam's", 'foodland/ap', 'small'];
+
+  sorted.forEach(([groupName, customers]) => {
+    const isExpandable = EXPANDABLE_GROUPS.includes(groupName.toLowerCase());
+    const groupRows = Object.values(customers).flat();
+
+    if (isExpandable) {
+      // Show group header with expandable children
+      const fy25 = fyCases(groupRows, 2025);
+      const y25 = ytdCases(groupRows, 2025);
+      const y26 = ytdCases(groupRows, 2026);
+      const diff = y26 - y25;
+      const cuke25 = ytdCasesByFarm(groupRows, 2025, 'Cuke');
+      const cuke26 = ytdCasesByFarm(groupRows, 2026, 'Cuke');
+      const lett25 = ytdCasesByFarm(groupRows, 2025, 'Lettuce');
+      const lett26 = ytdCasesByFarm(groupRows, 2026, 'Lettuce');
+
+      const tr = document.createElement('tr');
+      tr.className = 'group-row';
+      tr.dataset.group = groupName;
+      tr.innerHTML = `
+        <td><span class="arrow">&#9654;</span>${groupName}</td>
+        <td class="num">${fmtVal(fy25)}</td>
+        <td class="num">${fmtVal(y25)}</td>
+        <td class="num">${fmtVal(y26)}</td>
+        <td class="num ${diff >= 0 ? 'pos' : 'neg'}">${fmtPct(y26, y25)}</td>
+        <td class="num ${cuke26 - cuke25 >= 0 ? 'pos' : 'neg'}">${fmtPct(cuke26, cuke25)}</td>
+        <td class="num ${lett26 - lett25 >= 0 ? 'pos' : 'neg'}">${fmtPct(lett26, lett25)}</td>
+      `;
+      tr.addEventListener('click', () => toggleGroup(tr, groupName));
+      tbody.appendChild(tr);
+
+      // Customer rows (hidden by default)
+      const custSorted = Object.entries(customers).sort((a, b) => ytdCases(b[1], 2026) - ytdCases(a[1], 2026));
+      custSorted.forEach(([custName, custRows]) => {
+        const cf25 = fyCases(custRows, 2025);
+        const c25 = ytdCases(custRows, 2025);
+        const c26 = ytdCases(custRows, 2026);
+        if (groupName.toLowerCase() === 'small' && c25 + c26 === 0) return;
+        const cd = c26 - c25;
+        const cc25 = ytdCasesByFarm(custRows, 2025, 'Cuke');
+        const cc26 = ytdCasesByFarm(custRows, 2026, 'Cuke');
+        const cl25 = ytdCasesByFarm(custRows, 2025, 'Lettuce');
+        const cl26 = ytdCasesByFarm(custRows, 2026, 'Lettuce');
+        const ctr = document.createElement('tr');
+        ctr.className = 'cust-row hidden';
+        ctr.dataset.group = groupName;
+        ctr.dataset.customer = custName;
+      ctr.innerHTML = `
+        <td>${custName}</td>
+        <td class="num">${fmtVal(cf25)}</td>
+        <td class="num">${fmtVal(c25)}</td>
+        <td class="num">${fmtVal(c26)}</td>
+        <td class="num ${cd >= 0 ? 'pos' : 'neg'}">${fmtPct(c26, c25)}</td>
+        <td class="num ${cc26 - cc25 >= 0 ? 'pos' : 'neg'}">${fmtPct(cc26, cc25)}</td>
+        <td class="num ${cl26 - cl25 >= 0 ? 'pos' : 'neg'}">${fmtPct(cl26, cl25)}</td>
+      `;
+      ctr.addEventListener('click', (e) => { e.stopPropagation(); selectCustomer(ctr, groupName, custName); });
+      tbody.appendChild(ctr);
+      });
+    } else {
+      // Non-expandable: show each customer as a top-level row
+      const custSorted = Object.entries(customers).sort((a, b) => ytdCases(b[1], 2026) - ytdCases(a[1], 2026));
+      custSorted.forEach(([custName, custRows]) => {
+        const cf25 = fyCases(custRows, 2025);
+        const c25 = ytdCases(custRows, 2025);
+        const c26 = ytdCases(custRows, 2026);
+        const cd = c26 - c25;
+        const cc25 = ytdCasesByFarm(custRows, 2025, 'Cuke');
+        const cc26 = ytdCasesByFarm(custRows, 2026, 'Cuke');
+        const cl25 = ytdCasesByFarm(custRows, 2025, 'Lettuce');
+        const cl26 = ytdCasesByFarm(custRows, 2026, 'Lettuce');
+        const tr = document.createElement('tr');
+        tr.className = 'group-row';
+        tr.dataset.group = groupName;
+        tr.dataset.customer = custName;
+        tr.innerHTML = `
+          <td>${custName}</td>
+          <td class="num">${fmtVal(cf25)}</td>
+          <td class="num">${fmtVal(c25)}</td>
+          <td class="num">${fmtVal(c26)}</td>
+          <td class="num ${cd >= 0 ? 'pos' : 'neg'}">${fmtPct(c26, c25)}</td>
+          <td class="num ${cc26 - cc25 >= 0 ? 'pos' : 'neg'}">${fmtPct(cc26, cc25)}</td>
+          <td class="num ${cl26 - cl25 >= 0 ? 'pos' : 'neg'}">${fmtPct(cl26, cl25)}</td>
+        `;
+        tr.addEventListener('click', () => {
+          document.querySelectorAll('.group-row.selected, .cust-row.selected').forEach(r => r.classList.remove('selected'));
+          tr.classList.add('selected');
+          updateCharts(groupName, custName);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+  });
+
+  // Total row at bottom — exclude virtual group rows to avoid double-counting
+  const totRows = rows.filter(r => !VIRTUAL_GROUPS.has(r.CustomerGroup));
+  const totFY25 = fyCases(totRows, 2025);
+  const totY25 = ytdCases(totRows, 2025);
+  const totY26 = ytdCases(totRows, 2026);
+  const totDiff = totY26 - totY25;
+  const totCuke25 = ytdCasesByFarm(totRows, 2025, 'Cuke');
+  const totCuke26 = ytdCasesByFarm(totRows, 2026, 'Cuke');
+  const totLett25 = ytdCasesByFarm(totRows, 2025, 'Lettuce');
+  const totLett26 = ytdCasesByFarm(totRows, 2026, 'Lettuce');
+  const totTr = document.createElement('tr');
+  totTr.className = 'group-row';
+  totTr.style.borderTop = '2px solid #4ecca3';
+  totTr.innerHTML = `
+    <td style="color:#4ecca3; font-weight:700;">TOTAL</td>
+    <td class="num" style="color:#4ecca3; font-weight:700;">${fmtVal(totFY25)}</td>
+    <td class="num" style="color:#4ecca3; font-weight:700;">${fmtVal(totY25)}</td>
+    <td class="num" style="color:#4ecca3; font-weight:700;">${fmtVal(totY26)}</td>
+    <td class="num ${totDiff >= 0 ? 'pos' : 'neg'}" style="font-weight:700;">${fmtPct(totY26, totY25)}</td>
+    <td class="num ${totCuke26 - totCuke25 >= 0 ? 'pos' : 'neg'}" style="font-weight:700;">${fmtPct(totCuke26, totCuke25)}</td>
+    <td class="num ${totLett26 - totLett25 >= 0 ? 'pos' : 'neg'}" style="font-weight:700;">${fmtPct(totLett26, totLett25)}</td>
+  `;
+  totTr.addEventListener('click', () => {
+    document.querySelectorAll('.group-row.selected, .cust-row.selected').forEach(r => r.classList.remove('selected'));
+    totTr.classList.add('selected');
+    updateCharts(null, null);
+  });
+  tbody.appendChild(totTr);
+}
+
+function toggleGroup(tr, groupName) {
+  const arrow = tr.querySelector('.arrow');
+  const isOpen = arrow.classList.toggle('open');
+  const custRows = document.querySelectorAll(`.cust-row[data-group="${CSS.escape(groupName)}"]`);
+  custRows.forEach(r => r.classList.toggle('hidden', !isOpen));
+
+  // Select this group for charts
+  document.querySelectorAll('.group-row.selected, .cust-row.selected').forEach(r => r.classList.remove('selected'));
+  tr.classList.add('selected');
+  updateCharts(groupName, null);
+}
+
+function selectCustomer(tr, groupName, custName) {
+  document.querySelectorAll('.group-row.selected, .cust-row.selected').forEach(r => r.classList.remove('selected'));
+  tr.classList.add('selected');
+  updateCharts(groupName, custName);
+}
+
+function updateCharts(groupName, custName) {
+  lastGroup = groupName;
+  lastCust = custName;
+  const label = custName || groupName || 'All';
+  const base = getFilteredRows();
+  const filtered = base.filter(r => {
+    if (custName) return r.CustomerName === custName && (!groupName || r.CustomerGroup === groupName);
+    if (groupName) return r.CustomerGroup === groupName;
+    return true;
+  });
+  // Use by-customer mode only when a group (not individual customer) is selected
+  const useByCust = byCust && groupName && !custName;
+
+  const chartRows = filtered.filter(r => r.ProductCode !== 'JF');
+  renderChart('cuke', chartRows.filter(r => r.Farm === 'Cuke'), label, useByCust);
+  renderChart('lettuce', chartRows.filter(r => r.Farm === 'Lettuce'), label, useByCust);
+}
+
+// Product color palette
+// Bright, distinct palette — reused across Cuke and Lettuce charts
+const BRIGHT_PALETTE = [
+  '#ff0000', // red
+  '#00cc00', // green
+  '#0066ff', // blue
+  '#ff9900', // orange
+  '#cc00ff', // purple
+  '#00cccc', // cyan
+  '#ff3399', // pink
+  '#ffcc00', // yellow
+  '#00ff66', // lime
+  '#ff6600', // dark orange
+];
+
+// Assign colors per-chart so each farm gets the full bright palette
+function assignColors(products) {
+  const map = {};
+  products.forEach((p, i) => { map[p] = BRIGHT_PALETTE[i % BRIGHT_PALETTE.length]; });
+  return map;
+}
+
+// Convert hex color to rgba with alpha
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function renderChart(type, rows, label, useByCust) {
+  const titleEl = document.getElementById(type + '-title');
+  const canvas = document.getElementById(type + 'Chart');
+  titleEl.textContent = `${type === 'cuke' ? 'Cuke' : 'Lettuce'} — ${label}${useByCust ? ' (by customer)' : ''}`;
+
+  // Find all products in this data, ordered by custom legend order
+  const legendOrder = type === 'cuke'
+    ? ['KW','KR','JW','JR','EF']
+    : ['LW','LR','LF','WR','WF','AR','AF'];
+  const productSet = new Set(rows.map(r => r.ProductCode));
+  const products = legendOrder.filter(p => productSet.has(p))
+    .concat([...productSet].filter(p => !legendOrder.includes(p)).sort());
+
+  let weeks, datasets;
+
+  if (useByCust) {
+    // By-customer mode: one line per customer+product+year
+    const data = {}; // { "CustName|Product": { year: { week: cases } } }
+    rows.forEach(r => {
+      const y = r.ISOYear;
+      if (y !== 2025 && y !== 2026) return;
+      if (y === 2026 && r.ISOWeek > MAX_WEEK) return;
+      const key = `${r.CustomerName}|${r.ProductCode}`;
+      if (!data[key]) data[key] = { 2025: {}, 2026: {} };
+      if (!data[key][y][r.ISOWeek]) data[key][y][r.ISOWeek] = 0;
+      data[key][y][r.ISOWeek] += valField(r);
+    });
+
+    let maxW = MAX_WEEK;
+    Object.values(data).forEach(d => {
+      const wks = Object.keys(d[2025]).map(Number);
+      if (wks.length) maxW = Math.max(maxW, ...wks);
+    });
+    weeks = [];
+    for (let w = 1; w <= maxW; w++) weeks.push(w);
+
+    // Sort keys by customer then product order
+    const keys = Object.keys(data).sort((a, b) => {
+      const [aCust, aProd] = a.split('|');
+      const [bCust, bProd] = b.split('|');
+      if (aCust !== bCust) return aCust.localeCompare(bCust);
+      return (legendOrder.indexOf(aProd) ?? 99) - (legendOrder.indexOf(bProd) ?? 99);
+    });
+
+    const colorMap = assignColors(keys);
+    datasets = [];
+    keys.forEach(key => {
+      const [custName, prod] = key.split('|');
+      const color = colorMap[key];
+      const fadedColor = hexToRgba(color, 0.6);
+      const has26 = Object.keys(data[key][2026]).length > 0;
+      if (has26) {
+        datasets.push({
+          label: `${custName} – ${prod} '26`,
+          year: 2026,
+          data: weeks.map(w => data[key][2026][w] ?? null),
+          borderColor: color, backgroundColor: color,
+          tension: 0, pointRadius: 0, spanGaps: false, borderWidth: 2
+        });
+      }
+      const has25 = Object.keys(data[key][2025]).length > 0;
+      if (has25) {
+        datasets.push({
+          label: `${custName} – ${prod} '25`,
+          year: 2025,
+          data: weeks.map(w => data[key][2025][w] ?? null),
+          borderColor: fadedColor, backgroundColor: fadedColor,
+          tension: 0, pointRadius: 0, spanGaps: false, borderWidth: 1.5,
+          hidden: !show25
+        });
+      }
+    });
+  } else {
+    // Standard mode: aggregate by product + year + week
+    const data = {}; // { product: { year: { week: cases } } }
+    rows.forEach(r => {
+      const y = r.ISOYear;
+      if (y !== 2025 && y !== 2026) return;
+      if (y === 2026 && r.ISOWeek > MAX_WEEK) return;
+      const p = r.ProductCode;
+      if (!data[p]) data[p] = { 2025: {}, 2026: {} };
+      if (!data[p][y][r.ISOWeek]) data[p][y][r.ISOWeek] = 0;
+      data[p][y][r.ISOWeek] += valField(r);
+    });
+
+    let maxW = MAX_WEEK;
+    products.forEach(p => {
+      if (!data[p]) return;
+      const wks = Object.keys(data[p][2025]).map(Number);
+      if (wks.length) maxW = Math.max(maxW, ...wks);
+    });
+    weeks = [];
+    for (let w = 1; w <= maxW; w++) weeks.push(w);
+
+    const activeProducts = products.filter(p => data[p]);
+    const colorMap = assignColors(activeProducts);
+    datasets = [];
+    activeProducts.forEach(p => {
+      const color = colorMap[p];
+      const fadedColor = hexToRgba(color, 0.6);
+      const has26 = Object.keys(data[p][2026]).length > 0;
+      if (has26) {
+        datasets.push({
+          label: `${p} '26`,
+          year: 2026,
+          data: weeks.map(w => data[p][2026][w] ?? null),
+          borderColor: color, backgroundColor: color,
+          tension: 0, pointRadius: 0, spanGaps: false, borderWidth: 2
+        });
+      }
+      const has25 = Object.keys(data[p][2025]).length > 0;
+      if (has25) {
+        datasets.push({
+          label: `${p} '25`,
+          year: 2025,
+          data: weeks.map(w => data[p][2025][w] ?? null),
+          borderColor: fadedColor, backgroundColor: fadedColor,
+          tension: 0, pointRadius: 0, spanGaps: false, borderWidth: 1.5,
+          hidden: !show25
+        });
+      }
+    });
+  }
+
+  // Nudge overlapping lines so identical values are visible
+  datasets.forEach((ds, i) => {
+    const offset = i * 0.05;
+    ds.data = ds.data.map(v => v == null ? null : v + offset);
+  });
+
+  const chartRef = type === 'cuke' ? cukeChart : lettuceChart;
+  if (chartRef) chartRef.destroy();
+
+  const ctx = canvas.getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: weeks.map(w => 'W' + w), datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: {
+            color: '#ccc',
+            font: { size: 11 },
+            filter: () => true,
+            usePointStyle: true,
+            pointStyle: 'circle',
+            generateLabels: chart => {
+              const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+              return original.map(label => {
+                const ds = chart.data.datasets[label.datasetIndex];
+                const isHidden = !chart.isDatasetVisible(label.datasetIndex);
+                if (isHidden) {
+                  label.fontColor = 'rgba(204,204,204,0.25)';
+                  label.fillStyle = 'rgba(128,128,128,0.25)';
+                  label.strokeStyle = 'rgba(128,128,128,0.25)';
+                }
+                label.lineDash = [];
+                label.lineWidth = 0;
+                label.hidden = false;
+                return label;
+              });
+            }
+          },
+          onClick: (e, legendItem, legend) => {
+            const ci = legend.chart;
+            const index = legendItem.datasetIndex;
+            ci.setDatasetVisibility(index, !ci.isDatasetVisible(index));
+            ci.update();
+          }
+        },
+        tooltip: {
+          usePointStyle: true,
+          callbacks: {
+            label: ctx => {
+              const ds = ctx.dataset;
+              const name = ds.label.replace(/ '\d+$/, '');
+              const v = Math.round(ctx.parsed.y);
+              return ` ${name} '${ds.year % 100}: ${v.toLocaleString()}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y: {
+          grace: '10%',
+          title: { display: true, text: unitLabel(), color: '#888' },
+          ticks: { color: '#888', precision: 0, callback: v => v.toLocaleString() },
+          grid: { color: 'rgba(255,255,255,0.05)' }
+        }
+      }
+    }
+  });
+
+  if (type === 'cuke') cukeChart = chart;
+  else lettuceChart = chart;
+}
+
+loadData().catch(err => {
+  const mode = DataSource.getMode();
+  document.getElementById('loading').textContent =
+    `Error loading data from ${mode}. ` +
+    (mode === 'sheets'
+      ? 'Make sure the sheet is shared (anyone with link can view).'
+      : 'Check that the Supabase project is reachable and sales_invoice_v has data.');
+  console.error(err);
+});
+</script>
+</body>
+</html>

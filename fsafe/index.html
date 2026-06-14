@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Food Safety</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="../lib/data-source.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
+  #header { background: #16213e; padding: 10px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #0f3460; flex-wrap: wrap; }
+  #header h1 { font-size: 1.2rem; color: #4ecca3; }
+  .ctrl-group { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #aaa; }
+  .ctrl-group label { white-space: nowrap; }
+  input[type="date"] { background: #0f3460; color: #e0e0e0; border: 1px solid #2a3a5e; border-radius: 4px; padding: 3px 7px; font-size: 0.82rem; }
+  input[type="date"]:focus { outline: none; border-color: #4ecca3; }
+  .check-group { display: flex; gap: 6px; align-items: center; }
+  .check-group label { display: flex; align-items: center; gap: 4px; cursor: pointer; color: #ccc; font-size: 0.82rem; white-space: nowrap; }
+  .check-group input[type="checkbox"] { accent-color: #4ecca3; cursor: pointer; }
+  .toggle-group { display: flex; border: 1px solid #2a3a5e; border-radius: 4px; overflow: hidden; }
+  .toggle-group button { padding: 3px 10px; font-size: 0.8rem; background: #16213e; color: #888; border: none; cursor: pointer; }
+  .toggle-group button.active { background: #0f3460; color: #4ecca3; }
+  #version { font-size: 0.7rem; color: #e0e0e0; margin-left: auto; }
+  #loading { display: flex; align-items: center; justify-content: center; height: 80vh; font-size: 1.2rem; color: #4ecca3; }
+  #content { display: none; padding: 14px 20px; }
+  .card { background: #16213e; border-radius: 8px; padding: 14px 16px; border: 1px solid #0f3460; margin-bottom: 14px; }
+  .card h2 { font-size: 0.95rem; color: #ccc; margin-bottom: 12px; }
+  .chart-wrap { position: relative; height: 380px; }
+  .note { font-size: 0.72rem; color: #666; margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th { background: #0f3460; color: #aaa; font-weight: 600; padding: 6px 12px; border-bottom: 2px solid #0f3460; text-align: right; }
+  th:first-child { text-align: left; }
+  td { padding: 5px 12px; border-bottom: 1px solid #0a1a30; text-align: right; font-variant-numeric: tabular-nums; }
+  td:first-child { text-align: left; color: #ccc; }
+  tr:hover td { background: rgba(78,204,163,0.05); }
+  .apc-hi { color: #e74c3c; }
+  .apc-lo { color: #4ecca3; }
+  .sep { color: #2a3a5e; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Food Safety — Lettuce</h1>
+
+  <div class="ctrl-group">
+    <label>From</label>
+    <input type="date" id="dateFrom">
+    <label>To</label>
+    <input type="date" id="dateTo">
+  </div>
+
+  <span class="sep">|</span>
+
+  <div class="ctrl-group">
+    <label>SL Products:</label>
+    <div class="check-group" id="productChecks"></div>
+  </div>
+
+  <span class="sep">|</span>
+
+  <div class="ctrl-group">
+    <label>APC view:</label>
+    <div class="toggle-group">
+      <button id="btnMonthly" class="active" onclick="setApcMode('monthly')">Monthly avg</button>
+      <button id="btnWeekly"           onclick="setApcMode('weekly')">Weekly avg</button>
+      <button id="btnDaily"            onclick="setApcMode('daily')">Per pack date</button>
+    </div>
+  </div>
+
+  <span id="version">05-29 11:10</span>
+</div>
+
+<div id="loading">Loading data…</div>
+
+<div id="content">
+  <div class="card">
+    <h2 id="chartTitle">Shelf Life vs APC — Monthly Average</h2>
+    <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    <div class="note">SL = avg final shelf life days for selected products (good trials). APC = avg across all labs per pack date, then median per month in monthly mode.</div>
+  </div>
+
+  <div class="card">
+    <h2>Monthly Detail</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th>Avg SL (days)</th>
+          <th># SL Trials</th>
+          <th>Median APC</th>
+          <th># APC Tests</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const PRODUCTS = ['LR', 'LW', 'LF', 'WR'];
+let apcMode = 'monthly';
+let slRaw = [], apcRaw = [];
+let chart = null;
+let selectedProducts = new Set(PRODUCTS);
+
+// Build product checkboxes
+const checksEl = document.getElementById('productChecks');
+for (const p of PRODUCTS) {
+  const lbl = document.createElement('label');
+  const cb = document.createElement('input');
+  cb.type = 'checkbox'; cb.checked = true; cb.value = p;
+  cb.addEventListener('change', () => { selectedProducts = getSelectedProducts(); render(); });
+  lbl.appendChild(cb); lbl.appendChild(document.createTextNode(p));
+  checksEl.appendChild(lbl);
+}
+
+function getSelectedProducts() {
+  return new Set([...checksEl.querySelectorAll('input:checked')].map(c => c.value));
+}
+
+// Default: no from bound, to = today
+document.getElementById('dateTo').value = new Date().toISOString().slice(0, 10);
+
+document.getElementById('dateFrom').addEventListener('change', render);
+document.getElementById('dateTo').addEventListener('change', render);
+
+function setApcMode(mode) {
+  apcMode = mode;
+  document.getElementById('btnMonthly').classList.toggle('active', mode === 'monthly');
+  document.getElementById('btnWeekly').classList.toggle('active', mode === 'weekly');
+  document.getElementById('btnDaily').classList.toggle('active', mode === 'daily');
+  render();
+}
+
+async function load() {
+  const client = await DataSource.getClient();
+  const [slResp, apcResp] = await Promise.all([
+    client.from('fsafe_sl_raw_v').select('pack_date,sales_product_id,final_shelf_life_day').order('pack_date'),
+    client.from('fsafe_apc_raw_v').select('pack_date,avg_apc,lab_count').order('pack_date'),
+  ]);
+  if (slResp.error)  console.error('SL error',  slResp.error);
+  if (apcResp.error) console.error('APC error', apcResp.error);
+  slRaw  = slResp.data  || [];
+  apcRaw = apcResp.data || [];
+
+  // Set From to earliest date in data
+  const allDates = [...slRaw.map(r => r.pack_date), ...apcRaw.map(r => r.pack_date)];
+  if (allDates.length) {
+    document.getElementById('dateFrom').value = allDates.reduce((a, b) => a < b ? a : b);
+  }
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+  render();
+}
+
+function fmtNum(n) {
+  if (n == null) return '—';
+  return Math.round(n).toLocaleString();
+}
+function fmtMonth(mo) {
+  const [y, m] = mo.split('-');
+  return new Date(+y, +m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+}
+
+function render() {
+  const from = document.getElementById('dateFrom').value;
+  const to   = document.getElementById('dateTo').value;
+
+  // Filter SL by date and selected products
+  const sl = slRaw.filter(r =>
+    (!from || r.pack_date >= from) && r.pack_date <= to &&
+    selectedProducts.has(r.sales_product_id)
+  );
+  // Filter APC by date
+  const apc = apcRaw.filter(r => (!from || r.pack_date >= from) && r.pack_date <= to);
+
+  if (apcMode === 'monthly') {
+    renderMonthly(sl, apc);
+  } else if (apcMode === 'weekly') {
+    renderWeekly(sl, apc);
+  } else {
+    renderDaily(sl, apc);
+  }
+  renderTable(sl, apc, from, to);
+}
+
+function renderMonthly(sl, apc) {
+  document.getElementById('chartTitle').textContent = 'Shelf Life vs APC — Monthly Average';
+
+  // SL: avg per month
+  const slByMo = {};
+  for (const r of sl) {
+    const mo = r.pack_date.slice(0, 7);
+    if (!slByMo[mo]) slByMo[mo] = [];
+    slByMo[mo].push(r.final_shelf_life_day);
+  }
+  // APC: median per month
+  const apcByMo = {};
+  for (const r of apc) {
+    const mo = r.pack_date.slice(0, 7);
+    if (!apcByMo[mo]) apcByMo[mo] = [];
+    apcByMo[mo].push(r.avg_apc);
+  }
+
+  const months = [...new Set([...Object.keys(slByMo), ...Object.keys(apcByMo)])].sort();
+  const labels   = months.map(fmtMonth);
+  const slVals   = months.map(mo => {
+    const arr = slByMo[mo];
+    if (!arr) return null;
+    return +(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1);
+  });
+  const apcVals  = months.map(mo => {
+    const arr = apcByMo[mo];
+    if (!arr) return null;
+    const s = [...arr].sort((a,b)=>a-b);
+    return s.length % 2 ? s[Math.floor(s.length/2)] : (s[s.length/2-1]+s[s.length/2])/2;
+  });
+
+  buildChart(labels, slVals, apcVals);
+}
+
+function isoWeekKey(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const day = d.getDay() || 7;
+  d.setDate(d.getDate() + 4 - day);
+  const jan4 = new Date(d.getFullYear(), 0, 4);
+  const week = Math.ceil(((d - jan4) / 86400000 + 1) / 7);
+  return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+function isoWeekLabel(key) {
+  // Show as "Mon DD" of the Monday that starts the week
+  const [year, w] = key.split('-W');
+  const jan4 = new Date(+year, 0, 4);
+  const monday = new Date(jan4);
+  monday.setDate(jan4.getDate() - ((jan4.getDay() || 7) - 1) + (w - 1) * 7);
+  return monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function renderWeekly(sl, apc) {
+  document.getElementById('chartTitle').textContent = 'Shelf Life vs APC — Weekly Average';
+
+  const slByWk = {};
+  for (const r of sl) {
+    const wk = isoWeekKey(r.pack_date);
+    if (!slByWk[wk]) slByWk[wk] = [];
+    slByWk[wk].push(r.final_shelf_life_day);
+  }
+  const apcByWk = {};
+  for (const r of apc) {
+    const wk = isoWeekKey(r.pack_date);
+    if (!apcByWk[wk]) apcByWk[wk] = [];
+    apcByWk[wk].push(r.avg_apc);
+  }
+
+  const weeks = [...new Set([...Object.keys(slByWk), ...Object.keys(apcByWk)])].sort();
+  const labels  = weeks.map(isoWeekLabel);
+  const slVals  = weeks.map(wk => {
+    const arr = slByWk[wk];
+    if (!arr) return null;
+    return +(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1);
+  });
+  const apcVals = weeks.map(wk => {
+    const arr = apcByWk[wk];
+    if (!arr) return null;
+    return arr.reduce((a,b)=>a+b,0)/arr.length;
+  });
+
+  buildChart(labels, slVals, apcVals);
+}
+
+function renderDaily(sl, apc) {
+  document.getElementById('chartTitle').textContent = 'Shelf Life vs APC — Per Pack Date';
+
+  // SL: avg per pack_date
+  const slByDate = {};
+  for (const r of sl) {
+    if (!slByDate[r.pack_date]) slByDate[r.pack_date] = [];
+    slByDate[r.pack_date].push(r.final_shelf_life_day);
+  }
+  const apcByDate = Object.fromEntries(apc.map(r => [r.pack_date, r.avg_apc]));
+
+  const dates = [...new Set([...Object.keys(slByDate), ...Object.keys(apcByDate)])].sort();
+  const labels  = dates;
+  const slVals  = dates.map(d => {
+    const arr = slByDate[d];
+    if (!arr) return null;
+    return +(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1);
+  });
+  const apcVals = dates.map(d => apcByDate[d] ?? null);
+
+  buildChart(labels, slVals, apcVals);
+}
+
+function buildChart(labels, slVals, apcVals) {
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Shelf Life (days)',
+          data: slVals,
+          yAxisID: 'ySL',
+          borderColor: '#4ecca3',
+          backgroundColor: '#4ecca3',
+          pointStyle: 'circle',
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          tension: 0.3,
+          spanGaps: true,
+        },
+        {
+          label: 'APC (CFU/g)',
+          data: apcVals,
+          yAxisID: 'yAPC',
+          borderColor: '#f39c12',
+          backgroundColor: '#f39c12',
+          pointStyle: 'circle',
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          tension: 0.3,
+          spanGaps: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: {
+            usePointStyle: true,
+            pointStyle: 'circle',
+            font: { size: 11 },
+            color: '#ccc',
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              if (ctx.parsed.y == null) return null;
+              if (ctx.dataset.yAxisID === 'ySL') return `Shelf Life: ${ctx.parsed.y} days`;
+              return `APC: ${Math.round(ctx.parsed.y).toLocaleString()} CFU/g`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { font: { size: 11 }, color: '#aaa', maxRotation: 45, autoSkip: true, maxTicksLimit: 24 },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+        ySL: {
+          type: 'linear',
+          position: 'left',
+          title: { display: true, text: 'Shelf Life (days)', color: '#4ecca3', font: { size: 11 } },
+          ticks: { font: { size: 11 }, color: '#4ecca3' },
+          grid: { color: 'rgba(78,204,163,0.08)' },
+          min: 0,
+        },
+        yAPC: {
+          type: 'linear',
+          position: 'right',
+          title: { display: true, text: 'APC (CFU/g)', color: '#f39c12', font: { size: 11 } },
+          ticks: {
+            font: { size: 11 },
+            color: '#f39c12',
+            callback: v => Math.round(v).toLocaleString(),
+          },
+          grid: { drawOnChartArea: false },
+          min: 0,
+        },
+      },
+    },
+  });
+}
+
+function renderTable(sl, apc, from, to) {
+  const tableFrom = from ? from.slice(0, 7) : null;
+
+  const slByMo = {};
+  for (const r of sl) {
+    const mo = r.pack_date.slice(0, 7);
+    if (tableFrom && mo < tableFrom) continue;
+    if (!slByMo[mo]) slByMo[mo] = [];
+    slByMo[mo].push(r.final_shelf_life_day);
+  }
+  const apcByMo = {};
+  for (const r of apc) {
+    const mo = r.pack_date.slice(0, 7);
+    if (tableFrom && mo < tableFrom) continue;
+    if (!apcByMo[mo]) apcByMo[mo] = [];
+    apcByMo[mo].push(r.avg_apc);
+  }
+
+  const months = [...new Set([...Object.keys(slByMo), ...Object.keys(apcByMo)])].sort();
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+
+  for (const mo of months) {
+    const slArr  = slByMo[mo]  || [];
+    const apcArr = apcByMo[mo] || [];
+
+    const slAvg = slArr.length  ? (slArr.reduce((a,b)=>a+b,0)/slArr.length).toFixed(1) : null;
+    let apcMed = null;
+    if (apcArr.length) {
+      const s = [...apcArr].sort((a,b)=>a-b);
+      apcMed = s.length % 2 ? s[Math.floor(s.length/2)] : (s[s.length/2-1]+s[s.length/2])/2;
+    }
+
+    const apcClass = apcMed == null ? '' : apcMed >= 300000 ? 'apc-hi' : 'apc-lo';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${fmtMonth(mo)}</td>
+      <td>${slAvg ?? '—'}</td>
+      <td>${slArr.length || '—'}</td>
+      <td class="${apcClass}">${apcMed != null ? Math.round(apcMed).toLocaleString() : '—'}</td>
+      <td>${apcArr.length || '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+load().catch(err => {
+  document.getElementById('loading').textContent = 'Error: ' + (err.message || err);
+  console.error(err);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "year": 2026,
+  "labor_types": ["local", "wfe", "h2a", "f_local", "fuerte"],
+  "versions": {
+    "2026-01-01": {
+      "1": { "local": 25, "wfe": 19, "h2a": 0, "f_local": 6, "fuerte": 4 },
+      "4": { "local": 22, "wfe": 22, "h2a": 6, "f_local": 6, "fuerte": 0 }
+    },
+    "2026-04-08": {
+      "1": { "local": 25, "wfe": 19, "h2a": 0, "f_local": 6,  "fuerte": 4 },
+      "4": { "local": 22, "wfe": 22, "h2a": 6, "f_local": 6,  "fuerte": 0 },
+      "8": { "local": 20, "wfe": 22, "h2a": 4, "f_local": 12, "fuerte": 0 }
+    }
+  }
+}

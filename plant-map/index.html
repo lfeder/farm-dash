@@ -1,0 +1,1549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Greenhouse Plant Map</title>
+<script src="../lib/data-source.js"></script>
+<style>
+:root {
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-card: #0f3460;
+    --bg-hover: #1a4a7a;
+    --text-primary: #e8e8e8;
+    --text-secondary: #a8a8b8;
+    --text-accent: #fff;
+    --border: #2a3a5e;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+}
+
+/* Header */
+.header {
+    background: var(--bg-secondary);
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header h1 {
+    font-size: 1.7rem;
+    color: var(--text-accent);
+    white-space: nowrap;
+}
+
+.header-stats {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.header-stat {
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+}
+
+.header-stat strong {
+    color: var(--text-accent);
+}
+
+.variety-legend {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.variety-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 1.05rem;
+    color: var(--text-secondary);
+}
+
+.variety-chip-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.btn {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn:hover { background: var(--bg-hover); }
+
+
+/* Content area */
+.content {
+    padding: 12px 16px;
+}
+
+
+/* Overview grid — fixed layout matching aerial photo */
+.overview-wrapper {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    padding: 12px;
+}
+.farm-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+    flex-shrink: 0;
+}
+.farm-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    position: relative;
+}
+.farm-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.other-locations {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+.bip-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.section-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 16px 0 6px;
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.gh-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 8px;
+    transition: border-color 0.15s;
+    display: inline-flex;
+    flex-direction: column;
+    overflow: hidden;
+    width: min-content;
+}
+
+.gh-card:hover {
+    border-color: #4a6a9e;
+}
+
+.gh-card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 6px;
+    margin-bottom: 4px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.gh-card-name {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-accent);
+}
+
+.gh-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.card-side-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+}
+
+.card-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.card-row-bar {
+    transition: opacity 0.15s, filter 0.8s ease;
+}
+
+.gh-card:hover .card-row-bar {
+    opacity: 0.85;
+}
+
+.gh-card-footer {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    line-height: 1.3;
+}
+
+.gh-card-footer strong {
+    color: var(--text-accent);
+}
+
+
+/* Tooltip */
+.tooltip {
+    position: fixed;
+    background: #222;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    pointer-events: none;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    max-width: 350px;
+    display: none;
+}
+
+.card-row-bar.selected {
+    outline: 2px solid #fff;
+    outline-offset: -1px;
+    z-index: 1;
+}
+.edit-popup {
+    position: fixed;
+    background: #222;
+    border: 1px solid #4ecca3;
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 200;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+.edit-popup .row { display: flex; gap: 4px; align-items: center; }
+.edit-popup button {
+    padding: 5px 12px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    cursor: pointer;
+    font-size: 0.85rem;
+    background: #333;
+    color: #fff;
+}
+.edit-popup button:hover { background: #444; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #4a6a9e; }
+
+@media (max-width: 768px) {
+    /* Header: stack vertically */
+    .header {
+        padding: 12px 16px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    .header h1 { font-size: 1.2rem; text-align: center; }
+    .btn {
+        font-size: 1rem;
+        padding: 10px 14px;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Content */
+    .content { padding: 12px; }
+
+    /* Overview: one card per screen */
+    .overview-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    .gh-card {
+        padding: 16px;
+        min-height: calc(100svh - 180px);
+        display: flex;
+        flex-direction: column;
+    }
+    .gh-card-header {
+        margin-bottom: 12px;
+    }
+    .gh-card-name { font-size: 1.4rem; }
+    .gh-card-body {
+        flex: 1;
+        justify-content: center;
+        gap: 4px;
+    }
+    .card-side-label { font-size: 0.8rem; margin-top: 8px; }
+    .card-row-bar { height: 7px; border-radius: 3px; }
+    .gh-card-footer {
+        margin-top: 14px;
+        padding-top: 10px;
+        font-size: 0.9rem;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+}
+
+</style>
+</head>
+<body>
+
+<div class="header" id="headerBar">
+    <h1>Plant Map</h1>
+<div class="header-stats" id="headerStats"></div>
+    <div class="variety-legend" id="headerLegend"></div>
+    <span id="versionStamp" style="margin-left:auto;font-size:0.75rem;color:var(--text-primary)">04-18 09:58</span>
+    <div style="display:flex;align-items:center;gap:6px">
+        <button id="simBtn" onclick="toggleSim()" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);cursor:pointer;font-size:0.8rem;white-space:nowrap">Sim</button>
+        <div id="simControls" style="display:none;align-items:center;gap:4px">
+            <button onclick="simStep(-1)" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);cursor:pointer;font-size:0.9rem" title="Back 1 week">◀</button>
+            <button id="simPauseBtn" onclick="toggleSim()" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:#FF9800;color:#1a1a2e;cursor:pointer;font-size:0.9rem" title="Pause">||</button>
+            <button onclick="simStep(1)" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);cursor:pointer;font-size:0.9rem" title="Forward 1 week">▶</button>
+            <button onclick="stopSim()" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:#e57373;cursor:pointer;font-size:0.9rem" title="Stop">⏹</button>
+            <span id="simWeek" style="font-size:0.8rem;color:var(--text-secondary)"></span>
+        </div>
+        <button id="toggleBtn" onclick="toggleView()" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:#4ecca3;color:#1a1a2e;cursor:pointer;font-size:0.8rem;white-space:nowrap">New</button>
+    </div>
+</div>
+
+<div class="content" id="content"></div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// --- Configuration ---
+const SHEET_ID = '1ewWyvaXGkRCvZxjUxBOHGY4PKdMHwKeTA5jTIod48LE';
+const GID = '1615707612';
+const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json;responseHandler:handleSheetResponse&gid=${GID}`;
+
+const COLORS = {"Keiki": "#4CAF50", "Japanese": "#E91E63", "Japanese (5/bag)": "#F8BBD0", "English": "#FF9800", "Mixed": "#9C27B0"};
+
+let DATA = {};
+let SUMMARY = {};
+let GH_NAMES = [];
+let MAX_BAGS = 0;
+let RAW_ROWS = [];
+let VIEW_MODE = 'new'; // 'current' or 'new'
+let BAG_CHANGES = {}; // { 'GH1': { current: Date, next: Date, cycles: number, allDates: Date[] }, ... }
+let EDITS = {};        // { rawIdx: { variety: 'X' } or { split: ['X','Y'] } }
+let SELECTED = new Set();
+let LAST_CLICKED_IDX = null;  // for shift+click range selection
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwtqmQMvQo_F5sXCR2ov0mMyCjE5WwtdBkK1a3LTACIfl3fp5zZP51BLY-eV9XUS5w4/exec';
+const EDIT_OPTIONS = [
+    { label: 'K', variety: 'Keiki', ppb: 4, color: '#4CAF50' },
+    { label: 'J5', variety: 'Japanese', ppb: 5, color: '#F8BBD0' },
+    { label: 'E', variety: 'English', ppb: 4, color: '#FF9800' },
+];
+const SPLIT_OPTIONS = [
+    { label: 'J5/K', varieties: ['Japanese','Keiki'], colors: ['#F8BBD0','#4CAF50'] },
+    { label: 'E/K', varieties: ['English','Keiki'], colors: ['#FF9800','#4CAF50'] },
+];
+let POPUP_POS = { x: 0, y: 0 };
+
+function buildData(rows) {
+    const useAlt = VIEW_MODE === 'new';
+    const greenhouses = {};
+
+    rows.forEach((row, idx) => {
+        const bags = useAlt && row.bags2 ? row.bags2 : row.bags;
+        let ppb = useAlt && row.plants_per_bag2 ? row.plants_per_bag2 : row.plants_per_bag;
+        let variety = useAlt && row.variety2 ? row.variety2 : row.variety;
+        const total_plants = bags * ppb;
+        if (isNaN(row.row_num) || isNaN(bags) || bags === 0) return;
+
+        const edit = EDITS[idx];
+        let split = null, splitColors = null;
+        if (edit) {
+            if (edit.split) { split = edit.split; splitColors = edit.colors || null; variety = edit.split[0]; }
+            else if (edit.variety) { variety = edit.variety; if (edit.ppb) ppb = edit.ppb; }
+        } else if (variety.includes('/')) {
+            split = variety.split('/').map(s => s.trim());
+            splitColors = split.map(s => COLORS[s + ' (5/bag)'] || COLORS[s] || '#888');
+            variety = split[0];
+        }
+
+        const gh = row.greenhouse;
+        const sideKey = row.side || 'Main';
+
+        if (!greenhouses[gh]) greenhouses[gh] = { sides: {}, total_plants: 0, total_rows: 0 };
+        if (!greenhouses[gh].sides[sideKey]) greenhouses[gh].sides[sideKey] = [];
+
+        greenhouses[gh].sides[sideKey].push({
+            row_num: row.row_num,
+            bags: bags,
+            plants_per_bag: ppb,
+            total_plants: total_plants,
+            variety: variety,
+            color_key: ppb === 5 && variety === 'Japanese' ? 'Japanese (5/bag)' : variety,
+            rawIdx: idx,
+            split: split,
+            splitColors: splitColors,
+            sheetRow: row.sheetRow
+        });
+
+        greenhouses[gh].total_plants += total_plants;
+        greenhouses[gh].total_rows += 1;
+    });
+
+    // Sort GHs by GH_CONFIG order, then any extras
+    const configOrder = Object.keys(GH_CONFIG);
+    const sorted = {};
+    configOrder.forEach(name => { if (greenhouses[name]) sorted[name] = greenhouses[name]; });
+    Object.keys(greenhouses).forEach(name => { if (!sorted[name]) sorted[name] = greenhouses[name]; });
+
+    // Sort sides within each GH using config sideOrder or alphabetical
+    for (const [name, ghData] of Object.entries(sorted)) {
+        const order = (GH_CONFIG[name] || {}).sideOrder;
+        if (order) {
+            const s = {};
+            order.forEach(k => { if (ghData.sides[k]) s[k] = ghData.sides[k]; });
+            Object.keys(ghData.sides).forEach(k => { if (!s[k]) s[k] = ghData.sides[k]; });
+            ghData.sides = s;
+        }
+    }
+
+    return sorted;
+}
+
+function computeSummary(data) {
+    let totalPlants = 0;
+    const varietyCounts = {};
+    const varietyRows = {};
+
+    for (const ghData of Object.values(data)) {
+        totalPlants += ghData.total_plants;
+        for (const entries of Object.values(ghData.sides)) {
+            for (const entry of entries) {
+                if (entry.split) {
+                    const half = Math.round(entry.total_plants / 2);
+                    entry.split.forEach(sv => {
+                        const sk = entry.plants_per_bag === 5 ? `${sv} (5/bag)` : sv;
+                        varietyCounts[sk] = (varietyCounts[sk] || 0) + half;
+                        varietyRows[sk] = (varietyRows[sk] || 0) + 0.5;
+                    });
+                } else {
+                    varietyCounts[entry.color_key] = (varietyCounts[entry.color_key] || 0) + entry.total_plants;
+                    varietyRows[entry.color_key] = (varietyRows[entry.color_key] || 0) + 1;
+                }
+            }
+        }
+    }
+
+    return {
+        total_plants: totalPlants,
+        total_greenhouses: Object.keys(data).length,
+        total_rows: Object.values(data).reduce((s, g) => s + g.total_rows, 0),
+        variety_counts: varietyCounts,
+        variety_rows: varietyRows
+    };
+}
+
+// --- Parse Google Visualization API response into rows ---
+function parseGvizResponse(response) {
+    if (response.status !== 'ok') {
+        throw new Error('Google Sheets returned status: ' + response.status);
+    }
+    const table = response.table;
+    const rows = [];
+    for (let ri = 0; ri < table.rows.length; ri++) {
+        const c = table.rows[ri].c;
+        // Columns: Sort, Greenhouse, Side, Row, Bags, Plants/Bag, Total Plants, Variety, Bags2, Plants/Bag2, Variety2
+        const gh = c[1] ? (c[1].v || '') : '';
+        if (!gh) continue;
+        const bags2 = (c[8] && c[8].v) ? Number(c[8].v) : 0;
+        const ppb2 = (c[9] && c[9].v) ? Number(c[9].v) : 0;
+        const var2 = (c[10] && c[10].v) ? String(c[10].v) : '';
+        rows.push({
+            greenhouse: String(gh),
+            side: (c[2] && c[2].v) ? String(c[2].v) : 'Main',
+            row_num: c[3] ? Number(c[3].v) : 0,
+            bags: c[4] ? Number(c[4].v) : 0,
+            plants_per_bag: c[5] ? Number(c[5].v) : 0,
+            total_plants: c[6] ? Number(c[6].v) : 0,
+            variety: (c[7] && c[7].v) ? String(c[7].v) : '',
+            bags2: bags2,
+            plants_per_bag2: ppb2,
+            total_plants2: bags2 * ppb2,
+            variety2: var2,
+            sheetRow: ri + 2  // 1-based, +1 for header row
+        });
+    }
+    return rows;
+}
+
+// --- Bag changes: fetch & parse ---
+const BAG_CHANGES_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json;responseHandler:handleBagChanges&sheet=bag_changes`;
+let bagChangesReady = false, mainDataReady = false;
+
+function parseBagChanges(response) {
+    if (response.status !== 'ok') return;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const byGH = {};
+    for (const row of response.table.rows) {
+        const c = row.c;
+        if (!c[0] || !c[0].v || !c[1] || !c[1].v) continue;
+        const gh = String(c[0].v);
+        // Parse date from "Date(year,month,day)"
+        const m = c[1].v.match(/Date\((\d+),(\d+),(\d+)\)/);
+        if (!m) continue;
+        const d = new Date(Number(m[1]), Number(m[2]), Number(m[3]));
+        if (!byGH[gh]) byGH[gh] = [];
+        byGH[gh].push(d);
+    }
+    const result = {};
+    for (const [gh, dates] of Object.entries(byGH)) {
+        dates.sort((a, b) => a - b);
+        let current = null, next = null;
+        for (const d of dates) {
+            if (d < today) current = d;
+            else if (!next) next = d;
+        }
+        let cycles = null;
+        if (current && next) cycles = Math.round((next - current) / (84 * 24 * 60 * 60 * 1000));
+        result[gh] = { current, next, cycles, allDates: dates };
+    }
+    return result;
+}
+
+function handleBagChanges(response) {
+    try { BAG_CHANGES = parseBagChanges(response); } catch(e) { console.error('Bag changes parse error:', e); }
+    bagChangesReady = true;
+    if (mainDataReady) finishInit();
+}
+
+// Build BAG_CHANGES from grow_cuke_seed_batch.next_bag_change_date.
+// HK has a single site_id so its dates fan out to both Hamakua and Kohala cards.
+function buildBagChangesFromBatches(batchTbl) {
+    const batches = gvizToObjects(batchTbl);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const byGH = {};
+    batches.forEach(b => {
+        const raw = b.next_bag_change_date;
+        if (!raw) return;
+        const m = String(raw).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!m) return;
+        const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        const site = b.site_id;
+        const ghs = site === 'hk' ? ['Hamakua', 'Kohala']
+            : [SITE_GH_MAP[site] || (site || '').toUpperCase()];
+        ghs.forEach(gh => {
+            if (!byGH[gh]) byGH[gh] = new Set();
+            byGH[gh].add(d.getTime());
+        });
+    });
+    const result = {};
+    for (const [gh, set] of Object.entries(byGH)) {
+        const dates = [...set].sort((a, b) => a - b).map(t => new Date(t));
+        let current = null, next = null;
+        for (const d of dates) {
+            if (d < today) current = d;
+            else if (!next) next = d;
+        }
+        const cycles = (current && next)
+            ? Math.round((next - current) / (84 * 24 * 60 * 60 * 1000))
+            : null;
+        result[gh] = { current, next, cycles, allDates: dates };
+    }
+    return result;
+}
+
+function finishInit() {
+    renderHeader();
+    showOverview();
+}
+
+// --- Global callback for the JSONP-style <script> load ---
+function handleSheetResponse(response) {
+    try {
+        RAW_ROWS = parseGvizResponse(response);
+        if (RAW_ROWS.length === 0) throw new Error('No data rows found in the sheet.');
+
+        DATA = buildData(RAW_ROWS);
+        SUMMARY = computeSummary(DATA);
+        GH_NAMES = Object.keys(DATA);
+
+        MAX_BAGS = 0;
+        for (const gh of Object.values(DATA)) {
+            for (const entries of Object.values(gh.sides)) {
+                for (const entry of entries) {
+                    if (entry.bags > MAX_BAGS) MAX_BAGS = entry.bags;
+                }
+            }
+        }
+
+        mainDataReady = true;
+        if (bagChangesReady) finishInit();
+    } catch (err) {
+        document.getElementById('content').innerHTML =
+            '<div style="text-align:center;padding:60px 20px;color:#e57373;font-size:1.1rem;">' +
+            '<p>Failed to process sheet data.</p>' +
+            '<p style="font-size:0.9rem;margin-top:10px;color:var(--text-secondary);">' + err.message + '</p>' +
+            '</div>';
+        console.error('Sheet parse error:', err);
+    }
+}
+
+function rebuild() {
+    DATA = buildData(RAW_ROWS);
+    SUMMARY = computeSummary(DATA);
+    GH_NAMES = Object.keys(DATA);
+    MAX_BAGS = 0;
+    for (const gh of Object.values(DATA))
+        for (const entries of Object.values(gh.sides))
+            for (const entry of entries)
+                if (entry.bags > MAX_BAGS) MAX_BAGS = entry.bags;
+    renderHeader();
+    showOverview();
+    renderPopup();
+}
+
+function toggleView() {
+    VIEW_MODE = VIEW_MODE === 'current' ? 'new' : 'current';
+    const btn = document.getElementById('toggleBtn');
+    btn.textContent = VIEW_MODE === 'current' ? 'Current' : 'New';
+    btn.style.background = VIEW_MODE === 'new' ? '#4ecca3' : 'var(--bg-card)';
+    btn.style.color = VIEW_MODE === 'new' ? '#1a1a2e' : 'var(--text-primary)';
+    rebuild();
+}
+
+// --- Build RAW_ROWS from Supabase source tables (gh_rows + blocks + plantings).
+// Three tables joined client-side into the same shape parseGvizResponse
+// produces, so the rest of the dashboard code is mode-agnostic.
+const SITE_GH_MAP = {'01':'GH1','02':'GH2','03':'GH3','04':'GH4','05':'GH5','06':'GH6','07':'GH7','08':'GH8','ko':'Kona','hi':'Hilo','wa':'Waimea'};
+const VARIETY_NAME_MAP = {'k':'Keiki','j':'Japanese','e':'English'};
+
+function gvizToObjects(t) {
+    if (!t || !t.cols) return [];
+    return t.rows.map(r => {
+        const o = {};
+        t.cols.forEach((col, i) => { o[col.label] = r.c[i] ? r.c[i].v : null; });
+        return o;
+    });
+}
+
+function buildRawRowsFromTables(rowsTbl, blocksTbl, plantTbl) {
+    const ghRows = gvizToObjects(rowsTbl);
+    const blocks = gvizToObjects(blocksTbl);
+    const plantings = gvizToObjects(plantTbl);
+    const planIdx = {};
+    plantings.forEach(p => { planIdx[`${p.row_id}|${p.scenario}`] = p; });
+    const encode = (p) => {
+        if (!p) return { variety: '', ppb: 0, nb: 0 };
+        const v1 = VARIETY_NAME_MAP[(p.variety || '').toLowerCase()] || '';
+        const v2 = VARIETY_NAME_MAP[(p.variety2 || '').toLowerCase()] || '';
+        return {
+            variety: v2 ? `${v1}/${v2}` : v1,
+            ppb: Number(p.plants_per_bag) || 0,
+            nb:  Number(p.num_bags)       || 0,
+        };
+    };
+    // Iterate blocks so we emit rows in the block's stored display direction
+    // (reverse blocks like GH1/GH2/GH4 need row_num DESC to match the sheet).
+    const rows = [];
+    blocks.forEach(block => {
+        const site = block.site_id;
+        const dir = block.direction;
+        const rowsInBlock = ghRows
+            .filter(gr => gr.site_id === site &&
+                Number(gr.row_num) >= Number(block.row_num_from) &&
+                Number(gr.row_num) <= Number(block.row_num_to))
+            .sort((a, b) => dir === 'reverse'
+                ? Number(b.row_num) - Number(a.row_num)
+                : Number(a.row_num) - Number(b.row_num));
+        rowsInBlock.forEach(gr => {
+            const rn = Number(gr.row_num);
+            let ghName, sideName, displayRow;
+            if (site === 'hk') {
+                ghName = block.name; // 'Hamakua' or 'Kohala'
+                sideName = 'Main';
+                displayRow = block.name === 'Kohala' ? rn - 100 : rn;
+            } else {
+                ghName = SITE_GH_MAP[site] || site.toUpperCase();
+                sideName = block.name;
+                displayRow = rn;
+            }
+            const cur = encode(planIdx[`${gr.id}|current`]);
+            const plan = encode(planIdx[`${gr.id}|planned`]);
+            rows.push({
+                greenhouse: ghName,
+                side: sideName,
+                row_num: displayRow,
+                bags: cur.nb,
+                plants_per_bag: cur.ppb,
+                total_plants: cur.nb * cur.ppb,
+                variety: cur.variety,
+                bags2: plan.nb,
+                plants_per_bag2: plan.ppb,
+                total_plants2: plan.nb * plan.ppb,
+                variety2: plan.variety,
+                sheetRow: null, // only set in sheets mode
+                rowId: gr.id,   // org_site_gh_row_id — used for Supabase writes
+            });
+        });
+    });
+    return rows;
+}
+
+async function loadFromSupabase() {
+    const [rowsTbl, blocksTbl, plantTbl, batchTbl] = await Promise.all([
+        DataSource.fetchTable('gh_rows'),
+        DataSource.fetchTable('gh_blocks'),
+        DataSource.fetchTable('row_plantings'),
+        DataSource.fetchTable('cuke_seed_batches'),
+    ]);
+    RAW_ROWS = buildRawRowsFromTables(rowsTbl, blocksTbl, plantTbl);
+    if (RAW_ROWS.length === 0) throw new Error('No plant-map rows returned from Supabase.');
+    DATA = buildData(RAW_ROWS);
+    SUMMARY = computeSummary(DATA);
+    GH_NAMES = Object.keys(DATA);
+    MAX_BAGS = 0;
+    for (const gh of Object.values(DATA))
+        for (const entries of Object.values(gh.sides))
+            for (const entry of entries)
+                if (entry.bags > MAX_BAGS) MAX_BAGS = entry.bags;
+    BAG_CHANGES = buildBagChangesFromBatches(batchTbl);
+    mainDataReady = true;
+    bagChangesReady = true;
+    finishInit();
+}
+
+// --- Init: dispatch by data mode ---
+function init() {
+    const mode = DataSource.getMode();
+    document.getElementById('content').innerHTML =
+        `<div style="text-align:center;padding:80px 20px;color:var(--text-secondary);font-size:1.2rem;">Loading plant map from ${mode === 'sheets' ? 'Google Sheets' : 'Supabase (' + mode + ')'}\u2026</div>`;
+
+    if (mode === 'sheets') {
+        // In sheets mode, fetch bag_changes tab via JSONP (dev/prod pulls it
+        // from grow_cuke_seed_batch inside loadFromSupabase).
+        const script2 = document.createElement('script');
+        script2.src = BAG_CHANGES_URL;
+        script2.onerror = function() { bagChangesReady = true; if (mainDataReady) finishInit(); };
+        document.head.appendChild(script2);
+        const script = document.createElement('script');
+        script.src = GVIZ_URL;
+        script.onerror = function() {
+            document.getElementById('content').innerHTML =
+                '<div style="text-align:center;padding:60px 20px;color:#e57373;font-size:1.1rem;">' +
+                '<p>Failed to load data from Google Sheets.</p>' +
+                '<p style="font-size:0.85rem;margin-top:16px;color:var(--text-secondary);">Make sure the sheet is shared as &ldquo;Anyone with the link&rdquo; can view.</p>' +
+                '</div>';
+        };
+        document.head.appendChild(script);
+    } else {
+        loadFromSupabase().catch(err => {
+            console.error('Supabase plant-map load error:', err);
+            document.getElementById('content').innerHTML =
+                '<div style="text-align:center;padding:60px 20px;color:#e57373;font-size:1.1rem;">' +
+                '<p>Failed to load plant map from Supabase.</p>' +
+                '<p style="font-size:0.85rem;margin-top:16px;color:var(--text-secondary);">' + (err.message || err) + '</p>' +
+                '</div>';
+        });
+    }
+}
+
+// --- Rendering ---
+function renderHeader() {
+    const total = SUMMARY.total_plants;
+    document.getElementById('headerStats').innerHTML = `
+        <span class="header-stat"><strong>${SUMMARY.total_greenhouses}</strong> greenhouses</span>
+        <span class="header-stat"><strong>${SUMMARY.total_rows.toLocaleString()}</strong> rows</span>
+        <span class="header-stat"><strong>${total.toLocaleString()}</strong> plants</span>
+    `;
+
+    const totalRows = SUMMARY.total_rows;
+    function chipHtml(v) {
+        const plants = SUMMARY.variety_counts[v] || 0;
+        const rows = SUMMARY.variety_rows[v] || 0;
+        if (plants === 0) return '';
+        const rPct = Math.round((rows / totalRows) * 100);
+        const pPct = Math.round((plants / total) * 100);
+        return `<span class="variety-chip"><span class="variety-chip-dot" style="background:${COLORS[v]}"></span>${ABBREV[v]} (${rPct}%/${pPct}%)</span>`;
+    }
+
+    document.getElementById('headerLegend').innerHTML =
+        chipHtml('Keiki') + chipHtml('Japanese (5/bag)') + chipHtml('Japanese') + chipHtml('English') + chipHtml('Mixed');
+}
+
+// Uniform sizing: each row is ROW_W px thick, each bag adds BAG_PX to the row length
+const ROW_W = 6;   // px — thickness of one row
+const BAG_PX = 6;  // px — length per bag
+const SIDE_GAP = 8; // px — sidewalk gap between sides
+
+// --- GH Config ---
+// GH_CONFIG: single source of truth for all greenhouse rendering
+// vert: bars vertical (true) or horizontal (false)
+// sidewalk: 'middle'|'top'|'bottom'|'left' — gap position
+// merge: collapse all sheet sides into one section
+// alignTop: all bars grow from top
+// stackSections: horizontal bars with sections stacked vertically
+// sideOrder: explicit ordering of sides from sheet data
+// group: 'JTL' or 'BIP'
+// heightGroup: GHs sharing this key get uniform section heights
+// layout: [row, col] or [row, col, stackPos] position in group grid
+const GH_CONFIG = {
+    'GH1':     { vert: true,  sidewalk: 'middle', group: 'JTL', heightGroup: 'row2', layout: [1,2] },
+    'GH2':     { vert: true,  sidewalk: 'middle', group: 'JTL', heightGroup: 'row2', layout: [1,1] },
+    'GH3':     { vert: true,  sidewalk: 'middle', group: 'JTL', heightGroup: 'row2', layout: [1,0] },
+    'GH4':     { vert: false, sidewalk: 'middle', group: 'JTL', sideOrder: ['East','West'], layout: [0,0] },
+    'GH5':     { vert: true,  sidewalk: 'middle', group: 'JTL', heightGroup: 'row3', sideOrder: ['North','Middle','South'], layout: [2,0] },
+    'GH6':     { vert: true,  sidewalk: 'middle', group: 'JTL', heightGroup: 'row3', sideOrder: ['North','Middle','South'], layout: [2,1] },
+    'GH7':     { vert: true,  sidewalk: 'bottom', merge: true, group: 'JTL', layout: [2,2,0] },
+    'GH8':     { vert: true,  sidewalk: 'top',    merge: true, alignTop: true, group: 'JTL', layout: [2,2,1] },
+    'Kona':    { vert: true,  sidewalk: 'middle', group: 'BIP', layout: [0,0] },
+    'Kohala':  { vert: false, sidewalk: 'left',   group: 'BIP', layout: [0,1] },
+    'Hamakua': { vert: true,  sidewalk: 'top',    alignTop: true, group: 'BIP', layout: [1,0] },
+    'Waimea':  { vert: false, sidewalk: 'left',   stackSections: true, group: 'BIP', layout: [1,1] },
+    'Hilo':    { vert: false, sidewalk: 'left',   group: 'BIP', layout: [2,1] },
+};
+
+const VARIETY_ORDER = ['Keiki', 'Japanese (5/bag)', 'Japanese', 'English', 'Mixed'];
+const ABBREV = {'Keiki':'K','English':'E','Japanese':'J4','Japanese (5/bag)':'J5','Mixed':'M'};
+
+// Merge all sheet sides into one section if config says so
+function prepSections(name, gh) {
+    const cfg = GH_CONFIG[name] || {};
+    if (cfg.merge && Object.keys(gh.sides).length > 1) {
+        const allRows = [];
+        for (const s of Object.keys(gh.sides)) allRows.push(...gh.sides[s]);
+        allRows.sort((a, b) => a.row_num - b.row_num);
+        gh.sides = { 'Main': allRows };
+    }
+}
+
+// Get max bar length per side (for uniform height groups)
+function getSideHeights(name) {
+    const gh = DATA[name];
+    if (!gh) return {};
+    prepSections(name, gh);
+    const h = {};
+    for (const [side, entries] of Object.entries(gh.sides))
+        h[side] = Math.max(...entries.map(e => e.bags), 0) * BAG_PX;
+    return h;
+}
+
+function renderCard(name, opts) {
+    opts = opts || {};
+    const gh = DATA[name];
+    if (!gh) return '';
+    const cfg = GH_CONFIG[name] || {};
+    prepSections(name, gh);
+
+    const v = cfg.vert !== false;
+    const stk = cfg.stackSections || false;
+    const col = v || stk;                          // body is column-direction
+    const sides = col ? Object.keys(gh.sides) : [...Object.keys(gh.sides)].reverse();
+
+    // Aggregate stats
+    const vCounts = {};
+    let totalBags = 0;
+    for (const entries of Object.values(gh.sides)) {
+        for (const e of entries) {
+            totalBags += e.bags;
+            if (e.split) {
+                const half = Math.round(e.total_plants / 2);
+                e.split.forEach(sv => {
+                    const sk = e.plants_per_bag === 5 && sv === 'Japanese' ? 'Japanese (5/bag)' : sv;
+                    vCounts[sk] = (vCounts[sk] || 0) + half;
+                });
+            } else {
+                vCounts[e.color_key] = (vCounts[e.color_key] || 0) + e.total_plants;
+            }
+        }
+    }
+
+    // Bar dimensions: vertical bars have height=length, width=thickness; horizontal is swapped
+    const lenProp = v ? 'height' : 'width';
+    const thkProp = v ? 'width' : 'height';
+    const secDir  = v ? 'row-reverse' : 'column';  // how bars stack within a section
+    const gapProp = col ? 'height' : 'width';       // sidewalk gap direction
+    const padSide = cfg.sidewalk === 'left' ? `padding-left:${SIDE_GAP}px;` : '';
+
+    // Bag change info
+    let bagHtml = '';
+    const bc = BAG_CHANGES[name];
+    if (bc) {
+        const fmt = d => d ? `${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}` : '?';
+        const today = new Date();
+        const twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
+        const cyclesNum = bc.cycles != null ? Number(bc.cycles) : null;
+        const nextSoon = bc.next ? (bc.next - today) <= twoWeeksMs : false;
+        const overdueNoNext = !bc.next && bc.current ? (bc.current < today) : false;
+        const danger = (cyclesNum != null && cyclesNum > 5) || nextSoon || overdueNoNext;
+        const color = danger ? 'red' : '#4ecca3';
+        // Build tooltip showing all dates with cycles between them
+        let tip = '';
+        if (bc.allDates && bc.allDates.length > 1) {
+            const lines = [];
+            for (let i = 0; i < bc.allDates.length; i++) {
+                const dd = bc.allDates[i];
+                let line = `${String(dd.getMonth()+1).padStart(2,'0')}/${String(dd.getDate()).padStart(2,'0')}/${String(dd.getFullYear()).slice(2)}`;
+                if (i > 0) {
+                    const daysBetween = Math.round((bc.allDates[i] - bc.allDates[i-1]) / (24 * 60 * 60 * 1000));
+                    const cyc = Math.round(daysBetween / 84);
+                    line += ` (${cyc} cycles)`;
+                }
+                lines.push(line);
+            }
+            tip = lines.join('\\n');
+        }
+        const tipAttr = tip ? `onmouseover="showTooltip(event,'${tip}')" onmousemove="moveTooltip(event)" onmouseout="hideTooltip()"` : '';
+        if (bc.next) {
+            bagHtml = `<span style="color:${color};cursor:default" ${tipAttr}>Bag Chg ${fmt(bc.next)}`;
+            if (bc.cycles != null) bagHtml += ` (${Math.round(cyclesNum)} cycles)`;
+            bagHtml += `</span>`;
+        } else if (bc.current) {
+            bagHtml = `<span style="color:${color};cursor:default" ${tipAttr}>Last Bag Chg ${fmt(bc.current)}`;
+            if (bc.cycles != null) bagHtml += ` (${Math.round(cyclesNum)} cycles)`;
+            bagHtml += `</span>`;
+        }
+    }
+
+    let html = `<div class="gh-card" data-gh="${name}"><div class="gh-card-header"><span class="gh-card-name">${name}</span>` +
+        `<span>${gh.total_rows} rows</span><span>${totalBags.toLocaleString()} bags</span><span>${gh.total_plants.toLocaleString()} plants</span>${bagHtml}</div>` +
+        `<div class="gh-card-body" style="flex-direction:${col ? 'column' : 'row'}">`;
+
+    // Edge sidewalk before bars
+    if (cfg.sidewalk === 'top') html += `<div style="height:${SIDE_GAP}px;flex-shrink:0"></div>`;
+
+    sides.forEach((side, i) => {
+        if (i > 0) html += `<div style="${gapProp}:${SIDE_GAP}px;flex-shrink:0"></div>`;
+        const fixedLen = opts.sideHeights && opts.sideHeights[side];
+        const fixStyle = fixedLen ? `${lenProp}:${fixedLen}px;` : '';
+        const isLowerSection = cfg.alignTop || (i > 0 && cfg.sidewalk === 'middle') || side === 'South' || side === 'Middle';
+        const align = v ? `align-items:${isLowerSection ? 'flex-start' : 'flex-end'};` : '';
+        html += `<div style="display:flex;flex-direction:${secDir};gap:1px;${align}${fixStyle}${padSide}">`;
+        gh.sides[side].forEach(e => {
+            const len = e.bags * BAG_PX;
+            const tipV = e.split ? `${e.split[0]}/${e.split[1]}` : e.variety;
+            const tip = `Row ${e.row_num} · ${tipV} · ${e.bags} bags · ${e.total_plants} plants`;
+            const sc0 = e.splitColors ? e.splitColors[0] : (COLORS[e.split && e.split[0]] || '#888');
+            const sc1 = e.splitColors ? e.splitColors[1] : (COLORS[e.split && e.split[1]] || '#888');
+            const bg = e.split
+                ? `repeating-linear-gradient(${v ? '180deg' : '90deg'},${sc0} 0px,${sc0} 6px,${sc1} 6px,${sc1} 12px)`
+                : COLORS[e.color_key];
+            const sel = SELECTED.has(e.rawIdx) ? ' selected' : '';
+            html += `<div class="card-row-bar${sel}" data-idx="${e.rawIdx}" style="${lenProp}:${len}px;${thkProp}:${ROW_W}px;border-radius:1px;background:${bg};flex-shrink:0;cursor:pointer" onclick="handleBarClick(event,${e.rawIdx})" onmouseover="showTooltip(event,'${tip}')" onmousemove="moveTooltip(event)" onmouseout="hideTooltip()"></div>`;
+        });
+        html += `</div>`;
+    });
+
+    // Edge sidewalk after bars
+    if (cfg.sidewalk === 'bottom') html += `<div style="height:${SIDE_GAP}px;flex-shrink:0"></div>`;
+
+    html += `</div><div class="gh-card-footer">`;
+    VARIETY_ORDER.forEach(va => { if (vCounts[va]) html += `<span style="color:${COLORS[va]}">${ABBREV[va]}:${vCounts[va].toLocaleString()}</span> `; });
+    const ePlants = vCounts['English'] || 0;
+    const ePct = gh.total_plants > 0 ? Math.round(ePlants / gh.total_plants * 1000) / 10 : 0;
+    html += `<span style="color:${COLORS['English']}">E:${ePct}%</span>`;
+    html += `</div></div>`;
+    return html;
+}
+
+function showOverview() {
+    // Compute uniform side heights per heightGroup
+    const hg = {};
+    for (const [name, cfg] of Object.entries(GH_CONFIG)) {
+        if (!cfg.heightGroup) continue;
+        if (!hg[cfg.heightGroup]) hg[cfg.heightGroup] = {};
+        for (const [side, h] of Object.entries(getSideHeights(name)))
+            hg[cfg.heightGroup][side] = Math.max(hg[cfg.heightGroup][side] || 0, h);
+    }
+    const optsFor = (n) => {
+        const g = (GH_CONFIG[n] || {}).heightGroup;
+        return g && hg[g] ? { sideHeights: hg[g] } : {};
+    };
+
+    // Build grid from layout coords: groups cells by [row, col], handles stacking
+    function buildGrid(group) {
+        const ghs = Object.entries(GH_CONFIG).filter(([,c]) => c.group === group && c.layout);
+        const grid = {};
+        ghs.forEach(([name, cfg]) => {
+            const [r, c, stackPos] = cfg.layout;
+            const key = `${r},${c}`;
+            if (!grid[key]) grid[key] = { r, c, items: [] };
+            grid[key].items.push({ name, stackPos: stackPos || '' });
+        });
+        // Sort stacked items
+        for (const cell of Object.values(grid))
+            cell.items.sort((a, b) => a.stackPos < b.stackPos ? -1 : a.stackPos > b.stackPos ? 1 : 0);
+        return grid;
+    }
+
+    function renderCell(cell) {
+        if (cell.items.length > 1) {
+            let h = '<div class="farm-col">';
+            cell.items.forEach(it => { h += renderCard(it.name, optsFor(it.name)); });
+            return h + '</div>';
+        }
+        return renderCard(cell.items[0].name, optsFor(cell.items[0].name));
+    }
+
+    // Render a group grid: byCols=false → outer=rows, inner=cols; byCols=true → outer=cols, inner=rows
+    function renderGrid(group, wrapClass, innerClass, byCols) {
+        const grid = buildGrid(group);
+        const cells = Object.values(grid);
+        if (!cells.length) return '';
+        const maxR = Math.max(...cells.map(c => c.r)), maxC = Math.max(...cells.map(c => c.c));
+        const [outerMax, innerMax] = byCols ? [maxC, maxR] : [maxR, maxC];
+        let html = `<div class="${wrapClass}">`;
+        for (let o = 0; o <= outerMax; o++) {
+            html += `<div class="${innerClass}">`;
+            for (let i = 0; i <= innerMax; i++) {
+                const key = byCols ? `${i},${o}` : `${o},${i}`;
+                const cell = grid[key];
+                if (cell) html += renderCell(cell);
+            }
+            html += '</div>';
+        }
+        return html + '</div>';
+    }
+
+    // Compute next seeding date for each GH
+    // GH2 seeds the week of 3/15/2026, forward through SIM_ORDER: GH2→GH5→Hilo→...
+    function getNextSeedingDates() {
+        const ANCHOR_SEED = new Date(2026, 2, 15); // 3/15/2026
+        const ANCHOR_IDX = 7; // GH2's index in SIM_ORDER
+        const CYCLE_WEEKS = SIM_ORDER.length; // 12
+        // Start of current week (Sunday)
+        const today = new Date(); today.setHours(0,0,0,0);
+        const weekStart = new Date(today); weekStart.setDate(today.getDate() - today.getDay());
+        const result = {};
+        SIM_ORDER.forEach((entry, i) => {
+            const offset = ((i - ANCHOR_IDX) + CYCLE_WEEKS * 10) % CYCLE_WEEKS;
+            let seedDate = new Date(ANCHOR_SEED.getTime() + offset * 7 * 24 * 60 * 60 * 1000);
+            // Include current week — only advance if before this week
+            while (seedDate < weekStart) seedDate = new Date(seedDate.getTime() + CYCLE_WEEKS * 7 * 24 * 60 * 60 * 1000);
+            const names = Array.isArray(entry) ? entry : [entry];
+            names.forEach(n => { result[n] = seedDate; });
+        });
+        return result;
+    }
+
+    // Summary table HTML
+    function renderSummaryTable() {
+        const TABLE_ORDER_BASE = SIM_ORDER.flat();
+        const TABLE_COLS = ['Keiki','Japanese','English'];
+        const TABLE_LABELS = { Keiki: 'K', Japanese: 'J', English: 'E' };
+        const seedDates = getNextSeedingDates();
+        const today = new Date(); today.setHours(0,0,0,0);
+        const weekStart = new Date(today); weekStart.setDate(today.getDate() - today.getDay());
+        const TABLE_ORDER = [...TABLE_ORDER_BASE].sort((a, b) => (seedDates[a] || 0) - (seedDates[b] || 0));
+        const fmtDate = d => `${d.getMonth()+1}/${d.getDate()}`;
+        const getISOWeek = d => { const t = new Date(d); t.setHours(0,0,0,0); t.setDate(t.getDate()+3-(t.getDay()+6)%7); const w1 = new Date(t.getFullYear(),0,4); return 1+Math.round(((t-w1)/86400000-3+(w1.getDay()+6)%7)/7); };
+        const thStyle = 'padding:4px 10px;border:1px solid var(--border)';
+        const fmtRow = n => n === 0 ? '' : (n % 1 === 0 ? n.toString() : n.toFixed(1));
+        let t = '<table style="margin-top:12px;border-collapse:collapse;font-size:0.85rem;color:var(--text-primary)">';
+        t += `<tr><th style="${thStyle};text-align:left" rowspan="2"></th>`;
+        t += `<th style="${thStyle};text-align:center" colspan="3">Rows</th>`;
+        t += `<th style="${thStyle};text-align:center" colspan="3">Plants</th>`;
+        t += `<th style="${thStyle}" rowspan="2">Next Seed</th>`;
+        t += `<th style="${thStyle}" rowspan="2">Wk</th></tr>`;
+        t += '<tr>';
+        TABLE_COLS.forEach(v => {
+            t += `<th style="${thStyle};color:${COLORS[v]}">${TABLE_LABELS[v]}</th>`;
+        });
+        TABLE_COLS.forEach(v => {
+            t += `<th style="${thStyle};color:${COLORS[v]}">${TABLE_LABELS[v]}</th>`;
+        });
+        t += '</tr>';
+        const totals = { Keiki: 0, Japanese: 0, English: 0 };
+        const rowTotals = { Keiki: 0, Japanese: 0, English: 0 };
+        TABLE_ORDER.forEach(name => {
+            const gh = DATA[name];
+            if (!gh) return;
+            const counts = { Keiki: 0, Japanese: 0, English: 0 };
+            const rowCounts = { Keiki: 0, Japanese: 0, English: 0 };
+            for (const entries of Object.values(gh.sides)) {
+                for (const e of entries) {
+                    if (e.split) {
+                        const half = Math.round(e.total_plants / 2);
+                        e.split.forEach(sv => {
+                            const base = (sv === 'Japanese' || sv === 'Japanese (5/bag)') ? 'Japanese' : sv;
+                            if (counts[base] !== undefined) {
+                                counts[base] += half;
+                                rowCounts[base] += 0.5;
+                            }
+                        });
+                    } else {
+                        const base = e.variety === 'Japanese' || e.color_key === 'Japanese (5/bag)' ? 'Japanese' : e.variety;
+                        if (counts[base] !== undefined) {
+                            counts[base] += e.total_plants;
+                            rowCounts[base] += 1;
+                        }
+                    }
+                }
+            }
+            const label = name.replace('GH', '');
+            const sd = seedDates[name];
+            const isThisWeek = sd && sd >= weekStart && sd < new Date(weekStart.getTime() + 7*24*60*60*1000);
+            const rowBg = isThisWeek ? 'background:rgba(78,204,163,0.15);' : '';
+            t += `<tr style="${rowBg}"><td style="${thStyle};font-weight:700">${label}</td>`;
+            TABLE_COLS.forEach(v => {
+                rowTotals[v] += rowCounts[v];
+                t += `<td style="${thStyle};text-align:right">${fmtRow(rowCounts[v])}</td>`;
+            });
+            TABLE_COLS.forEach(v => {
+                totals[v] += counts[v];
+                t += `<td style="${thStyle};text-align:right">${counts[v] ? counts[v].toLocaleString() : ''}</td>`;
+            });
+            t += `<td style="${thStyle};text-align:right">${sd ? fmtDate(sd) : ''}</td>`;
+            t += `<td style="${thStyle};text-align:right">${sd ? getISOWeek(sd) : ''}</td>`;
+            t += '</tr>';
+        });
+        t += `<tr style="font-weight:700"><td style="${thStyle}">Total</td>`;
+        TABLE_COLS.forEach(v => {
+            t += `<td style="${thStyle};text-align:right;color:${COLORS[v]}">${fmtRow(rowTotals[v])}</td>`;
+        });
+        TABLE_COLS.forEach(v => {
+            t += `<td style="${thStyle};text-align:right;color:${COLORS[v]}">${totals[v].toLocaleString()}</td>`;
+        });
+        t += `<td style="${thStyle}"></td><td style="${thStyle}"></td></tr></table>`;
+        return t;
+    }
+
+    // Render a group grid with optional extra content appended inside a specific outer slot
+    function renderGridWithExtra(group, wrapClass, innerClass, byCols, extraOuter, extraHtml) {
+        const grid = buildGrid(group);
+        const cells = Object.values(grid);
+        if (!cells.length) return '';
+        const maxR = Math.max(...cells.map(c => c.r)), maxC = Math.max(...cells.map(c => c.c));
+        const [outerMax, innerMax] = byCols ? [maxC, maxR] : [maxR, maxC];
+        let h = `<div class="${wrapClass}">`;
+        for (let o = 0; o <= outerMax; o++) {
+            h += `<div class="${innerClass}">`;
+            for (let i = 0; i <= innerMax; i++) {
+                const key = byCols ? `${i},${o}` : `${o},${i}`;
+                const cell = grid[key];
+                if (cell) h += renderCell(cell);
+            }
+            if (extraHtml && o === extraOuter) {
+                h += `<div id="seedingTableWrap" style="position:absolute;left:100%;top:0;margin-left:8px">${extraHtml}</div>`;
+            }
+            h += '</div>';
+        }
+        return h + '</div>';
+    }
+
+    let html = '<div class="overview-wrapper">';
+    // Inject summary table into JTL row 2 (GH5/GH6/GH7/GH8) so it sits just
+    // to the right of GH8 with its top-left flush against GH8's top-right.
+    html += renderGridWithExtra('JTL', 'farm-layout', 'farm-row', false, 2, renderSummaryTable());
+    html += renderGrid('BIP', 'other-locations', 'bip-col', true);
+    html += '</div>';
+    document.getElementById('content').innerHTML = html;
+
+    // Align seeding table top with GH8 (which is below GH7 in the merged cell)
+    const gh8 = document.querySelector('[data-gh="GH8"]');
+    const stWrap = document.getElementById('seedingTableWrap');
+    if (gh8 && stWrap) {
+        const rowRect = stWrap.parentElement.getBoundingClientRect();
+        const gh8Rect = gh8.getBoundingClientRect();
+        stWrap.style.top = (gh8Rect.top - rowRect.top) + 'px';
+    }
+}
+
+
+// --- Row editing ---
+function handleBarClick(e, idx) {
+    e.stopPropagation();
+    POPUP_POS = { x: e.clientX, y: e.clientY };
+    if (e.shiftKey && LAST_CLICKED_IDX !== null) {
+        // Range select: find all bar elements between last click and this one
+        const bars = Array.from(document.querySelectorAll('.card-row-bar'));
+        const idxList = bars.map(b => Number(b.dataset.idx));
+        const fromPos = idxList.indexOf(LAST_CLICKED_IDX);
+        const toPos = idxList.indexOf(idx);
+        if (fromPos !== -1 && toPos !== -1) {
+            const lo = Math.min(fromPos, toPos), hi = Math.max(fromPos, toPos);
+            for (let i = lo; i <= hi; i++) SELECTED.add(idxList[i]);
+        }
+    } else {
+        if (SELECTED.has(idx) && SELECTED.size === 1) SELECTED.clear();
+        else { SELECTED.clear(); SELECTED.add(idx); }
+    }
+    LAST_CLICKED_IDX = idx;
+    updateSelectionUI();
+}
+
+function updateSelectionUI() {
+    document.querySelectorAll('.card-row-bar').forEach(el => {
+        el.classList.toggle('selected', SELECTED.has(Number(el.dataset.idx)));
+    });
+    renderPopup();
+}
+
+function renderPopup() {
+    let popup = document.getElementById('editPopup');
+    if (SELECTED.size === 0) { if (popup) popup.remove(); return; }
+    if (!popup) {
+        popup = document.createElement('div');
+        popup.id = 'editPopup';
+        popup.className = 'edit-popup';
+        document.body.appendChild(popup);
+    }
+    let html = `<div class="row"><span style="color:#aaa;font-size:0.75rem">${SELECTED.size} row${SELECTED.size > 1 ? 's' : ''}</span></div><div class="row">`;
+    EDIT_OPTIONS.forEach((opt, i) => {
+        html += `<button style="border:2px solid ${opt.color};color:${opt.color}" onclick="applyVariety(${i})">${opt.label}</button>`;
+    });
+    html += `</div><div class="row">`;
+    SPLIT_OPTIONS.forEach((opt, i) => {
+        html += `<button onclick="applySplit(${i})" style="background:linear-gradient(90deg,${opt.colors[0]} 50%,${opt.colors[1]} 50%);color:#fff;border:1px solid #555;font-size:0.75rem">${opt.label}</button>`;
+    });
+    html += `</div>`;
+    popup.innerHTML = html;
+    // Position near mouse
+    popup.style.left = POPUP_POS.x + 'px';
+    popup.style.top = POPUP_POS.y + 'px';
+    // Adjust if off-screen
+    requestAnimationFrame(() => {
+        const r = popup.getBoundingClientRect();
+        if (r.bottom > window.innerHeight) popup.style.top = (POPUP_POS.y - r.height - 8) + 'px';
+        if (r.right > window.innerWidth) popup.style.left = (POPUP_POS.x - r.width) + 'px';
+    });
+}
+
+const VARIETY_CODE = { 'Keiki': 'k', 'Japanese': 'j', 'English': 'e' };
+
+function applyVariety(i) {
+    const opt = EDIT_OPTIONS[i];
+    const saves = [];
+    for (const idx of SELECTED) {
+        EDITS[idx] = { variety: opt.variety, ppb: opt.ppb };
+        const raw = RAW_ROWS[idx];
+        if (!raw) continue;
+        saves.push({
+            sheetRow: raw.sheetRow,
+            sheetValue: opt.variety,
+            rowId: raw.rowId,
+            variety: VARIETY_CODE[opt.variety],
+            variety2: null,
+            ppb: opt.ppb,
+        });
+    }
+    SELECTED.clear();
+    rebuild();
+    saveEdits(saves);
+}
+
+function applySplit(i) {
+    const opt = SPLIT_OPTIONS[i];
+    const [a, b] = opt.varieties;
+    const saves = [];
+    for (const idx of SELECTED) {
+        EDITS[idx] = { split: [a, b], colors: opt.colors };
+        const raw = RAW_ROWS[idx];
+        if (!raw) continue;
+        saves.push({
+            sheetRow: raw.sheetRow,
+            sheetValue: `${a}/${b}`,
+            rowId: raw.rowId,
+            variety: VARIETY_CODE[a],
+            variety2: VARIETY_CODE[b],
+            ppb: a === 'Japanese' || b === 'Japanese' ? 5 : 4,
+        });
+    }
+    SELECTED.clear();
+    rebuild();
+    saveEdits(saves);
+}
+
+function clearEdits() {
+    EDITS = {};
+    SELECTED.clear();
+    rebuild();
+}
+
+function saveEdits(saves) {
+    if (!saves.length) return;
+    const mode = DataSource.getMode();
+    if (mode === 'sheets') saveToSheet(saves);
+    else saveToSupabase(saves).catch(err => {
+        console.error('Supabase save error:', err);
+        showSaveStatus('Save failed');
+    });
+}
+
+async function saveToSupabase(saves) {
+    const client = await DataSource.getClient();
+    for (const s of saves) {
+        if (!s.rowId) continue;
+        const { error } = await client.from('grow_cuke_gh_row_planting')
+            .update({
+                grow_variety_id:   s.variety,
+                grow_variety_id_2: s.variety2,
+                plants_per_bag:    s.ppb,
+            })
+            .eq('org_site_gh_row_id', s.rowId)
+            .eq('scenario', 'current');
+        if (error) throw error;
+    }
+    showSaveStatus('Saved');
+}
+
+function saveToSheet(saves) {
+    if (!APPS_SCRIPT_URL) return;
+    // Use a form POST via hidden iframe to avoid CORS entirely
+    const payload = saves.map(s => ({ row: s.sheetRow, value: s.sheetValue, ppb: s.ppb }));
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = APPS_SCRIPT_URL;
+    form.target = 'saveFrame';
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'payload';
+    input.value = JSON.stringify({ edits: payload });
+    form.appendChild(input);
+    let iframe = document.getElementById('saveFrame');
+    if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.name = 'saveFrame';
+        iframe.id = 'saveFrame';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+    }
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+    showSaveStatus('Saved');
+}
+
+function showSaveStatus(msg) {
+    let el = document.getElementById('saveStatus');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'saveStatus';
+        el.style.cssText = 'position:fixed;bottom:60px;right:16px;background:#333;padding:6px 14px;border-radius:4px;font-size:0.85rem;z-index:201;transition:opacity 0.3s';
+        document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = '1';
+    el.style.color = msg === 'Saved' ? '#4ecca3' : '#e57373';
+    setTimeout(() => { el.style.opacity = '0'; }, 2000);
+}
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.card-row-bar') && !e.target.closest('.edit-popup')) {
+        SELECTED.clear();
+        updateSelectionUI();
+    }
+});
+
+// Tooltip
+function showTooltip(e, text) {
+    const tip = document.getElementById('tooltip');
+    tip.innerHTML = text.replace(/\n/g, '<br>');
+    tip.style.display = 'block';
+    moveTooltip(e);
+}
+
+function moveTooltip(e) {
+    const tip = document.getElementById('tooltip');
+    let x = e.clientX + 12;
+    let y = e.clientY + 12;
+    // Keep on screen
+    const rect = tip.getBoundingClientRect();
+    if (x + rect.width > window.innerWidth) x = e.clientX - rect.width - 12;
+    if (y + rect.height > window.innerHeight) y = e.clientY - rect.height - 12;
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+}
+
+function hideTooltip() {
+    document.getElementById('tooltip').style.display = 'none';
+}
+
+// --- Sim ---
+const SIM_ORDER = ['Kona','GH8','GH1',['Hamakua','Kohala'],'GH7','Waimea','GH4','GH2','GH5','Hilo','GH6','GH3'];
+let simTimer = null;
+let simTick = 0;
+let simPaused = false;
+
+function getSimBrightness(week) {
+    // weeks 1-4: white (seedlings), weeks 5-12: normal color
+    if (week <= 4) return { brightness: 2.5, saturate: 0 };
+    return { brightness: 1, saturate: 1 };
+}
+
+const SIM_START = new Date(2026, 2, 15); // 3/15/26
+const SIM_WAIMEA_IDX = 5; // Waimea's index in SIM_ORDER
+
+function simDateStr() {
+    const d = new Date(SIM_START.getTime() + simTick * 7 * 24 * 60 * 60 * 1000);
+    return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function applySimFilters() {
+    SIM_ORDER.forEach((gh, i) => {
+        const week = ((SIM_WAIMEA_IDX - i + simTick + 120) % 12) + 1;
+        const { brightness, saturate } = getSimBrightness(week);
+        const filter = `brightness(${brightness}) saturate(${saturate})`;
+        const names = Array.isArray(gh) ? gh : [gh];
+        names.forEach(name => {
+            const cards = document.querySelectorAll('.gh-card');
+            cards.forEach(card => {
+                const label = card.querySelector('.gh-card-name');
+                if (label && label.textContent === name) {
+                    card.querySelectorAll('.card-row-bar').forEach(bar => {
+                        bar.style.filter = filter;
+                    });
+                    // Week number overlay
+                    const oTop = name === 'Kona' ? '40%' : ['GH1','GH2','GH3'].includes(name) ? '35%' : '45%';
+                    const oLeft = name === 'GH4' ? '40%' : '50%';
+                    card.style.position = 'relative';
+                    let overlay = card.querySelector('.sim-week-overlay');
+                    if (!overlay) {
+                        overlay = document.createElement('div');
+                        overlay.className = 'sim-week-overlay';
+                        overlay.style.cssText = `position:absolute;top:${oTop};left:${oLeft};transform:translate(-50%,-50%);font-size:3rem;font-weight:900;color:rgba(0,0,0,0.5);pointer-events:none;z-index:10`;
+                        card.appendChild(overlay);
+                    } else {
+                        overlay.style.top = oTop;
+                        overlay.style.left = oLeft;
+                    }
+                    overlay.textContent = week;
+                    // Week labels
+                    const SIM_LABELS = { 4: 'Start Production', 11: 'Seeding', 12: 'Tear Out' };
+                    let lbl = card.querySelector('.sim-week-label');
+                    if (SIM_LABELS[week]) {
+                        if (!lbl) {
+                            lbl = document.createElement('div');
+                            lbl.className = 'sim-week-label';
+                            lbl.style.cssText = 'position:absolute;top:calc(' + oTop + ' + 28px);left:' + oLeft + ';transform:translate(-50%,0);font-size:0.85rem;font-weight:700;color:rgba(0,0,0,0.6);pointer-events:none;z-index:10;white-space:nowrap';
+                            card.appendChild(lbl);
+                        } else {
+                            lbl.style.top = 'calc(' + oTop + ' + 28px)';
+                            lbl.style.left = oLeft;
+                        }
+                        lbl.textContent = SIM_LABELS[week];
+                    } else if (lbl) {
+                        lbl.remove();
+                    }
+                }
+            });
+        });
+    });
+    document.getElementById('simWeek').textContent = simDateStr();
+}
+
+function clearSimFilters() {
+    document.querySelectorAll('.card-row-bar').forEach(bar => {
+        bar.style.filter = '';
+    });
+    document.querySelectorAll('.sim-week-overlay').forEach(el => el.remove());
+    document.querySelectorAll('.sim-week-label').forEach(el => el.remove());
+}
+
+function startSimInterval() {
+    simTimer = setInterval(() => {
+        simTick++;
+        if (simTick >= 52) { stopSim(); return; }
+        applySimFilters();
+    }, 1000);
+}
+
+function showSimControls(show) {
+    document.getElementById('simControls').style.display = show ? 'flex' : 'none';
+    document.getElementById('simBtn').style.display = show ? 'none' : '';
+}
+
+function updatePauseBtn() {
+    const btn = document.getElementById('simPauseBtn');
+    if (simTimer) {
+        btn.textContent = '||';
+        btn.title = 'Pause';
+        btn.style.background = '#FF9800';
+    } else {
+        btn.textContent = '▶';
+        btn.title = 'Resume';
+        btn.style.background = '#4ecca3';
+    }
+}
+
+function toggleSim() {
+    if (simTimer) {
+        // Running → Pause
+        clearInterval(simTimer);
+        simTimer = null;
+        simPaused = true;
+        updatePauseBtn();
+    } else if (simPaused) {
+        // Paused → Resume
+        simPaused = false;
+        updatePauseBtn();
+        startSimInterval();
+    } else {
+        // Stopped → Start
+        simTick = 0;
+        applySimFilters();
+        showSimControls(true);
+        updatePauseBtn();
+        simPaused = false;
+        startSimInterval();
+    }
+}
+
+function simStep(dir) {
+    if (simTimer) { clearInterval(simTimer); simTimer = null; }
+    simPaused = true;
+    simTick = Math.max(0, Math.min(51, simTick + dir));
+    applySimFilters();
+    updatePauseBtn();
+}
+
+function stopSim() {
+    clearInterval(simTimer);
+    simTimer = null;
+    simPaused = false;
+    clearSimFilters();
+    showSimControls(false);
+}
+
+// Mode toggle lives on the parent portal (dash/index.html) — this page
+// reads ?src=... from the iframe URL. Writes (Apps Script) still target
+// the sheet regardless of mode; saveToSheet() skips the write in non-sheets mode.
+init();
+</script>
+</body>
+</html>

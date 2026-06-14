@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cuke Yields</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="../lib/data-source.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
+  #header { background: #4a8c5c; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+  #header h1 { font-size: 1.5rem; color: #fff; font-weight: 700; }
+  #content { padding: 16px 24px; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .row .label { font-size: 0.75rem; color: #666; width: 64px; flex-shrink: 0; }
+  .chip { padding: 4px 10px; font-size: 0.78rem; border: 1px solid #c0b8ae; background: #fff; color: #555; cursor: pointer; border-radius: 4px; user-select: none; }
+  .chip.active { background: #4a8c5c; color: #fff; border-color: #4a8c5c; }
+  .chip.all { font-weight: 600; }
+  .controls { display: flex; gap: 16px; align-items: center; margin: 10px 0 16px; padding: 8px 12px; background: #ece6df; border-radius: 6px; flex-wrap: wrap; }
+  .controls label { font-size: 0.78rem; color: #555; }
+  .controls select { padding: 3px 6px; font-size: 0.8rem; border: 1px solid #bbb; border-radius: 3px; background: #fff; }
+  .chart-box { background: #fff; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; border: 1px solid #ddd; }
+  .chart-box h3 { font-size: 0.9rem; font-weight: 600; color: #333; margin-bottom: 6px; }
+  .chart-wrap { position: relative; height: 360px; }
+  .status { font-size: 0.8rem; color: #888; padding: 8px; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Cuke Yields</h1>
+  <span style="font-size:0.7rem;color:#fff;" id="versionStamp">05-14 12:00</span>
+</div>
+
+<div id="content">
+  <div id="filters">
+    <div class="row"><span class="label">Year</span><span id="f-year"></span></div>
+    <div class="row"><span class="label">Month</span><span id="f-month"></span></div>
+    <div class="row"><span class="label">GH</span><span id="f-gh"></span></div>
+    <div class="row"><span class="label">Variety</span><span id="f-variety"></span></div>
+    <div class="row"><span class="label">Grade</span><span id="f-grade"></span></div>
+  </div>
+
+  <div class="controls">
+    <label>View:</label>
+    <span id="view-toggle">
+      <span class="chip active" data-view="individual">Individual cycles</span>
+      <span class="chip" data-view="aggregate">Aggregate</span>
+    </span>
+    <span id="agg-controls" style="display:none">
+      <label>Group by:</label>
+      <select id="groupBy">
+        <option value="gh">Greenhouse</option>
+        <option value="variety">Variety</option>
+        <option value="seedYear">Seed Year</option>
+        <option value="seedMonth">Seed Month</option>
+        <option value="grade">Grade</option>
+      </select>
+    </span>
+    <span id="status" class="status">Loading…</span>
+  </div>
+
+  <div class="chart-box">
+    <h3>Pounds per day</h3>
+    <div class="chart-wrap"><canvas id="dailyChart"></canvas></div>
+  </div>
+  <div class="chart-box">
+    <h3>Cumulative pounds</h3>
+    <div class="chart-wrap"><canvas id="cumChart"></canvas></div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let rows = [];      // raw harvest rows
+let loadedYears = new Set(); // seed-years already fetched
+const CURRENT_YEAR = new Date().getFullYear();
+let filters = { year: new Set([CURRENT_YEAR]), month: new Set(), gh: new Set(), variety: new Set(), grade: new Set() };
+let view = 'individual';
+let dailyChart = null, cumChart = null;
+
+// ── Helpers ──
+function parseGvizTable(table) {
+  const cols = table.cols.map(c => c.label);
+  return table.rows.map(r => {
+    const obj = {};
+    r.c.forEach((cell, i) => {
+      const col = cols[i];
+      if (!col) return;
+      if (!cell || cell.v === null || cell.v === undefined) { obj[col] = null; return; }
+      if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
+        const dm = cell.v.match(/Date\((\d+),(\d+),(\d+)\)/);
+        if (dm) {
+          obj[col] = { y: +dm[1], m: +dm[2] + 1, d: +dm[3] };
+          return;
+        }
+      }
+      obj[col] = cell.v;
+    });
+    return obj;
+  });
+}
+
+// Distinct color palette (Tableau 20-style, extended)
+const PALETTE = [
+  '#e6194B','#3cb44b','#4363d8','#f58231','#911eb4','#42d4f4',
+  '#f032e6','#9A6324','#800000','#808000','#000075','#a9a9a9',
+  '#469990','#bfef45','#ffe119','#fabed4','#aaffc3','#dcbeff',
+];
+const seriesColorMap = new Map();
+function colorFor(key) {
+  if (!seriesColorMap.has(key)) seriesColorMap.set(key, PALETTE[seriesColorMap.size % PALETTE.length]);
+  return seriesColorMap.get(key);
+}
+function resetColors() { seriesColorMap.clear(); }
+
+const PLANT_DAY = 14; // plants moved to GH 14 days after seeding
+function dayToWeek(d) { return (d - PLANT_DAY) / 7; }
+
+// ── Filter chip rendering ──
+function renderChips(containerId, key, values, formatLabel) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  const onChange = (key === 'year') ? ensureAndRender : render;
+  const all = document.createElement('span');
+  all.className = 'chip all active';
+  all.textContent = 'All';
+  all.onclick = () => { filters[key].clear(); refreshChipState(containerId, key); onChange(); };
+  c.appendChild(all);
+  values.forEach(v => {
+    const el = document.createElement('span');
+    el.className = 'chip';
+    el.dataset.value = String(v);
+    el.textContent = formatLabel ? formatLabel(v) : String(v);
+    el.onclick = () => {
+      if (filters[key].has(v)) filters[key].delete(v); else filters[key].add(v);
+      refreshChipState(containerId, key);
+      onChange();
+    };
+    c.appendChild(el);
+  });
+  refreshChipState(containerId, key);
+}
+
+function refreshChipState(containerId, key) {
+  const c = document.getElementById(containerId);
+  const allOn = filters[key].size === 0;
+  c.querySelectorAll('.chip').forEach(el => {
+    if (el.classList.contains('all')) { el.classList.toggle('active', allOn); return; }
+    const v = el.dataset.value;
+    const match = [...filters[key]].some(x => String(x) === v);
+    el.classList.toggle('active', !allOn && match);
+  });
+}
+
+// ── Build cycles ──
+// A cycle is one seeding event in one GH (seed-month + GH). Variety and
+// grade rows within that cycle are SUMMED, not split into separate cycles.
+// Variety/Grade filters operate at the row level (applied here).
+function buildCycles(rows, varietyFilter, gradeFilter) {
+  const map = new Map();
+  for (const r of rows) {
+    if (!r.SeedingDate || !r.Greenhouse) continue;
+    if (varietyFilter.size && !varietyFilter.has(r.Variety)) continue;
+    if (gradeFilter.size && !gradeFilter.has(r.Grade)) continue;
+    const sy = r.SeedingDate.y, sm = r.SeedingDate.m;
+    const day = r.DaysSinceSeed;
+    if (day == null || day < 0 || day > 200) continue;
+    const lb = +r.GreenhouseNetWeight || 0;
+    const cid = `${String(sy).slice(-2)}${String(sm).padStart(2,'0')}-${r.Greenhouse}`;
+    let c = map.get(cid);
+    if (!c) {
+      c = { cycle_id: cid, seedYear: sy, seedMonth: sm, gh: r.Greenhouse, days: new Map() };
+      map.set(cid, c);
+    }
+    c.days.set(day, (c.days.get(day) || 0) + lb);
+  }
+  return [...map.values()];
+}
+
+// ── Apply cycle-level filters (year/month/gh) ──
+function filterCycles(allCycles) {
+  return allCycles.filter(c => {
+    if (filters.year.size && !filters.year.has(c.seedYear)) return false;
+    if (filters.month.size && !filters.month.has(c.seedMonth)) return false;
+    if (filters.gh.size && !filters.gh.has(c.gh)) return false;
+    return true;
+  });
+}
+
+// ── Series builders ──
+function cycleSeriesIndividual(filtered) {
+  return filtered.map(c => {
+    const days = [...c.days.keys()].sort((a,b)=>a-b);
+    let cum = 0;
+    const dataDaily = days.map(d => ({ x: dayToWeek(d), y: c.days.get(d) }));
+    const dataCum = days.map(d => ({ x: dayToWeek(d), y: (cum += c.days.get(d)) }));
+    return { id: c.cycle_id, color: colorFor(c.cycle_id), dataDaily, dataCum };
+  });
+}
+
+function cycleSeriesAggregate(filtered, groupKey) {
+  const groups = new Map();
+  for (const c of filtered) {
+    const k = c[groupKey];
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(c);
+  }
+  const out = [];
+  for (const [k, list] of [...groups.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])))) {
+    const dayTotals = new Map();
+    for (const c of list) {
+      const maxDay = Math.max(...c.days.keys());
+      for (let d = 0; d <= maxDay; d++) {
+        const lb = c.days.get(d) || 0;
+        const t = dayTotals.get(d) || { sum: 0, n: 0 };
+        t.sum += lb; t.n += 1;
+        dayTotals.set(d, t);
+      }
+    }
+    const sortedDays = [...dayTotals.keys()].sort((a,b)=>a-b);
+    let cum = 0;
+    const dataDaily = sortedDays.map(d => {
+      const t = dayTotals.get(d);
+      return { x: dayToWeek(d), y: t.sum / t.n };
+    });
+    const dataCum = sortedDays.map((d,i) => { cum += dataDaily[i].y; return { x: dayToWeek(d), y: cum }; });
+    out.push({ id: String(k), color: colorFor(String(k)), dataDaily, dataCum });
+  }
+  return out;
+}
+
+// ── Charts ──
+function makeChart(ctx, label) {
+  return new Chart(ctx, {
+    type: 'line',
+    data: { datasets: [] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      parsing: false,
+      plugins: {
+        legend: {
+          display: true, position: 'top',
+          labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, pointStyle: 'circle', font: { size: 10 } },
+        },
+        tooltip: {
+          mode: 'nearest', intersect: false,
+          itemSort: (a, b) => (Number(b.parsed && b.parsed.y) || 0) - (Number(a.parsed && a.parsed.y) || 0),
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${Math.round(ctx.parsed.y).toLocaleString()} lb`,
+            title: (items) => items.length ? `Week ${items[0].parsed.x.toFixed(1)}` : '',
+          },
+        },
+      },
+      scales: {
+        x: { type: 'linear', title: { display: true, text: 'Weeks in greenhouse', font: { size: 11 } }, ticks: { font: { size: 11 } } },
+        y: { title: { display: true, text: label, font: { size: 11 } }, ticks: { font: { size: 11 } } },
+      },
+      elements: { point: { radius: 0 }, line: { borderWidth: 1.2, tension: 0.2 } },
+    }
+  });
+}
+
+function renderCharts(series) {
+  const showLegend = series.length <= 20; // hide spaghetti legend
+  const buildDatasets = (key) => series.map(s => ({
+    label: s.id,
+    data: s[key],
+    borderColor: s.color,
+    backgroundColor: s.color,
+    showLine: true,
+  }));
+
+  if (!dailyChart) dailyChart = makeChart(document.getElementById('dailyChart').getContext('2d'), 'Pounds');
+  if (!cumChart)   cumChart   = makeChart(document.getElementById('cumChart').getContext('2d'),   'Cumulative pounds');
+
+  dailyChart.data.datasets = buildDatasets('dataDaily');
+  cumChart.data.datasets   = buildDatasets('dataCum');
+  dailyChart.options.plugins.legend.display = showLegend;
+  cumChart.options.plugins.legend.display   = showLegend;
+  // Show all lines in tooltip when <12 series, otherwise just nearest.
+  const tipMode = series.length < 13 ? 'x' : 'nearest';
+  dailyChart.options.plugins.tooltip.mode = tipMode;
+  cumChart.options.plugins.tooltip.mode   = tipMode;
+  dailyChart.options.interaction = { mode: tipMode, intersect: false };
+  cumChart.options.interaction   = { mode: tipMode, intersect: false };
+  dailyChart.update();
+  cumChart.update();
+}
+
+// ── Main render ──
+function render() {
+  resetColors();
+  // Rebuild cycles with current variety/grade filters (row-level).
+  const all = buildCycles(rows, filters.variety, filters.grade);
+  const filtered = filterCycles(all);
+  document.getElementById('status').textContent = `${filtered.length} cycles`;
+  let series;
+  if (view === 'individual') {
+    series = cycleSeriesIndividual(filtered);
+  } else {
+    const gb = document.getElementById('groupBy').value;
+    series = cycleSeriesAggregate(filtered, gb);
+  }
+  renderCharts(series);
+}
+
+// Fetch rows for a set of seed-years directly via Supabase client.
+async function fetchYears(years) {
+  const toFetch = years.filter(y => !loadedYears.has(y));
+  if (!toFetch.length) return;
+  document.getElementById('status').textContent = `Loading ${toFetch.join(', ')}…`;
+  const client = await DataSource.getClient();
+  const PAGE = 1000;
+  for (const y of toFetch) {
+    const start = `${y}-01-01`;
+    const end = `${y + 1}-01-01`;
+    let page = 0;
+    while (true) {
+      const { data, error } = await client
+        .from('grow_cuke_harvest')
+        .select('harvest_date,seeding_date,greenhouse,variety,grade,greenhouse_net_weight,days_since_seed')
+        .gte('seeding_date', start)
+        .lt('seeding_date', end)
+        .order('seeding_date', { ascending: true })
+        .order('greenhouse', { ascending: true })
+        .order('variety', { ascending: true })
+        .order('harvest_date', { ascending: true })
+        .range(page * PAGE, (page + 1) * PAGE - 1);
+      if (error) throw error;
+      if (!data || !data.length) break;
+      for (const r of data) {
+        rows.push({
+          HarvestDate: r.harvest_date ? parseDateStr(r.harvest_date) : null,
+          SeedingDate: r.seeding_date ? parseDateStr(r.seeding_date) : null,
+          Greenhouse: r.greenhouse,
+          Variety: r.variety,
+          Grade: r.grade,
+          GreenhouseNetWeight: r.greenhouse_net_weight,
+          DaysSinceSeed: r.days_since_seed,
+        });
+      }
+      if (data.length < PAGE) break;
+      page++;
+    }
+    loadedYears.add(y);
+  }
+}
+
+function parseDateStr(s) {
+  const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? { y: +m[1], m: +m[2], d: +m[3] } : null;
+}
+
+// Re-render after ensuring required years are loaded.
+async function ensureAndRender() {
+  const wantYears = filters.year.size ? [...filters.year] : YEAR_RANGE;
+  try {
+    if (wantYears.some(y => !loadedYears.has(y))) {
+      await fetchYears(wantYears);
+    }
+    render();
+  } catch (e) {
+    console.error('ensureAndRender failed', e);
+    document.getElementById('status').textContent = 'Fetch error: ' + (e.message || e);
+  }
+}
+
+// Year range to enumerate when filter is "All" — derived from DB span.
+const YEAR_RANGE = [];
+for (let y = 2019; y <= CURRENT_YEAR; y++) YEAR_RANGE.push(y);
+
+// ── Boot ──
+(async () => {
+  try {
+    await fetchYears([CURRENT_YEAR]);
+
+    const months = [1,2,3,4,5,6,7,8,9,10,11,12];
+    const ghs = ['GH1','GH2','GH3','GH4','GH5','GH6','GH7','GH8','HK','Hilo','Kona','Waimea'];
+    const vars = ['E','J','K'];
+    const grades = ['1','2'];
+
+    renderChips('f-year', 'year', YEAR_RANGE);
+    renderChips('f-month', 'month', months, m => String(m).padStart(2,'0'));
+    renderChips('f-gh', 'gh', ghs);
+    renderChips('f-variety', 'variety', vars);
+    renderChips('f-grade', 'grade', grades);
+
+    document.querySelectorAll('#view-toggle .chip').forEach(el => {
+      el.onclick = () => {
+        view = el.dataset.view;
+        document.querySelectorAll('#view-toggle .chip').forEach(x => x.classList.toggle('active', x === el));
+        document.getElementById('agg-controls').style.display = (view === 'aggregate') ? '' : 'none';
+        render();
+      };
+    });
+    document.getElementById('groupBy').onchange = render;
+
+    render();
+  } catch (e) {
+    console.error(e);
+    document.getElementById('status').textContent = 'Error: ' + (e.message || e);
+  }
+})();
+
+// Version stamp
+fetch('index.html', { method: 'HEAD' }).then(r => {
+  const d = new Date(r.headers.get('last-modified'));
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('versionStamp').textContent = `${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}).catch(()=>{});
+</script>
+</body>
+</html>

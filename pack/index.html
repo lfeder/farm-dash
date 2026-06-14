@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pack Plan <!-- 06-03 15:24 --></title>
+<script src="../lib/data-source.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#1a1a2e; color:#e0e0e0; min-height:100vh; padding:16px 12px 32px; }
+#page { max-width:600px; margin:0 auto; display:flex; flex-direction:column; gap:14px; }
+
+/* Header */
+#hdr { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+#hdr h1 { font-size:1rem; color:#4ecca3; white-space:nowrap; }
+input[type=date] { background:#0f3460; color:#e0e0e0; border:1px solid #2a3a5e; border-radius:4px; padding:3px 7px; font-size:0.82rem; }
+input[type=date]:focus { outline:none; border-color:#4ecca3; }
+.ds { font-size:0.74rem; }
+.ds.loading { color:#f1c40f; }
+.ds.loaded  { color:#4ecca3; }
+.ds.error   { color:#e07070; }
+#version { font-size:0.7rem; color:#e0e0e0; margin-left:auto; white-space:nowrap; }
+#email-btn { background:#0f3460; color:#4ecca3; border:1px solid #4ecca3; border-radius:4px; padding:3px 10px; font-size:0.76rem; cursor:pointer; white-space:nowrap; }
+#email-btn:hover { background:#4ecca3; color:#1a1a2e; }
+#email-btn:disabled { opacity:0.5; cursor:default; }
+
+/* Segment toggles */
+.seg { display:inline-flex; border:1px solid #2a3a5e; border-radius:4px; overflow:hidden; }
+.seg button { padding:3px 9px; font-size:0.76rem; background:transparent; color:#555; border:none; cursor:pointer; white-space:nowrap; }
+.seg button.active { background:#0f3460; color:#e0e0e0; }
+.seg button[data-val="wet"].active    { background:rgba(52,152,219,.2);  color:#6ab4f5; }
+.seg button[data-val="avg"].active    { background:rgba(241,196,15,.18); color:#f1c40f; }
+.seg button[data-val="dry"].active    { background:rgba(78,204,163,.18); color:#4ecca3; }
+.seg.sm button { padding:2px 7px; font-size:0.7rem; }
+
+/* Card sections */
+.card { background:#16213e; border-radius:8px; border:1px solid #0f3460; padding:12px 14px; }
+
+/* Shared column layout — both tables use the same 5-col proportions */
+#plan-tbl, .ot { width:100%; border-collapse:collapse; table-layout:fixed; }
+#plan-tbl { font-size:0.83rem; }
+.ot { font-size:0.82rem; }
+.col-lbl  { width:25%; }
+.col-data { width:18.75%; }
+
+/* Planning table */
+#plan-tbl thead th { padding:3px 10px 8px; color:#4ecca3; font-weight:600; font-size:0.84rem; text-align:left; border-bottom:1px solid #0f3460; }
+#plan-tbl tbody td { padding:5px 10px; vertical-align:middle; border-bottom:1px solid #0a1428; }
+#plan-tbl tbody tr:last-child td { border-bottom:none; }
+.row-lbl { color:#4ecca3; font-size:0.82rem; white-space:nowrap; }
+.row-lbl-sub { color:#6ab4f5 !important; padding-left:18px !important; }
+.section-hdr { font-size:0.7rem; color:#888; text-transform:uppercase; letter-spacing:.06em; padding-top:10px !important; border-bottom:none !important; }
+.plan-val { color:#e0e0e0; font-variant-numeric:tabular-nums; text-align:right; }
+.plan-val.pos { color:#4ecca3; }
+.plan-val.neg { color:#f1c40f; }
+input.plan-inp { width:100%; background:#0f3460; color:#e0e0e0; border:1px solid #2a3a5e; border-radius:4px; padding:5px 10px; font-size:0.82rem; text-align:right; display:block; }
+input.plan-inp:focus { outline:none; border-color:#4ecca3; }
+input.plan-inp::-webkit-outer-spin-button,
+input.plan-inp::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+input.plan-inp[type=number] { -moz-appearance:textfield; }
+
+/* Orders table */
+.ot th { color:#555; font-weight:500; padding:2px 8px 5px; border-bottom:1px solid #0f3460; text-align:right; }
+.ot th:first-child { text-align:left; }
+.ot td { padding:3px 8px; text-align:right; font-variant-numeric:tabular-nums; }
+.ot td:first-child { text-align:left; color:#bbb; }
+.lb-cell { color:#888; }
+.ot .total-row td { border-top:1px solid #0f3460; padding-top:4px; font-weight:600; color:#e0e0e0; }
+input.ot-inp { width:100%; text-align:right; background:#0f3460; color:#e0e0e0; border:1px solid #2a3a5e; border-radius:4px; padding:3px 8px; font-size:0.82rem; display:block; }
+input.ot-inp:focus { outline:none; border-color:#4ecca3; }
+.ot th:nth-child(2), .ot td:nth-child(2) { border-left:1px solid #2a3a5e; }
+.ot th:nth-child(3), .ot td:nth-child(3) { border-right:1px solid #2a3a5e; }
+.ot th:nth-child(4), .ot td:nth-child(4) { border-left:1px solid #2a3a5e; }
+.ot th:nth-child(5), .ot td:nth-child(5) { border-right:1px solid #2a3a5e; }
+
+/* Operations */
+.ops-row { display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid #0a1428; font-size:0.82rem; }
+.ops-row:last-child { border-bottom:none; }
+.ops-lbl { color:#4ecca3; }
+input[type=time] { background:#0f3460; color:#e0e0e0; border:1px solid #2a3a5e; border-radius:4px; padding:2px 6px; font-size:0.8rem; }
+input[type=time]:focus { outline:none; border-color:#4ecca3; }
+
+/* Harvest schedule */
+.sched-hdr { font-size:0.68rem; color:#555; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+.sched-sub { font-size:0.72rem; color:#888; margin-bottom:8px; }
+.hs { width:100%; border-collapse:collapse; font-size:0.8rem; }
+.hs th { color:#555; font-weight:500; padding:2px 8px 5px; border-bottom:1px solid #0f3460; text-align:right; white-space:nowrap; }
+.hs td { padding:3px 8px; text-align:right; font-variant-numeric:tabular-nums; color:#aaa; }
+.dis-hdr { color:#e07070 !important; }
+.sto-hdr { color:#6ab4f5 !important; }
+.ph-hdr  { color:#4ecca3 !important; }
+.dis-col { color:#c05050; }
+.sto-col { color:#5090c0; }
+.ph-col  { color:#3aaa85; }
+.no-data { color:#444; font-size:0.76rem; padding:8px 0; }
+</style>
+</head>
+<body>
+<div id="page">
+
+<!-- Header -->
+<div id="hdr">
+  <h1>Lettuce Pack Plan</h1>
+  <input type="date" id="pack-date">
+  <span id="data-status" class="ds">—</span>
+  <div class="seg sm" id="seg-data-mode">
+    <button data-val="sheets">Sheets</button>
+    <button data-val="db">DB</button>
+  </div>
+  <button id="email-btn" onclick="sendPackPlanEmail()">Email Plan</button>
+  <span id="version"></span>
+</div>
+
+<!-- Planning table -->
+<div class="card">
+  <table id="plan-tbl">
+    <colgroup>
+      <col class="col-lbl">
+      <col class="col-data"><col class="col-data">
+      <col class="col-data"><col class="col-data">
+    </colgroup>
+    <thead>
+      <tr>
+        <th></th>
+        <th colspan="2" id="d1-plan-hdr">D1</th>
+        <th colspan="2" id="d2-plan-hdr">D2</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="row-lbl">Wetness</td>
+        <td colspan="2">
+          <div class="seg" id="seg-d1-wet">
+            <button data-val="wet">Wet</button>
+            <button data-val="avg" class="active">Avg</button>
+            <button data-val="dry">Dry</button>
+          </div>
+        </td>
+        <td colspan="2">
+          <div class="seg" id="seg-d2-wet">
+            <button data-val="wet">Wet</button>
+            <button data-val="avg" class="active">Avg</button>
+            <button data-val="dry">Dry</button>
+          </div>
+        </td>
+      </tr>
+      <tr><td colspan="5" class="section-hdr">Pounds</td></tr>
+      <tr>
+        <td class="row-lbl row-lbl-sub">Harvest (t-14)</td>
+        <td colspan="2" id="d1-act14" class="plan-val">—</td>
+        <td colspan="2" id="d2-act14" class="plan-val">—</td>
+      </tr>
+      <tr>
+        <td class="row-lbl row-lbl-sub">Harvest (t-7)</td>
+        <td colspan="2" id="d1-act7" class="plan-val">—</td>
+        <td colspan="2" id="d2-act7" class="plan-val">—</td>
+      </tr>
+      <tr>
+        <td class="row-lbl">Harvest</td>
+        <td colspan="2" style="padding:0"><input type="number" class="plan-inp" id="d1-hlb" value="0" min="0"></td>
+        <td colspan="2" style="padding:0"><input type="number" class="plan-inp" id="d2-hlb" value="0" min="0"></td>
+      </tr>
+      <tr>
+        <td class="row-lbl">Orders</td>
+        <td colspan="2" id="d1-order-total" class="plan-val">—</td>
+        <td colspan="2" id="d2-order-total" class="plan-val">—</td>
+      </tr>
+      <tr>
+        <td class="row-lbl">Extra</td>
+        <td colspan="2" id="d1-extra" class="plan-val">—</td>
+        <td colspan="2" id="d2-extra" class="plan-val">—</td>
+      </tr>
+      <tr>
+        <td class="row-lbl row-lbl-sub">% Needed</td>
+        <td colspan="2" id="d1-pct-needed" class="plan-val">—</td>
+        <td colspan="2" id="d2-pct-needed" class="plan-val">—</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Orders -->
+<div class="card">
+  <table class="ot">
+    <colgroup>
+      <col class="col-lbl">
+      <col class="col-data"><col class="col-data">
+      <col class="col-data"><col class="col-data">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>SKU</th>
+        <th>D1 Cases</th><th>D1 Lb</th>
+        <th>D2 Cases</th><th>D2 Lb</th>
+      </tr>
+    </thead>
+    <tbody id="order-body"></tbody>
+  </table>
+</div>
+
+<!-- Operations -->
+<div class="card">
+  <div class="ops-row">
+    <span class="ops-lbl">Harvest Start</span>
+    <input type="time" id="d1-hstart" value="08:00">
+  </div>
+  <div class="ops-row">
+    <span class="ops-lbl">Baseline Cut Height</span>
+    <div class="seg" id="seg-d1-cut">
+      <button data-val="5">5</button>
+      <button data-val="20" class="active">20</button>
+      <button data-val="40">40</button>
+    </div>
+  </div>
+  <div class="ops-row">
+    <span class="ops-lbl">PH Start</span>
+    <input type="time" id="d1-phstart" value="09:00">
+  </div>
+  <div class="ops-row">
+    <span class="ops-lbl">Heater On</span>
+    <div class="seg" id="seg-d1-heat">
+      <button data-val="y">Yes</button>
+      <button data-val="n" class="active">No</button>
+    </div>
+  </div>
+  <div class="ops-row">
+    <span class="ops-lbl">Dryer Fans</span>
+    <div class="seg" id="seg-dryer-fans">
+      <button data-val="y">Yes</button>
+      <button data-val="n" class="active">No</button>
+    </div>
+  </div>
+  <div class="ops-row">
+    <span class="ops-lbl">Dryer / GH Speed</span>
+    <div class="seg" id="seg-d1-speed">
+      <button data-val="med" class="active">Normal</button>
+      <button data-val="lo">Slow</button>
+    </div>
+  </div>
+  <div class="ops-row">
+    <span class="ops-lbl">PH Fans</span>
+    <div class="seg" id="seg-d1-fans">
+      <button data-val="y">Yes</button>
+      <button data-val="n" class="active">No</button>
+    </div>
+  </div>
+  <div class="ops-row">
+    <span class="ops-lbl">Cold Room Store</span>
+    <div class="seg" id="seg-d1-cool">
+      <button data-val="y">Yes</button>
+      <button data-val="n" class="active">No</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden schedule containers (still computed for fill/dispose logic) -->
+<div id="d1-hs" style="display:none"></div>
+<div id="d2-hs" style="display:none"></div>
+<div id="d1-hs-sub" style="display:none"></div>
+<div id="d2-hs-sub" style="display:none"></div>
+<div id="d1-sched-hdr" style="display:none"></div>
+<div id="d2-sched-hdr" style="display:none"></div>
+
+</div><!-- #page -->
+
+<!-- Hidden inputs for row counts (used in recPlan calculations) -->
+<input type="hidden" id="d1-rows" value="0">
+<input type="hidden" id="d2-rows" value="0">
+
+<script>
+const SKU_LB = {LW:10.5, LR:2.25, LF:10.0, WR:2.25};
+const SKUS   = ['LW','LR','LF','WR'];
+const POND_ORDER = ['P1','P2','P3','P4','P5','P6','P7'];
+const SIDE_ORDER = {'C':0,'A':1,'B':2,'AB':3};
+const POND_FANS  = new Set(['P7']);
+
+let d1Weather = 'avg', d2Weather = 'avg';
+let packDataMode = localStorage.getItem('packPlanDataMode') || 'sheets';
+let d1Date = '', d2Date = '';
+
+function $id(id) { return document.getElementById(id); }
+function numVal(id) { return parseFloat($id(id).value) || 0; }
+function fmt(n) { return Math.round(n).toLocaleString(); }
+
+// ── Date helpers ──────────────────────────────────────────────────────────────
+function isoToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function isoAddDays(iso, n) {
+  const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function packCycleDates(iso) {
+  const d = new Date(iso + 'T12:00:00'), dow = d.getDay();
+  if (dow === 0 || dow === 3) return {d1: iso, d2: isoAddDays(iso, 1)};
+  if (dow === 1 || dow === 4) return {d1: isoAddDays(iso, -1), d2: iso};
+  const snap = dow === 2 ? 1 : dow === 5 ? 2 : 1;
+  return {d1: isoAddDays(iso, snap), d2: isoAddDays(iso, snap + 1)};
+}
+const DOW_NAME = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function shortDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T12:00:00');
+  return `${DOW_NAME[d.getDay()]} ${d.getMonth()+1}/${d.getDate()}`;
+}
+
+// ── Build order rows ──────────────────────────────────────────────────────────
+(function() {
+  const tb = $id('order-body');
+  SKUS.forEach(sku => {
+    const s = sku.toLowerCase();
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${sku}</td>
+      <td style="padding:0"><input class="ot-inp" type="number" id="d1-${s}" min="0" value="0"></td>
+      <td class="lb-cell" id="d1-${s}-lb">0</td>
+      <td style="padding:0"><input class="ot-inp" type="number" id="d2-${s}" min="0" value="0"></td>
+      <td class="lb-cell" id="d2-${s}-lb">0</td>`;
+    tb.appendChild(tr);
+  });
+  const tf = document.createElement('tr');
+  tf.className = 'total-row';
+  tf.innerHTML = `<td>Total</td>
+    <td class="lb-cell" id="ot-d1-cs">0</td>
+    <td class="lb-cell" id="ot-d1-total">0</td>
+    <td class="lb-cell" id="ot-d2-cs">0</td>
+    <td class="lb-cell" id="ot-d2-total">0</td>`;
+  tb.appendChild(tf);
+})();
+
+// ── Calculation ───────────────────────────────────────────────────────────────
+function recPlan(orderLb, harvestLb, rows, weather, tomorrow, storageLb) {
+  if (rows === 0 || harvestLb === 0) return {dispose:0, store:0, ph:0, mode:'—', fillRate:0, lbRow:0};
+  if (orderLb === 0) return {dispose:0, store:0, ph:0, mode:'No orders', fillRate:0, lbRow:harvestLb/rows};
+  const lbRow = harvestLb / rows, fillRate = orderLb / harvestLb;
+  const wet = weather==='wet', better = tomorrow==='better', worse = tomorrow==='worse';
+  const netOrd = Math.max(0, orderLb - storageLb);
+  const rowsForPH = Math.ceil(netOrd / lbRow);
+  let dispose, store, ph, mode;
+  if (fillRate > 0.9) {
+    mode='Full send'; dispose = wet?1:0; store=0; ph=rows-dispose;
+  } else if (fillRate > 0.6) {
+    mode='Selective'; dispose = wet?2:1;
+    const rem = rows-dispose;
+    if (wet && better)  { ph=Math.max(0,Math.min(rowsForPH-1,rem)); store=Math.max(0,rem-ph); }
+    else if (worse)     { ph=rem; store=0; }
+    else                { ph=Math.min(rowsForPH,rem); store=Math.max(0,rem-ph); }
+  } else {
+    dispose=Math.min(wet?3:2,rows-1);
+    const rem=rows-dispose;
+    if (wet && better)  { mode='Store all'; ph=0; store=rem; }
+    else                { mode='Light'; ph=Math.min(rowsForPH,rem); store=Math.max(0,rem-ph); }
+  }
+  dispose=Math.max(0,dispose); store=Math.max(0,store); ph=Math.max(0,ph);
+  const sum=dispose+store+ph; if(sum!==rows) store=Math.max(0,store+(rows-sum));
+  return {dispose, store, ph, mode, fillRate, lbRow};
+}
+
+// ── Grow data ─────────────────────────────────────────────────────────────────
+let cachedOrders=null, cachedHarvest=null, cachedGrow=null;
+let cachedActualLb = {};
+
+function gvizToISO(cell) {
+  if (!cell || cell.v === null || cell.v === undefined) return null;
+  const m = String(cell.v).match(/Date\((\d+),(\d+),(\d+)\)/);
+  if (!m) return null;
+  return `${m[1]}-${String(parseInt(m[2])+1).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+}
+function colIdx(cols, label) { return cols.findIndex(c => c.label === label); }
+
+function calcRows(pond, side, boards) {
+  if (!boards) return 0;
+  let bpr;
+  if (pond==='P1') bpr = side==='AB'?10:5;
+  else             bpr = side==='AB'?20:side==='C'?6:10;
+  return Math.round(boards / bpr);
+}
+
+function computeEstLb(pondData, p1by, p2by, dateISO) {
+  if (dateISO < isoToday() && pondData.expLb > 0) return pondData.expLb;
+  const key = `${pondData.pond}|${pondData.side}`;
+  const w1 = p1by[key]?.expLb || 0, w2 = p2by[key]?.expLb || 0;
+  if (w1 > 0 && w2 > 0) return (w1 + w2) / 2;
+  return w1 || w2;
+}
+
+function growByDate(dateISO) {
+  if (!cachedGrow) return {};
+  const {cols, rows} = cachedGrow;
+  const di=colIdx(cols,'HarvestDate'), pi=colIdx(cols,'Pond');
+  const si=colIdx(cols,'Side'),        vi=colIdx(cols,'Variety');
+  const bi=colIdx(cols,'Boards'),      li=colIdx(cols,'ExpLb');
+  const ri=colIdx(cols,'Rows');
+  if (di<0 || pi<0) return {};
+  const byKey = {};
+  rows.forEach(r => {
+    if (gvizToISO(r.c[di]) !== dateISO) return;
+    const pond = r.c[pi]?.v; if (!pond) return;
+    const side = (si>=0 ? r.c[si]?.v : '')||'';
+    const key  = `${pond}|${side}`;
+    if (!byKey[key]) byKey[key] = {pond, side, varieties:new Set(), rows:0, boards:0, expLb:0};
+    const variety = (vi>=0 ? r.c[vi]?.v : '')||'';
+    if (variety) byKey[key].varieties.add(variety);
+    const boards = parseFloat(r.c[bi]?.v)||0;
+    const expLb  = parseFloat(r.c[li]?.v)||0;
+    const rpc    = parseFloat(r.c[ri]?.v)||0;
+    byKey[key].boards += boards;
+    byKey[key].expLb  += expLb;
+    byKey[key].rows   += rpc>0 ? rpc : calcRows(pond, side, boards);
+  });
+  return byKey;
+}
+
+function sortedEntries(byKey) {
+  return Object.values(byKey).sort((a,b) => {
+    const pd = POND_ORDER.indexOf(a.pond) - POND_ORDER.indexOf(b.pond);
+    return pd!==0 ? pd : (SIDE_ORDER[a.side]??9)-(SIDE_ORDER[b.side]??9);
+  }).map(p => ({...p, varieties:[...p.varieties].filter(Boolean)}));
+}
+
+function applyDisp(byKey, dispose, store) {
+  const ponds = sortedEntries(byKey);
+  const total = ponds.reduce((s,p) => s+p.rows, 0);
+  const df = total > 0 ? dispose / total : 0;
+  const sf = total > 0 ? store   / total : 0;
+  ponds.forEach(p => {
+    p.d  = Math.max(0, Math.round(p.rows * df));
+    p.s  = Math.max(0, Math.min(p.rows - p.d, Math.round(p.rows * sf)));
+    p.ph = p.rows - p.d - p.s;
+  });
+  return ponds;
+}
+
+function populateGrow(day, dateISO) {
+  const byPond = growByDate(dateISO);
+  const ponds  = sortedEntries(byPond);
+  if (!ponds.length) return;
+  const p1by = growByDate(isoAddDays(dateISO,-7));
+  const p2by = growByDate(isoAddDays(dateISO,-14));
+  const totalRows = ponds.reduce((s,p) => s+(p.rows||0), 0);
+  const totalLb   = ponds.reduce((s,p) => s+computeEstLb(p,p1by,p2by,dateISO), 0);
+  if (totalRows > 0) $id(`${day}-rows`).value = totalRows;
+  if (totalLb   > 0) $id(`${day}-hlb`).value  = Math.round(totalLb);
+}
+
+function ordersByDate(dateISO) {
+  if (!cachedOrders) return null;
+  const {cols, rows} = cachedOrders;
+  const di=colIdx(cols,'PackDate'), si=colIdx(cols,'SKU'), ci=colIdx(cols,'Cases');
+  if (di<0||si<0||ci<0) return null;
+  const result = {LW:0,LR:0,LF:0,WR:0};
+  rows.forEach(r => {
+    if (gvizToISO(r.c[di]) !== dateISO) return;
+    const sku = r.c[si]?.v;
+    if (Object.prototype.hasOwnProperty.call(result, sku))
+      result[sku] += (r.c[ci]?.v)||0;
+  });
+  return result;
+}
+
+function populateDay(day, dateISO) {
+  const orders = ordersByDate(dateISO);
+  if (orders) SKUS.forEach(sku => { $id(`${day}-${sku.toLowerCase()}`).value = orders[sku]||0; });
+}
+
+// ── Harvest schedule table ────────────────────────────────────────────────────
+function renderSchedule(day, ponds, p1by, p2by, dateISO) {
+  if (!ponds.length) return '<div class="no-data">No grow data for this date</div>';
+  const fw = lb => (lb && lb > 0) ? fmt(Math.round(lb)) : '—';
+  const p1ISO = isoAddDays(dateISO, -7), p2ISO = isoAddDays(dateISO, -14);
+  const p2Hdr = shortDate(p2ISO), p1Hdr = shortDate(p1ISO);
+  let totDisLb=0, totStoLb=0, totPhLb=0, tot2Lb=0, tot1Lb=0, totEstLb=0, totRows=0;
+  ponds.forEach(p => {
+    const key  = `${p.pond}|${p.side}`;
+    const est  = computeEstLb(p, p1by, p2by, dateISO);
+    const lbRow = p.rows > 0 ? est / p.rows : 0;
+    tot2Lb   += p2by[key]?.expLb || 0;
+    tot1Lb   += p1by[key]?.expLb || 0;
+    totEstLb += est;
+    totRows  += p.rows;
+    totDisLb += p.d * lbRow;
+    totStoLb += p.s * lbRow;
+    totPhLb  += p.ph * lbRow;
+  });
+  const act2 = cachedActualLb[p2ISO], act1 = cachedActualLb[p1ISO];
+  const disp2Lb = act2 != null ? act2 : tot2Lb;
+  const disp1Lb = act1 != null ? act1 : tot1Lb;
+  return `<table class="hs">
+    <thead><tr>
+      <th style="text-align:left">${p2Hdr}</th>
+      <th style="text-align:left">${p1Hdr}</th>
+      <th style="text-align:left">Est</th>
+      <th class="dis-hdr">Dispose</th>
+      <th class="sto-hdr">Store</th>
+      <th class="ph-hdr">Pack</th>
+      <th>Rows</th>
+    </tr></thead>
+    <tbody><tr>
+      <td style="text-align:left">${fw(disp2Lb)} lb</td>
+      <td style="text-align:left">${fw(disp1Lb)} lb</td>
+      <td style="text-align:left">${fw(totEstLb)} lb</td>
+      <td class="dis-col">${fw(totDisLb)} lb</td>
+      <td class="sto-col">${fw(totStoLb)} lb</td>
+      <td class="ph-col">${fw(totPhLb)} lb</td>
+      <td>${totRows}r</td>
+    </tr></tbody>
+  </table>`;
+}
+
+// ── Main update ───────────────────────────────────────────────────────────────
+function update() {
+  // Orders table
+  let d1Total=0, d2Total=0, d1TotalCs=0, d2TotalCs=0;
+  SKUS.forEach(sku => {
+    const s=sku.toLowerCase();
+    const d1cs=numVal(`d1-${s}`), d2cs=numVal(`d2-${s}`);
+    const d1lb=d1cs*SKU_LB[sku], d2lb=d2cs*SKU_LB[sku];
+    d1Total+=d1lb; d2Total+=d2lb; d1TotalCs+=d1cs; d2TotalCs+=d2cs;
+    $id(`d1-${s}-lb`).textContent = fmt(d1lb);
+    $id(`d2-${s}-lb`).textContent = fmt(d2lb);
+  });
+  $id('ot-d1-cs').textContent    = fmt(d1TotalCs);
+  $id('ot-d1-total').textContent = fmt(d1Total);
+  $id('ot-d2-cs').textContent    = fmt(d2TotalCs);
+  $id('ot-d2-total').textContent = fmt(d2Total);
+
+  // Planning table: orders and extra
+  $id('d1-order-total').textContent = fmt(d1Total);
+  $id('d2-order-total').textContent = fmt(d2Total);
+  const d1hlb=numVal('d1-hlb'), d2hlb=numVal('d2-hlb');
+  const d1extra=d1hlb-d1Total, d2extra=d2hlb-d2Total;
+  const setExtra = (id, val, hasData) => {
+    const el=$id(id);
+    el.textContent = hasData ? (val>=0?'+':'')+fmt(val) : '—';
+    el.className = 'plan-val' + (!hasData?'':val>0?' pos':val<0?' neg':'');
+  };
+  setExtra('d1-extra', d1extra, d1hlb>0||d1Total>0);
+  setExtra('d2-extra', d2extra, d2hlb>0||d2Total>0);
+  const setPct = (id, orders, harvest) => {
+    const el=$id(id);
+    if (!harvest) { el.textContent='—'; el.className='plan-val'; return; }
+    const pct = orders/harvest*100;
+    el.textContent = Math.round(pct)+'%';
+    el.className = 'plan-val' + (pct<=90?' pos':' neg');
+  };
+  setPct('d1-pct-needed', d1Total, d1hlb);
+  setPct('d2-pct-needed', d2Total, d2hlb);
+
+  // Planning table: actual hist lb
+  if (d1Date) {
+    const get = iso => { const v=cachedActualLb[iso]; return v!=null ? fmt(Math.round(v)) : '—'; };
+    $id('d1-act14').textContent = get(isoAddDays(d1Date,-14));
+    $id('d1-act7').textContent  = get(isoAddDays(d1Date,-7));
+    $id('d2-act14').textContent = get(isoAddDays(d2Date,-14));
+    $id('d2-act7').textContent  = get(isoAddDays(d2Date,-7));
+  }
+
+  // Harvest schedules
+  const d1rows=numVal('d1-rows'), d2rows=numVal('d2-rows');
+  const d1rec = recPlan(d1Total, d1hlb, d1rows, d1Weather, 'same', 0);
+  const d2rec = recPlan(d2Total, d2hlb, d2rows, d2Weather, 'same', 0);
+  if (cachedGrow) {
+    const d1by=growByDate(d1Date), d2by=growByDate(d2Date);
+    const d1p1=growByDate(isoAddDays(d1Date,-7)),  d1p2=growByDate(isoAddDays(d1Date,-14));
+    const d2p1=growByDate(isoAddDays(d2Date,-7)),  d2p2=growByDate(isoAddDays(d2Date,-14));
+    const d1ponds=applyDisp(d1by,d1rec.dispose,d1rec.store);
+    const d2ponds=applyDisp(d2by,d2rec.dispose,d2rec.store);
+    $id('d1-hs').innerHTML = renderSchedule('d1',d1ponds,d1p1,d1p2,d1Date);
+    $id('d2-hs').innerHTML = renderSchedule('d2',d2ponds,d2p1,d2p2,d2Date);
+    $id('d1-hs-sub').textContent = d1rec.lbRow>0 ? `${Math.round(d1rec.lbRow)} lb/row · ${Math.round(d1rec.fillRate*100)}% fill` : '';
+    $id('d2-hs-sub').textContent = d2rec.lbRow>0 ? `${Math.round(d2rec.lbRow)} lb/row · ${Math.round(d2rec.fillRate*100)}% fill` : '';
+  }
+}
+
+// ── Data loading ──────────────────────────────────────────────────────────────
+function setStatus(msg,cls) { const e=$id('data-status'); e.textContent=msg; e.className='ds '+(cls||''); }
+
+async function loadData() {
+  setStatus('loading…','loading');
+  const mode = packDataMode==='db' ? DataSource.getMode() : 'sheets';
+  const [oR,hR,gR] = await Promise.allSettled([
+    DataSource.fetchTable('lettuce_pack_orders', {mode}),
+    DataSource.fetchTable('lettuce_harvest',     {mode}),
+    DataSource.fetchTable('lettuce_grow_plan',   {mode}),
+  ]);
+  if (oR.status==='fulfilled') cachedOrders  = oR.value;
+  if (hR.status==='fulfilled') cachedHarvest = hR.value;
+  if (gR.status==='fulfilled') cachedGrow    = gR.value;
+  const all=[oR,hR,gR], nok=all.every(r=>r.status==='rejected');
+  setStatus(nok?'error':all.every(r=>r.status==='fulfilled')?'loaded':'partial', nok?'error':'loaded');
+  applyDates();
+  loadActualHarvestLb();
+}
+
+function applyDates() {
+  if (d1Date) { populateGrow('d1',d1Date); populateDay('d1',d1Date); }
+  if (d2Date) { populateGrow('d2',d2Date); populateDay('d2',d2Date); }
+  update();
+}
+
+async function loadActualHarvestLb() {
+  if (!d1Date) { cachedActualLb = {}; update(); return; }
+  const dates = [...new Set([
+    isoAddDays(d1Date,-7), isoAddDays(d1Date,-14),
+    isoAddDays(d2Date,-7), isoAddDays(d2Date,-14),
+  ])];
+  try {
+    const client = await DataSource.getClient('prod');
+    const { data, error } = await client
+      .from('grow_harvest_weight')
+      .select('harvest_date,site_id,net_weight')
+      .in('harvest_date', dates)
+      .in('site_id', ['p1','p2','p3','p4','p5','p6','p7'])
+      .eq('is_deleted', false);
+    if (error || !data) return;
+    cachedActualLb = {};
+    data.forEach(r => {
+      cachedActualLb[r.harvest_date] = (cachedActualLb[r.harvest_date] || 0) + (parseFloat(r.net_weight) || 0);
+    });
+    // Auto-set harvest lb inputs from avg(t-14, t-7)
+    ['d1','d2'].forEach(day => {
+      const date = day==='d1' ? d1Date : d2Date;
+      const a14 = cachedActualLb[isoAddDays(date,-14)];
+      const a7  = cachedActualLb[isoAddDays(date,-7)];
+      if (a14 != null && a7 != null) $id(`${day}-hlb`).value = Math.round((a14+a7)/2);
+      else if (a7  != null)          $id(`${day}-hlb`).value = Math.round(a7);
+      else if (a14 != null)          $id(`${day}-hlb`).value = Math.round(a14);
+    });
+  } catch(e) { console.warn('loadActualHarvestLb:', e); }
+  update();
+}
+
+// ── Segment wiring ────────────────────────────────────────────────────────────
+function wireSeg(id, onChange) {
+  const el=$id(id); if (!el) return;
+  el.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      el.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      if (onChange) onChange(btn.dataset.val);
+      update();
+    });
+  });
+}
+
+$id('seg-data-mode').querySelectorAll('button').forEach(b =>
+  b.classList.toggle('active', b.dataset.val===packDataMode));
+wireSeg('seg-data-mode', v => {
+  packDataMode=v; localStorage.setItem('packPlanDataMode',v);
+  cachedOrders=null; cachedHarvest=null; cachedGrow=null; loadData();
+});
+wireSeg('seg-d1-wet', v => { d1Weather = v; });
+wireSeg('seg-d2-wet', v => { d2Weather = v; });
+['cut','fans','heat','speed','cool'].forEach(ctrl => wireSeg(`seg-d1-${ctrl}`));
+wireSeg('seg-dryer-fans');
+
+document.querySelectorAll('input[type=number], input[type=time]').forEach(el => {
+  el.addEventListener('input', update);
+});
+$id('d1-hstart').addEventListener('change', () => {
+  const val = $id('d1-hstart').value;
+  if (!val) return;
+  const [h, m] = val.split(':').map(Number);
+  const ph = new Date(2000,0,1,h+1,m);
+  $id('d1-phstart').value = `${String(ph.getHours()).padStart(2,'0')}:${String(ph.getMinutes()).padStart(2,'0')}`;
+});
+
+// ── Date picker ───────────────────────────────────────────────────────────────
+function onDateChange(iso) {
+  const c = packCycleDates(iso||isoToday());
+  d1Date=c.d1; d2Date=c.d2;
+  $id('d1-plan-hdr').textContent = shortDate(d1Date);
+  $id('d2-plan-hdr').textContent = shortDate(d2Date);
+  $id('d1-sched-hdr').textContent = `Harvest Schedule — D1 · ${shortDate(d1Date)}`;
+  $id('d2-sched-hdr').textContent = `Harvest Schedule — D2 · ${shortDate(d2Date)}`;
+  applyDates();
+  loadActualHarvestLb();
+}
+const dateEl = $id('pack-date');
+dateEl.value = isoToday();
+dateEl.addEventListener('change', () => onDateChange(dateEl.value));
+onDateChange(dateEl.value);
+
+loadData();
+
+// ── Email plan ────────────────────────────────────────────────────────────────
+const GMAIL_CLIENT_ID = '875106546832-p7173k50m8nvhvk1ji880527duribo3v.apps.googleusercontent.com';
+const GMAIL_TO = 'admin@hawaiifarming.com, matt@hawaiifarming.com, eric@hawaiifarming.com, lennyfeder@gmail.com';
+
+function buildEmailBody() {
+  const d1Label = $id('d1-plan-hdr').textContent;
+  const d2Label = $id('d2-plan-hdr').textContent;
+  const d1hlb = numVal('d1-hlb'), d2hlb = numVal('d2-hlb');
+  const segVal = id => $id(id)?.querySelector('button.active')?.dataset.val || '';
+  const segLbl = (id, map) => map[segVal(id)] || segVal(id);
+  const cap = s => s ? s[0].toUpperCase() + s.slice(1) : '—';
+  const r = (s, w) => String(s).padStart(w);
+  const l = (s, w) => String(s).padEnd(w);
+
+  const d1wet = cap(segVal('seg-d1-wet'));
+  const d2wet = cap(segVal('seg-d2-wet'));
+
+  // Orders table
+  let d1TotalCs = 0, d2TotalCs = 0, d1TotalLb = 0, d2TotalLb = 0;
+  const orderRows = SKUS.map(sku => {
+    const s = sku.toLowerCase();
+    const d1cs = numVal(`d1-${s}`), d2cs = numVal(`d2-${s}`);
+    const d1lb = Math.round(d1cs * SKU_LB[sku]), d2lb = Math.round(d2cs * SKU_LB[sku]);
+    d1TotalCs += d1cs; d2TotalCs += d2cs; d1TotalLb += d1lb; d2TotalLb += d2lb;
+    return l(sku,5) + r(d1cs,6) + r(d1lb+'lb',8) + '   ' + r(d2cs,6) + r(d2lb+'lb',8);
+  });
+  const orderHdr = l('SKU',5) + r('Cs',6) + r('Lb',8) + '   ' + r('Cs',6) + r('Lb',8);
+  const orderTot = l('Total',5) + r(d1TotalCs,6) + r(d1TotalLb+'lb',8) + '   ' + r(d2TotalCs,6) + r(d2TotalLb+'lb',8);
+  const orderTable = [orderHdr, ...orderRows, orderTot].join('\n');
+
+  // Pounds section
+  const C = 12;
+  const pndHdr = l('',10)        + r('D1',C)                              + r('D2',C);
+  const pndHvt = l('Harvest',10) + r(fmt(d1hlb)+' lb',C)                  + r(fmt(d2hlb)+' lb',C);
+  const pndOrd = l('Orders',10)  + r($id('d1-order-total').textContent+' lb',C) + r($id('d2-order-total').textContent+' lb',C);
+  const pndExt = l('Extra',10)   + r($id('d1-extra').textContent+' lb',C) + r($id('d2-extra').textContent+' lb',C);
+  const pndPct = l('Needed',10)  + r($id('d1-pct-needed').textContent,C)  + r($id('d2-pct-needed').textContent,C);
+  const pndWet = l('Wetness',10) + r(d1wet,C)                             + r(d2wet,C);
+
+  return `Lettuce Pack Plan
+
+D1: ${d1Label}  |  D2: ${d2Label}
+
+POUNDS
+${pndHdr}
+${pndHvt}
+${pndOrd}
+${pndExt}
+${pndPct}
+${pndWet}
+
+ORDERS
+${orderTable}
+
+OPERATIONS
+  Harvest Start:    ${$id('d1-hstart').value}
+  PH Start:         ${$id('d1-phstart').value}
+  Cut Height:       ${segVal('seg-d1-cut')}
+  Heater On:        ${segLbl('seg-d1-heat',{y:'Yes',n:'No'})}
+  Dryer Fans:       ${segLbl('seg-dryer-fans',{y:'Yes',n:'No'})}
+  Dryer/GH Speed:   ${segLbl('seg-d1-speed',{med:'Normal',lo:'Slow'})}
+  PH Fans:          ${segLbl('seg-d1-fans',{y:'Yes',n:'No'})}
+  Cold Room Store:  ${segLbl('seg-d1-cool',{y:'Yes',n:'No'})}`;
+}
+
+async function sendPackPlanEmail() {
+  const btn = $id('email-btn');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GMAIL_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/gmail.send',
+      callback: async tr => {
+        if (tr.error) { alert('Auth error: ' + tr.error); btn.textContent='Email Plan'; btn.disabled=false; return; }
+        btn.textContent = 'Sending…';
+        const d1Label = $id('d1-plan-hdr').textContent, d2Label = $id('d2-plan-hdr').textContent;
+        const subject = `Pack Plan — ${d1Label} / ${d2Label}`;
+        const body = buildEmailBody();
+        const msg = `To: ${GMAIL_TO}\r\nSubject: =?utf-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${body}`;
+        const bytes = new TextEncoder().encode(msg);
+        let bin = ''; bytes.forEach(b => bin += String.fromCharCode(b));
+        const raw = btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+        const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+          method:'POST',
+          headers:{'Authorization':'Bearer '+tr.access_token,'Content-Type':'application/json'},
+          body: JSON.stringify({raw})
+        });
+        if (resp.ok) {
+          btn.textContent = 'Sent ✓';
+          setTimeout(() => { btn.textContent='Email Plan'; btn.disabled=false; }, 3000);
+        } else {
+          const e = await resp.json();
+          alert('Send failed: ' + (e.error?.message || resp.status));
+          btn.textContent='Email Plan'; btn.disabled=false;
+        }
+      }
+    });
+    tokenClient.requestAccessToken({prompt:''});
+  } catch(e) { alert('Error: ' + e.message); btn.textContent='Email Plan'; btn.disabled=false; }
+}
+
+fetch('',{method:'HEAD'}).then(r=>{
+  const d=new Date(r.headers.get('last-modified'));
+  if(!d||isNaN(d)) return;
+  const hst=new Date(d.getTime()-10*60*60*1000);
+  const p=n=>String(n).padStart(2,'0');
+  $id('version').textContent=`${p(hst.getUTCMonth()+1)}-${p(hst.getUTCDate())} ${p(hst.getUTCHours())}:${p(hst.getUTCMinutes())}`;
+}).catch(()=>{});
+</script>
+</body>
+</html>

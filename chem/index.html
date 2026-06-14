@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chemistry Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="../lib/data-source.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
+  #header { background: #16213e; padding: 12px 24px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #0f3460; flex-wrap: wrap; }
+  #header h1 { font-size: 1.3rem; color: #4ecca3; }
+  #loading { display: flex; align-items: center; justify-content: center; height: 80vh; font-size: 1.2rem; color: #4ecca3; }
+  .controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .controls label { font-size: 0.85rem; color: #aaa; }
+  .controls select { background: #0f3460; color: #e0e0e0; border: 1px solid #4ecca3; border-radius: 4px; padding: 4px 8px; font-size: 0.85rem; }
+  .controls select:focus { outline: none; border-color: #4ecca3; }
+  #info { font-size: 0.8rem; color: #aaa; margin-left: 8px; }
+  .controls input[type="date"] { background: #0f3460; color: #e0e0e0; border: 1px solid #4ecca3; border-radius: 4px; padding: 4px 8px; font-size: 0.85rem; }
+  .controls input[type="date"]:focus { outline: none; border-color: #4ecca3; }
+  #pondButtons { display: flex; gap: 4px; flex-wrap: wrap; }
+  .pond-btn { padding: 2px 10px; border-radius: 4px; border: 1px solid; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: opacity 0.15s; }
+  .pond-btn.off { opacity: 0.3; }
+  #grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 12px; }
+  .chart-card { background: #16213e; border-radius: 8px; padding: 12px; }
+  .chart-card h3 { font-size: 0.95rem; color: #ccc; margin-bottom: 4px; }
+  .chart-card canvas { width: 100% !important; height: 220px !important; }
+  @media (max-width: 1000px) { #grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { #grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div id="header">
+  <div class="controls">
+    <label>Variety: <select id="varietySelect"><option value="">Loading…</option></select></label>
+    <label>Seed: <select id="seedSelect"><option value="">All</option></select></label>
+    <label>From: <input type="date" id="dateFrom"></label>
+    <label>To: <input type="date" id="dateTo"></label>
+    <div id="pondButtons"></div>
+    <span class="pond-btn" id="yieldBtn" style="color:#fff;border-color:#fff;">Yields</span>
+    <span id="info"></span>
+    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;margin-left:8px;">04-18 01:15</span>
+  </div>
+</div>
+<div id="loading">Loading data…</div>
+<div id="grid" style="display:none;"></div>
+
+<script>
+const CHEM_SHEET = '1XwavjRPi3xMJClslOjuC_4ONrbdl8l_qw0_JallE2c0';
+const GROW_SHEET = '1VtEecYn-W1pbnIU1hRHfxIpkH2DtK7hj0CpcpiLoziM';
+const GROW_TAB = 'grow_L_seeding';
+
+const ELEMENT_ORDER = ['EC','pH','N','NH4','P','K','Ca','Mg','S','Fe','Mn','B','Cu','Zn','Mo','Na'];
+const POND_COLORS = {
+  P1: '#e74c3c', P2: '#3498db', P3: '#27ae60', P4: '#f39c12',
+  P5: '#7f8c8d', P6: '#e84393', P7: '#00cec9'
+};
+
+let chemData = [], seedingData = [];
+let charts = {};
+let activePonds = new Set();
+let currentPondRanges = {};
+let showYields = false;
+
+// --- Data loading (JSONP via gviz) ---
+function fetchSheet(sheetId, tabOrGid, isTab) {
+  return new Promise((resolve, reject) => {
+    const cbName = '_cb_' + Math.random().toString(36).slice(2, 10);
+    let url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json;responseHandler:${cbName}`;
+    if (isTab) url += `&sheet=${encodeURIComponent(tabOrGid)}`;
+    else url += `&gid=${tabOrGid}`;
+    window[cbName] = function(resp) {
+      delete window[cbName];
+      if (resp.status === 'error') { reject(resp.errors); return; }
+      resolve(parseGviz(resp.table));
+    };
+    const s = document.createElement('script');
+    s.src = url;
+    s.onerror = () => { delete window[cbName]; s.remove(); reject('Network error'); };
+    document.head.appendChild(s);
+  });
+}
+
+function parseGviz(table) {
+  const cols = table.cols.map(c => c.label);
+  return table.rows.map(r => {
+    const obj = {};
+    r.c.forEach((cell, i) => {
+      const col = cols[i];
+      if (!col) return;
+      if (!cell || cell.v == null) { obj[col] = ''; return; }
+      if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
+        const m = cell.v.match(/Date\((\d+),(\d+),(\d+)/);
+        if (m) obj[col] = new Date(+m[1], +m[2], +m[3]);
+        else obj[col] = cell.f || cell.v;
+      } else {
+        obj[col] = cell.v;
+      }
+    });
+    return obj;
+  });
+}
+
+function parseDate(v) {
+  if (v instanceof Date) return v;
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+
+// --- Build UI ---
+function populateVarieties() {
+  const sel = document.getElementById('varietySelect');
+  const names = [...new Set(seedingData.map(r => r.variety || '').filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">— Select variety —</option>' + names.map(n => `<option value="${n}">${n}</option>`).join('');
+  sel.onchange = () => onVarietyChange(sel.value);
+  document.getElementById('dateFrom').onchange = () => redraw();
+  document.getElementById('dateTo').onchange = () => redraw();
+  const yBtn = document.getElementById('yieldBtn');
+  yBtn.onclick = () => { showYields = !showYields; yBtn.classList.toggle('off', !showYields); redraw(); };
+  yBtn.classList.add('off');
+  // Default to GA
+  if (names.includes('GA')) { sel.value = 'GA'; onVarietyChange('GA'); }
+}
+
+function onVarietyChange(variety) {
+  const btnContainer = document.getElementById('pondButtons');
+  btnContainer.innerHTML = '';
+  const seedSel = document.getElementById('seedSelect');
+  if (!variety) { activePonds.clear(); currentPondRanges = {}; seedSel.innerHTML = '<option value="">All</option>'; redraw(); return; }
+  // Populate seed dropdown filtered by variety
+  const seeds = [...new Set(seedingData.filter(r => (r.variety || '') === variety).map(r => r.seedname || '').filter(Boolean))].sort();
+  seedSel.innerHTML = '<option value="">All</option>' + seeds.map(n => `<option value="${n}">${n}</option>`).join('');
+  seedSel.onchange = () => onSeedOrVarietyChange();
+  onSeedOrVarietyChange();
+}
+
+function onSeedOrVarietyChange() {
+  const variety = document.getElementById('varietySelect').value;
+  const seed = document.getElementById('seedSelect').value;
+  const btnContainer = document.getElementById('pondButtons');
+  btnContainer.innerHTML = '';
+  if (!variety) return;
+  currentPondRanges = getPondDateRanges(variety, seed);
+  const ponds = Object.keys(currentPondRanges).sort();
+  activePonds = new Set(ponds);
+  // Set date range to overall min/max
+  const dateRange = getOverallDateRange(currentPondRanges);
+  const toISO = d => d ? d.toISOString().slice(0, 10) : '';
+  document.getElementById('dateFrom').value = toISO(dateRange.min);
+  document.getElementById('dateTo').value = toISO(dateRange.max);
+  // Create pond toggle buttons
+  ponds.forEach(pond => {
+    const btn = document.createElement('span');
+    btn.className = 'pond-btn';
+    btn.textContent = pond;
+    btn.style.color = POND_COLORS[pond] || '#999';
+    btn.style.borderColor = POND_COLORS[pond] || '#999';
+    btn.onclick = () => {
+      if (activePonds.has(pond)) activePonds.delete(pond); else activePonds.add(pond);
+      btn.classList.toggle('off', !activePonds.has(pond));
+      redraw();
+    };
+    btnContainer.appendChild(btn);
+  });
+  redraw();
+}
+
+function redraw() {
+  renderCharts(document.getElementById('varietySelect').value);
+}
+
+function getPondDateRanges(variety, seed) {
+  const ranges = {};
+  for (const row of seedingData) {
+    const v = row.variety || '';
+    if (v !== variety) continue;
+    if (seed && (row.seedname || '') !== seed) continue;
+    const pond = (row.pond || '').toUpperCase();
+    if (!pond.startsWith('P')) continue;
+    const start = parseDate(row.ponddate);
+    const end = parseDate(row.harvestdate) || parseDate(row.expectedharvestdate);
+    if (!start) continue;
+    if (!ranges[pond]) ranges[pond] = [];
+    ranges[pond].push({ start, end: end || new Date() });
+  }
+  return ranges;
+}
+
+function filterChemData(pondRanges) {
+  // Filter chemistry data to only include rows for ponds in ranges and within date ranges
+  const filtered = [];
+  for (const row of chemData) {
+    const pond = (row.site_name || '').toUpperCase();
+    const ranges = pondRanges[pond];
+    if (!ranges) continue;
+    const date = parseDate(row.sample_date);
+    if (!date) continue;
+    const inRange = ranges.some(r => date >= r.start && date <= r.end);
+    if (inRange) filtered.push({ ...row, _date: date, _pond: pond });
+  }
+  return filtered;
+}
+
+function getOverallDateRange(pondRanges) {
+  let min = null, max = null;
+  for (const ranges of Object.values(pondRanges)) {
+    for (const r of ranges) {
+      if (!min || r.start < min) min = r.start;
+      const e = r.end || new Date();
+      if (!max || e > max) max = e;
+    }
+  }
+  return { min, max };
+}
+
+function fmtLabel(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+// Build a lookup: pond+date → {variety, boards} from seeding data
+function buildSeedingLookup(variety, seed) {
+  const lookup = {};
+  for (const row of seedingData) {
+    if ((row.variety || '') !== variety) continue;
+    if (seed && (row.seedname || '') !== seed) continue;
+    const pond = (row.pond || '').toUpperCase();
+    const start = parseDate(row.ponddate);
+    const end = parseDate(row.harvestdate) || parseDate(row.expectedharvestdate) || new Date();
+    const boards = row.boardsperpond || '';
+    const seedname = row.seedname || '';
+    const lbPerBoard = parseFloat(row.poundsperboard);
+    const harvestDays = parseFloat(row.harvestday);
+    let yieldVal = null;
+    if (!isNaN(lbPerBoard) && !isNaN(harvestDays) && harvestDays > 0) {
+      yieldVal = Math.round(lbPerBoard * 365 / harvestDays / 6.18 * 10) / 10;
+    }
+    if (!start) continue;
+    if (!lookup[pond]) lookup[pond] = [];
+    lookup[pond].push({ start, end, seedname, boards, yieldVal, lbPerBoard, harvestDays });
+  }
+  return lookup;
+}
+
+function getSeedingInfo(lookup, pond, dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const entries = lookup[pond] || [];
+  for (const e of entries) {
+    if (d >= e.start && d <= e.end) return e;
+  }
+  return null;
+}
+
+function renderCharts(variety) {
+  const grid = document.getElementById('grid');
+  const info = document.getElementById('info');
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+  grid.innerHTML = '';
+
+  if (!variety) { info.textContent = ''; return; }
+
+  const ponds = [...activePonds].sort();
+  if (ponds.length === 0) { info.textContent = 'No ponds selected.'; return; }
+
+  // Filter pondRanges to only active ponds
+  const pondRanges = {};
+  ponds.forEach(p => { if (currentPondRanges[p]) pondRanges[p] = currentPondRanges[p]; });
+
+  // Apply date range filter
+  const fromVal = document.getElementById('dateFrom').value;
+  const toVal = document.getElementById('dateTo').value;
+  const fromDate = fromVal ? new Date(fromVal + 'T00:00:00') : null;
+  const toDate = toVal ? new Date(toVal + 'T00:00:00') : null;
+
+  let filtered = filterChemData(pondRanges);
+  if (fromDate) filtered = filtered.filter(r => r._date >= fromDate);
+  if (toDate) filtered = filtered.filter(r => r._date <= toDate);
+
+  if (filtered.length === 0) { info.textContent = 'No chemistry data for selection.'; return; }
+  info.textContent = '';
+
+  const seed = document.getElementById('seedSelect').value;
+  const seedingLookup = buildSeedingLookup(variety, seed);
+
+  const allDatesSet = new Set();
+  const elementsSet = new Set();
+  filtered.forEach(r => {
+    if (r._date) allDatesSet.add(r._date.toISOString().slice(0, 10));
+    if (r.nutrient) elementsSet.add(r.nutrient);
+  });
+  const allDateStrs = [...allDatesSet].sort();
+  const labels = allDateStrs.map(s => { const d = new Date(s + 'T00:00:00'); return fmtLabel(d); });
+  const elements = [...elementsSet].sort((a, b) => {
+    const ai = ELEMENT_ORDER.indexOf(a), bi = ELEMENT_ORDER.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
+
+  for (const elem of elements) {
+    const card = document.createElement('div');
+    card.className = 'chart-card';
+    card.innerHTML = `<h3>${elem} Levels</h3><canvas id="chart-${elem}"></canvas>`;
+    grid.appendChild(card);
+
+    const elemRows = filtered.filter(r => (r.nutrient || '') === elem);
+
+    const datasets = [];
+    for (const pond of ponds) {
+      const dateMap = {};
+      elemRows
+        .filter(r => r._pond === pond)
+        .forEach(r => {
+          const v = parseFloat(r.result);
+          if (!isNaN(v)) dateMap[r._date.toISOString().slice(0, 10)] = v;
+        });
+      const hasData = allDateStrs.some(ds => dateMap[ds] !== undefined);
+      if (!hasData) continue;
+      datasets.push({
+        label: pond,
+        data: allDateStrs.map(ds => dateMap[ds] !== undefined ? dateMap[ds] : null),
+        borderColor: POND_COLORS[pond] || '#999',
+        backgroundColor: POND_COLORS[pond] || '#999',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0,
+        fill: false,
+        spanGaps: true,
+        yAxisID: 'y'
+      });
+    }
+
+    // Add yield datasets on right y-axis if enabled
+    if (showYields) {
+      for (const pond of ponds) {
+        const entries = seedingLookup[pond] || [];
+        const yieldData = allDateStrs.map(ds => {
+          const d = new Date(ds + 'T00:00:00');
+          for (const e of entries) {
+            if (d >= e.start && d <= e.end && e.yieldVal != null) return e.yieldVal;
+          }
+          return null;
+        });
+        const hasData = yieldData.some(v => v !== null);
+        if (!hasData) continue;
+        datasets.push({
+          label: pond + ' yield',
+          data: yieldData,
+          borderColor: POND_COLORS[pond] || '#999',
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderDash: [4, 3],
+          pointRadius: 0,
+          tension: 0,
+          fill: false,
+          spanGaps: true,
+          yAxisID: 'y1'
+        });
+      }
+    }
+
+    const scales = {
+      x: {
+        ticks: {
+          color: '#888',
+          maxTicksLimit: 10,
+          callback: function(val, idx) {
+            const ds = allDateStrs[idx];
+            if (!ds) return '';
+            const d = new Date(ds + 'T00:00:00');
+            const mm = String(d.getMonth()+1).padStart(2,'0');
+            const yy = String(d.getFullYear()).slice(2);
+            // Show label on first tick and every ~3 months
+            if (idx === 0) return mm + '-' + yy;
+            const prev = allDateStrs[idx - 1];
+            const pd = new Date(prev + 'T00:00:00');
+            if (d.getMonth() !== pd.getMonth() || d.getFullYear() !== pd.getFullYear()) {
+              const totalMonths = allDateStrs.length > 20 ? 3 : 2;
+              const firstD = new Date(allDateStrs[0] + 'T00:00:00');
+              const monthsSinceStart = (d.getFullYear() - firstD.getFullYear()) * 12 + d.getMonth() - firstD.getMonth();
+              if (monthsSinceStart % totalMonths === 0) return mm + '-' + yy;
+            }
+            return '';
+          },
+          autoSkip: false,
+          maxRotation: 0
+        },
+        grid: { display: false }
+      },
+      y: {
+        position: 'left',
+        ticks: { color: '#888', maxTicksLimit: 5 },
+        grid: { color: 'rgba(255,255,255,0.05)' }
+      }
+    };
+    if (showYields) {
+      scales.y1 = {
+        position: 'right',
+        title: { display: true, text: 'lb/sf/yr', color: '#888', font: { size: 10 } },
+        ticks: { color: '#888', maxTicksLimit: 5 },
+        grid: { display: false }
+      };
+    }
+
+    const ctx = document.getElementById(`chart-${elem}`).getContext('2d');
+    charts[elem] = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { color: '#aaa', usePointStyle: true, pointStyle: 'circle', padding: 12, font: { size: 11 } }
+          },
+          tooltip: {
+            callbacks: {
+              title: function(items) {
+                if (!items.length) return '';
+                return allDateStrs[items[0].dataIndex] || '';
+              },
+              afterBody: function(items) {
+                if (!items.length) return '';
+                const dateStr = allDateStrs[items[0].dataIndex];
+                const lines = [];
+                const seen = new Set();
+                items.forEach(item => {
+                  const pond = item.dataset.label.replace(' yield', '');
+                  if (seen.has(pond)) return;
+                  seen.add(pond);
+                  const si = getSeedingInfo(seedingLookup, pond, dateStr);
+                  if (si) {
+                    let detail = `${pond}: ${si.seedname} (${si.boards} bds`;
+                    if (!isNaN(si.lbPerBoard)) detail += `, ${si.lbPerBoard} lb/bd`;
+                    if (!isNaN(si.harvestDays)) detail += `, ${si.harvestDays}d`;
+                    detail += ')';
+                    lines.push(detail);
+                  }
+                });
+                return lines.length ? ['', '—', ...lines] : '';
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
+// --- Init ---
+// Chem + seeding fetch from sheets directly. No Supabase chemistry table
+// exists yet, and grow_lettuce_seed_batch is missing the pond/seed-name/
+// expected-harvest fields this dashboard needs. The parent portal pins this
+// iframe to ?src=sheets regardless of the global mode.
+(async function init() {
+  try {
+    const [chem, seeding] = await Promise.all([
+      fetchSheet(CHEM_SHEET, '0', false),
+      fetchSheet(GROW_SHEET, GROW_TAB, true)
+    ]);
+    chemData = chem;
+    seedingData = seeding;
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('grid').style.display = 'grid';
+    populateVarieties();
+  } catch (e) {
+    document.getElementById('loading').textContent = 'Error loading data: ' + e;
+    console.error(e);
+  }
+})();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Targets</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-dragdata@2.3.0/dist/chartjs-plugin-dragdata.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root { --bg:#1a1a2e; --bg2:#16213e; --bg3:#0f3460; --border:#2a3a5e; --text:#e0e0e0; --text2:#888; --accent:#4ecca3; --grid:rgba(255,255,255,0.05); --xborder:rgba(255,255,255,0.2); }
+body.light { --bg:#f0f2f5; --bg2:#ffffff; --bg3:#e8ecf0; --border:#d0d5dd; --text:#1a1a2e; --text2:#666; --accent:#0a8a64; --grid:rgba(0,0,0,0.06); --xborder:rgba(0,0,0,0.15); }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); }
+#header { background:var(--bg2); padding:12px 24px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--bg3); position:sticky; top:0; z-index:100; }
+#header h1 { font-size:1.3rem; color:var(--accent); }
+#header .info { font-size:0.8rem; color:var(--text2); }
+#loading { display:flex; align-items:center; justify-content:center; height:80vh; font-size:1.2rem; color:var(--accent); }
+#main { padding:16px; display:none; }
+.section-header { font-size:1.05rem; color:var(--accent); margin:24px 0 8px; padding-left:4px; display:flex; align-items:center; gap:16px; }
+.section-header:first-child { margin-top:0; }
+.section-legend { display:flex; gap:12px; font-size:0.8rem; color:var(--text2); }
+.section-legend .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; vertical-align:middle; }
+.grid { display:grid; gap:12px; }
+.cols-2 { grid-template-columns:repeat(2,1fr); }
+.cols-3 { grid-template-columns:repeat(3,1fr); }
+.chart-box { background:var(--bg2); border-radius:8px; padding:12px; height:260px; border:1px solid var(--border); }
+.chart-box.split { height:250px; display:flex; flex-direction:column; padding-bottom:0; }
+.chart-title { text-align:center; font-size:0.85rem; font-weight:600; color:var(--text); padding:4px 0 0; }
+.chart-box.split .chart-top { flex:5; min-height:0; border-bottom:1px solid var(--border); position:relative; overflow:hidden; }
+.chart-box.split .chart-btm { flex:3; min-height:0; position:relative; overflow:hidden; }
+@media(max-width:900px) { .cols-2,.cols-3 { grid-template-columns:1fr; } .chart-box { height:240px; } }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Targets</h1>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <button onclick="toggleTheme()" style="padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer">☀/🌙</button>
+    <button id="editBtn" onclick="toggleEdit()" style="padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer">Edit Budget</button>
+    <button id="saveBtn" onclick="saveBudget()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#4ecca3;border:1px solid #4ecca3;border-radius:4px;cursor:pointer">Save Budget</button>
+    <span class="info" id="status">Loading...</span>
+  </div>
+</div>
+
+<div id="loading">
+  <div style="text-align:center">
+    <div id="loadText">Loading budget data...</div>
+    <div style="width:300px;height:6px;background:#0f3460;border-radius:3px;margin:12px auto 0">
+      <div id="loadBar" style="width:0%;height:100%;background:#4ecca3;border-radius:3px;transition:width 0.3s"></div>
+    </div>
+  </div>
+</div>
+
+<div id="main">
+  <div class="section-header">Pounds per Day
+    <div class="section-legend"><span><span class="dot" style="background:#00cc00"></span>Grown</span><span><span class="dot" style="background:#0066ff"></span>Sold</span><span><span class="dot" style="background:#ff0000;opacity:0.6"></span>Bdg lb</span><span style="color:#666">|</span><span><span class="dot" style="background:#888"></span>Unsold</span></div>
+  </div>
+  <div id="lbdayGrid" class="grid cols-3"></div>
+  <div class="section-header">Cases by Product
+    <div class="section-legend"><span><span class="dot" style="background:#ff0000"></span>Bdg26</span><span><span class="dot" style="background:#0066ff"></span>Act26</span><span id="act25Toggle" onclick="toggle25()" style="cursor:pointer;opacity:0.4"><span class="dot" style="background:rgba(0,204,0,0.5)"></span>Act25</span><span style="color:#666">|</span><span><span class="dot" style="background:linear-gradient(to right, #4ecca3 50%, #e74c3c 50%)"></span>± Budget</span></div>
+  </div>
+  <div id="productGrid"></div>
+  <div id="summaryGrid" class="grid cols-3" style="margin-top:12px"></div>
+</div>
+
+<script>
+// --- Constants ---
+const PRODUCTS = ['KW','KR','JW','JR','EF','LW','LR','LF','WR','WF','AR','AF'];
+
+const LB_PER_CASE = {KW:16,KR:12,KF:12,JW:14,JR:14,JF:14,EF:15,LW:10.5,LR:2.25,LF:10,WR:2.25,WF:10,AR:2.25,AF:10};
+
+const CATEGORIES = {
+  Keiki:['KW','KR','KF'], Japanese:['JW','JR','JF'], English:['EF'],
+  Lettuce:['LW','LR','LF'], Watercress:['WR','WF'], Arugula:['AR','AF']
+};
+const VARIETY_TO_CAT = {K:'Keiki',J:'Japanese',E:'English',L:'Lettuce',W:'Watercress',A:'Arugula'};
+
+const SUMMARY_CHARTS = [
+  {title:'Keikis', codes:['KW','KR','KF']},
+  {title:'Japanese', codes:['JW','JR','JF']},
+  {title:'Greens', codes:['LW','LR','LF']}
+];
+
+// --- Budget data (2026, weeks 1-52) ---
+const BUDGET = {
+  KW:[1300,1300,1300,1300,1400,1400,1400,1400,1400,1400,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1550,1300,1300,1300,1300,1300],
+  KR:[950,950,950,950,1050,1050,1050,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1500,1500,1500,1500,1500,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,1150,950,950,950,950,950],
+  KF:[25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25,25],
+  JW:[550,550,550,550,550,550,550,550,550,550,550,550,550,550,550,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,800,550,550,550,550,550],
+  JR:[450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450,450],
+  JF:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  EF:[125,125,125,125,125,125,125,125,125,125,125,125,125,125,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,275,125,125,125,125,125,125,125],
+  LW:[550,550,550,550,550,550,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,510,510,510,510,510,510],
+  LR:[200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,225,225,225,225,225,225,225,225,225,225,250,250,250,250,250,250,250,250,250,250,275,275,275,275,275,275,275,275,275,275,300,300,300,300,300,300],
+  LF:[65,65,65,65,65,65,75,75,75,75,75,75,75,75,75,75,85,85,85,85,85,85,85,85,85,85,95,95,95,95,95,95,95,95,95,95,110,110,110,110,110,110,110,110,110,110,125,125,125,125,125,125],
+  WR:[125,125,125,125,125,125,150,150,150,150,150,150,150,150,150,150,175,175,175,175,175,175,175,175,175,175,200,200,200,200,200,200,200,200,200,200,210,210,210,210,210,210,210,210,210,210,225,225,225,225,225,225],
+  WF:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  AR:[25,25,25,25,25,25,50,50,50,50,50,50,50,50,50,50,100,100,100,100,100,100,100,100,100,100,150,150,150,150,150,150,150,150,150,150,200,200,200,200,200,200,200,200,200,200,225,225,225,225,225,225],
+  AF:[10,10,10,10,10,10,15,15,15,15,15,15,15,15,15,15,20,20,20,20,20,20,20,20,20,20,30,30,30,30,30,30,30,30,30,30,40,40,40,40,40,40,40,40,40,40,50,50,50,50,50,50]
+};
+
+// --- Week helpers (Saturday-to-Friday weeks) ---
+// Week 2 starts Sat Jan 3 2026, week 1 (Jan 1-2) excluded
+// Returns {year, week} for any date
+function satFriWeek(d) {
+  if (!(d instanceof Date)) d = new Date(d);
+  if (isNaN(d)) return { year: 0, week: 0 };
+  const yr = d.getFullYear();
+  // Jan 1 of that year — find first Saturday on or after Jan 1
+  const jan1 = new Date(yr, 0, 1);
+  const jan1Day = jan1.getDay(); // 0=Sun..6=Sat
+  // First Saturday: if Jan 1 is Sat(6) use it, else next Sat
+  const firstSat = new Date(yr, 0, 1 + (6 - jan1Day + 7) % 7);
+  // For 2026: Jan 1=Thu, firstSat = Jan 3
+  const diffMs = d - firstSat;
+  if (diffMs < 0) return { year: yr, week: 1 }; // before first Saturday = week 1
+  const week = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000)) + 2;
+  return { year: yr, week };
+}
+
+function currentWeek() {
+  return satFriWeek(new Date()).week;
+}
+
+function maxWeek() {
+  const now = new Date();
+  const hst = new Date(now.getTime() - 10 * 60 * 60 * 1000);
+  const day = hst.getUTCDay(), hour = hst.getUTCHours();
+  const cur = satFriWeek(hst).week;
+  // Week runs Sat-Fri. Show a week only after it ends (Fri 3pm HST).
+  // On Fri after 3pm: cur = this week (ends today) → show it
+  // On Sat/Sun: cur = new week (just started) → show cur-1 (last completed week)
+  // Mon-Thu: cur = this week (in progress) → show cur-1
+  // Fri before 3pm: cur = this week (in progress) → show cur-1
+  return (day === 5 && hour >= 15) ? cur : cur - 1;
+}
+const MAX_WEEK = maxWeek();
+
+// --- Data loading (from pre-fetched budget-data.json) ---
+// Run: node sales/fetch-budget-data.js to refresh
+
+// --- Data processing ---
+let actuals = {}; // actuals[product][year][week] = cases
+let grownLbDay = {}; // grownLbDay[category][week] = lb/day (2026 only)
+let show25 = false;
+let allCharts = [];
+
+function processInvoices(rows) {
+  actuals = {};
+  rows.forEach(r => {
+    const pc = r.p, cases = r.c || 0;
+    const d = new Date(r.d);
+    if (!pc || isNaN(d)) return;
+    const {year: yr, week: wk} = satFriWeek(d);
+    if (!yr || !wk) return;
+    if (!actuals[pc]) actuals[pc] = {};
+    if (!actuals[pc][yr]) actuals[pc][yr] = {};
+    actuals[pc][yr][wk] = (actuals[pc][yr][wk] || 0) + cases;
+  });
+}
+
+function processGrow(cukeRows, lettuceRows) {
+  grownLbDay = {};
+  Object.keys(CATEGORIES).forEach(c => { grownLbDay[c] = {}; });
+
+  function toDate(v) {
+    if (v instanceof Date) return v;
+    if (typeof v === 'string') { const d = new Date(v); return isNaN(d) ? null : d; }
+    return null;
+  }
+
+  // Cucumber: {d, v, g, lb} — grade 1 only
+  cukeRows.forEach(r => {
+    if (String(r.g) !== '1') return;
+    const cat = VARIETY_TO_CAT[(r.v || '').charAt(0).toUpperCase()];
+    if (!cat) return;
+    const hd = toDate(r.d);
+    if (!hd) return;
+    const lb = parseFloat(r.lb) || 0;
+    if (lb <= 0) return;
+    const wk = satFriWeek(hd).week;
+    grownLbDay[cat][wk] = (grownLbDay[cat][wk] || 0) + lb;
+  });
+
+  // Lettuce: {d, v, lb} — GA=Arugula, WC=Watercress, else Lettuce
+  lettuceRows.forEach(r => {
+    const hd = toDate(r.d);
+    if (!hd) return;
+    const lb = parseFloat(r.lb) || 0;
+    if (lb <= 0) return;
+    const v = (r.v || '').toUpperCase();
+    const cat = v === 'GA' ? 'Arugula' : v === 'WC' ? 'Watercress' : 'Lettuce';
+    const wk = satFriWeek(hd).week;
+    grownLbDay[cat][wk] = (grownLbDay[cat][wk] || 0) + lb;
+  });
+
+  // Convert weekly totals to lb/day (÷7)
+  Object.keys(grownLbDay).forEach(cat => {
+    Object.keys(grownLbDay[cat]).forEach(wk => {
+      grownLbDay[cat][wk] = Math.round(grownLbDay[cat][wk] / 7);
+    });
+  });
+}
+
+// --- Chart rendering ---
+// Skip week 1 (Jan 1-2, holiday short week) — start at week 2
+const WEEKS = Array.from({length:51}, (_,i) => i+2);
+
+// Compute Sat-Fri date range for each week
+function weekDateRange(wk) {
+  // Week 2 starts Sat Jan 3 2026
+  const jan1 = new Date(2026, 0, 1);
+  const firstSat = new Date(2026, 0, 1 + (6 - jan1.getDay() + 7) % 7);
+  const sat = new Date(firstSat.getTime() + (wk - 2) * 7 * 24 * 60 * 60 * 1000);
+  const fri = new Date(sat.getTime() + 6 * 24 * 60 * 60 * 1000);
+  const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
+  return `${fmt(sat)}-${fmt(fri)}`;
+}
+const LABELS = WEEKS.map(w => w);
+const WEEK_RANGES = {};
+WEEKS.forEach(w => WEEK_RANGES[w] = weekDateRange(w));
+
+
+// Shared tooltip config: show week range, prevent clipping
+const TOOLTIP_CFG = {
+  callbacks: {
+    title: items => {
+      const wk = WEEKS[items[0].dataIndex];
+      return `Wk ${wk}  (${WEEK_RANGES[wk]})`;
+    }
+  },
+  bodyFont:{size:11}, titleFont:{size:12}
+};
+
+// Bottom sub-chart Y-axis: show only "0" label, zero line, match top chart width
+function makeBtmYScale(data) {
+  // Symmetric range around 0 so zero line is always centered
+  const vals = data.filter(v => v != null).map(Math.abs);
+  const maxAbs = vals.length ? Math.max(...vals, 1) : 1;
+  return {
+    min: -maxAbs, max: maxAbs,
+    ticks:{ color:'#888', font:{size:11}, callback: v => v === 0 ? '0' : '' },
+    grid:{ drawTicks:false, color: ctx => ctx.tick.value === 0 ? 'rgba(255,255,255,0.3)' : 'transparent' },
+    afterFit(axis) { axis.width = 50; }
+  };
+}
+const btmXScale = { ticks:{color:'#888',font:{size:11},maxTicksLimit:13,maxRotation:0}, grid:{display:false}, border:{display:true,color:'rgba(255,255,255,0.2)'} };
+
+function getBdg(codes, w) { return codes.reduce((s,c) => s + (BUDGET[c]?.[w-1] || 0), 0); }
+function getAct(codes, yr, w) { return codes.reduce((s,c) => s + (actuals[c]?.[yr]?.[w] || 0), 0); }
+function cumulate(arr) { let s = 0; return arr.map(v => { s += (v||0); return s; }); }
+
+function renderCasesChart(topCanvas, btmCanvas, title, codes) {
+  const bdg = WEEKS.map(w => getBdg(codes, w));
+  const a26 = WEEKS.map(w => getAct(codes, 2026, w));
+  const a25 = WEEKS.map(w => getAct(codes, 2025, w));
+  const cumBdg = cumulate(bdg);
+  const cumA26 = cumulate(a26);
+  const a26d = a26.map((v,i) => WEEKS[i] <= MAX_WEEK ? v : null);
+  const cumVar = cumA26.map((v,i) => WEEKS[i] <= MAX_WEEK ? v - cumBdg[i] : null);
+
+  const aboveZero = ctx => (ctx.p0.parsed.y >= 0 && ctx.p1.parsed.y >= 0);
+  const yScale = { ticks:{color:'#888',font:{size:11},maxTicksLimit:5}, grid:{color:'rgba(255,255,255,0.05)'}, grace:'10%', afterFit(axis){axis.width=50} };
+
+  const top = new Chart(topCanvas, {
+    type: 'line',
+    data: { labels: LABELS, datasets: [
+      { label:'Bdg26', data:bdg, borderColor:'#ff0000', backgroundColor:'#ff0000', borderWidth:1.5, stepped:'before', pointRadius:0 },
+      { label:'Act26', data:a26d, borderColor:'#0066ff', backgroundColor:'#0066ff', borderWidth:2, pointRadius:0, spanGaps:false },
+      { label:'Act25', data:a25, borderColor:'rgba(0,204,0,0.5)', backgroundColor:'rgba(0,204,0,0.5)', borderWidth:1.5, pointRadius:0, hidden:!show25, year:2025 },
+      { label:'± Budget', data:cumVar, borderWidth:1, pointRadius:0, yAxisID:'y1',
+        fill:{ target:'origin', above:'rgba(78,204,163,0.15)', below:'rgba(231,76,60,0.15)' },
+        spanGaps:false, borderColor:'rgba(78,204,163,0.3)', backgroundColor:'rgba(78,204,163,0.3)',
+        segment:{ borderColor: ctx => aboveZero(ctx) ? 'rgba(78,204,163,0.3)' : 'rgba(231,76,60,0.3)' }
+      },
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false, layout:{padding:{bottom:0}},
+      interaction:{ mode:'index', intersect:false },
+      plugins: {
+        title:{ display:false },
+        legend:{ display:false },
+        tooltip: TOOLTIP_CFG,
+        dragData: false
+      },
+      scales: {
+        x:{ ticks:{display:false}, grid:{display:false} },
+        y: yScale,
+        y1:{ position:'right', ticks:{display:false}, grid:{display:false}, afterFit(axis){axis.width=0} }
+      }
+    }
+  });
+
+  const btm = new Chart(btmCanvas, {
+    type: 'line',
+    data: { labels: LABELS, datasets: [
+      { label:'± Budget', data:cumVar, borderWidth:1.5, pointRadius:0,
+        fill:{ target:'origin', above:'rgba(78,204,163,0.25)', below:'rgba(231,76,60,0.25)' },
+        spanGaps:false, borderColor:'rgba(78,204,163,0.4)', backgroundColor:'rgba(78,204,163,0.4)',
+        segment:{ borderColor: ctx => (ctx.p0.parsed.y >= 0 && ctx.p1.parsed.y >= 0) ? 'rgba(78,204,163,0.4)' : 'rgba(231,76,60,0.4)' }
+      },
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false, layout:{padding:{top:0}},
+      interaction:{ mode:'index', intersect:false },
+      plugins: { legend:{ display:false }, tooltip: TOOLTIP_CFG },
+      scales: { x: btmXScale, y: makeBtmYScale(cumVar) }
+    }
+  });
+
+  // Register product charts for drag editing (single-code charts only)
+  if (codes.length === 1 && PRODUCTS.includes(codes[0])) {
+    productChartMap[codes[0]] = { top, btm };
+  }
+
+  return [top, btm];
+}
+
+function renderLbDayChart(topCanvas, btmCanvas, title, catName) {
+  const codes = CATEGORIES[catName];
+  const sold = WEEKS.map(w => {
+    const lb = codes.reduce((s,c) => s + (actuals[c]?.[2026]?.[w] || 0) * (LB_PER_CASE[c]||0), 0);
+    return w <= MAX_WEEK ? Math.round(lb / 7) : null;
+  });
+  const grown = WEEKS.map(w => w <= MAX_WEEK ? (grownLbDay[catName]?.[w] || 0) : null);
+  const diff = WEEKS.map((w,i) => {
+    if (grown[i] == null || sold[i] == null) return null;
+    return grown[i] - sold[i];
+  });
+
+  const yScale = { ticks:{color:'#888',font:{size:11},maxTicksLimit:5}, grid:{color:'rgba(255,255,255,0.05)'}, grace:'10%', afterFit(axis){axis.width=50} };
+
+  // Budget lb/day = sum of budget cases * lb_per_case / 7 for this category
+  const bdgLb = WEEKS.map(w => {
+    const lb = codes.reduce((s,c) => s + (BUDGET[c]?.[w-1] || 0) * (LB_PER_CASE[c]||0), 0);
+    return Math.round(lb / 7);
+  });
+
+  const top = new Chart(topCanvas, {
+    type: 'line',
+    data: { labels: LABELS, datasets: [
+      { label:'Grown26', data:grown, borderColor:'#00cc00', backgroundColor:'#00cc00', borderWidth:2, pointRadius:0, spanGaps:false },
+      { label:'Sold26', data:sold, borderColor:'#0066ff', backgroundColor:'#0066ff', borderWidth:2, pointRadius:0, spanGaps:false },
+      { label:'Bdg lb', data:bdgLb, borderColor:'#ff0000', backgroundColor:'#ff0000', borderWidth:1, pointRadius:0, borderDash:[4,3], stepped:'before' },
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false, layout:{padding:{bottom:0}},
+      interaction:{ mode:'index', intersect:false },
+      plugins: {
+        title:{ display:false },
+        legend:{ display:false },
+        tooltip: TOOLTIP_CFG
+      },
+      scales: { x:{ ticks:{display:false}, grid:{display:false} }, y: yScale }
+    }
+  });
+
+  const btm = new Chart(btmCanvas, {
+    type: 'line',
+    data: { labels: LABELS, datasets: [
+      { label:'Unsold', data:diff, borderWidth:1.5, pointRadius:0,
+        fill:{ target:'origin', above:'rgba(136,136,136,0.2)', below:'rgba(136,136,136,0.2)' },
+        spanGaps:false, borderColor:'rgba(136,136,136,0.3)', backgroundColor:'rgba(136,136,136,0.3)'
+      },
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false, layout:{padding:{top:0}},
+      interaction:{ mode:'index', intersect:false },
+      plugins: { legend:{ display:false }, tooltip: TOOLTIP_CFG },
+      scales: { x: btmXScale, y: makeBtmYScale(diff) }
+    }
+  });
+
+  return [top, btm];
+}
+
+// --- DOM generation ---
+const PRODUCT_ROWS = [['KW','KR'],['JW','JR','EF'],['LW','LR','LF'],['WR','WF'],['AR','AF']];
+
+
+function createSplitBox(container, id, title) {
+  const box = document.createElement('div');
+  box.className = 'chart-box split';
+  const h = document.createElement('div');
+  h.className = 'chart-title';
+  h.textContent = title || '';
+  const topWrap = document.createElement('div');
+  topWrap.className = 'chart-top';
+  const topCvs = document.createElement('canvas');
+  topCvs.id = id + '_top';
+  topWrap.appendChild(topCvs);
+  const btmWrap = document.createElement('div');
+  btmWrap.className = 'chart-btm';
+  const btmCvs = document.createElement('canvas');
+  btmCvs.id = id + '_btm';
+  btmWrap.appendChild(btmCvs);
+  box.appendChild(h);
+  box.appendChild(topWrap);
+  box.appendChild(btmWrap);
+  container.appendChild(box);
+}
+
+function createProductRows() {
+  const el = document.getElementById('productGrid');
+  PRODUCT_ROWS.forEach(row => {
+    const grid = document.createElement('div');
+    grid.className = 'grid cols-3';
+    grid.style.marginBottom = '12px';
+    row.forEach(code => createSplitBox(grid, 'prod_' + code, code));
+    el.appendChild(grid);
+  });
+}
+
+async function renderAll() {
+  allCharts.forEach(c => c.destroy());
+  allCharts = [];
+
+  const tasks = [];
+  PRODUCTS.forEach(code => tasks.push(() => {
+    allCharts.push(...renderCasesChart(document.getElementById('prod_'+code+'_top'), document.getElementById('prod_'+code+'_btm'), code, [code]));
+  }));
+  Object.keys(CATEGORIES).forEach(cat => tasks.push(() => {
+    allCharts.push(...renderLbDayChart(document.getElementById('lb_'+cat+'_top'), document.getElementById('lb_'+cat+'_btm'), cat, cat));
+  }));
+  SUMMARY_CHARTS.forEach(s => tasks.push(() => {
+    allCharts.push(...renderCasesChart(document.getElementById('sum_'+s.codes[0]+'_top'), document.getElementById('sum_'+s.codes[0]+'_btm'), s.title, s.codes));
+  }));
+
+  // Render in batches to avoid blocking UI
+  for (let i = 0; i < tasks.length; i++) {
+    tasks[i]();
+    if (i % 4 === 3) await new Promise(r => setTimeout(r, 0));
+  }
+}
+
+function toggle25() {
+  show25 = !show25;
+  document.getElementById('act25Toggle').style.opacity = show25 ? '1' : '0.4';
+  allCharts.forEach(chart => {
+    chart.data.datasets.forEach((ds, i) => {
+      if (ds.year === 2025) chart.setDatasetVisibility(i, show25);
+    });
+    chart.update();
+  });
+}
+
+
+// --- Theme ---
+let lightMode = false;
+function toggleTheme() {
+  lightMode = !lightMode;
+  document.body.classList.toggle('light', lightMode);
+  // Re-render charts with new axis colors
+  const tc = lightMode ? '#333' : '#888';
+  const gc = lightMode ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)';
+  const xbc = lightMode ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.2)';
+  allCharts.forEach(chart => {
+    Object.values(chart.options.scales).forEach(s => {
+      if (s.ticks) s.ticks.color = tc;
+      if (s.grid && s.grid.color && typeof s.grid.color === 'string') s.grid.color = gc;
+      if (s.border) s.border.color = xbc;
+    });
+    chart.update();
+  });
+}
+
+// --- Editable Budget ---
+let editMode = false;
+let budgetDirty = false;
+// Track which product charts map to which chart objects
+const productChartMap = {}; // productChartMap[code] = { top, btm }
+
+function toggleEdit() {
+  editMode = !editMode;
+  const btn = document.getElementById('editBtn');
+  btn.textContent = editMode ? 'Stop Editing' : 'Edit Budget';
+  btn.style.borderColor = editMode ? '#4ecca3' : '#555';
+  document.getElementById('saveBtn').style.display = editMode || budgetDirty ? '' : 'none';
+  // Toggle drag and point visibility on product budget lines
+  Object.entries(productChartMap).forEach(([code, charts]) => {
+    const ds = charts.top.data.datasets[0]; // Bdg26
+    ds.pointRadius = editMode ? 4 : 0;
+    ds.pointHoverRadius = editMode ? 6 : 0;
+    ds.pointBackgroundColor = '#ff0000';
+    // Mark which datasets are draggable
+    charts.top.data.datasets.forEach((d, i) => { d.dragData = i === 0 && editMode; });
+    charts.top.options.plugins.dragData = editMode ? {
+      round: 0,
+      dragX: false,
+      onDragEnd(e, datasetIndex, index, value) {
+        if (datasetIndex !== 0) return;
+        BUDGET[code][WEEKS[index] - 1] = Math.round(value);
+        budgetDirty = true;
+        document.getElementById('saveBtn').style.display = '';
+        refreshSummaryAndLb();
+      }
+    } : false;
+    charts.top.update();
+  });
+}
+
+function refreshSummaryAndLb() {
+  // Re-render summary and lb charts with updated budget
+  SUMMARY_CHARTS.forEach(s => {
+    const key = 'sum_' + s.codes[0];
+    const topCvs = document.getElementById(key + '_top');
+    const btmCvs = document.getElementById(key + '_btm');
+    // Find and destroy old charts
+    allCharts = allCharts.filter(c => {
+      if (c.canvas === topCvs || c.canvas === btmCvs) { c.destroy(); return false; }
+      return true;
+    });
+    allCharts.push(...renderCasesChart(topCvs, btmCvs, s.title, s.codes));
+  });
+  // Update lb charts with budget lb line
+  Object.keys(CATEGORIES).forEach(cat => {
+    const key = 'lb_' + cat;
+    const topCvs = document.getElementById(key + '_top');
+    const btmCvs = document.getElementById(key + '_btm');
+    allCharts = allCharts.filter(c => {
+      if (c.canvas === topCvs || c.canvas === btmCvs) { c.destroy(); return false; }
+      return true;
+    });
+    allCharts.push(...renderLbDayChart(topCvs, btmCvs, cat, cat));
+  });
+}
+
+function saveBudget() {
+  // Download updated budget as JSON to commit to repo
+  const output = JSON.stringify(BUDGET, null, 2);
+  const blob = new Blob([output], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'budget-updated.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  budgetDirty = false;
+}
+
+function setProgress(pct, text) {
+  document.getElementById('loadBar').style.width = pct + '%';
+  if (text) document.getElementById('loadText').textContent = text;
+}
+
+// --- Init ---
+async function loadData() {
+  try {
+    setProgress(30, 'Loading data...');
+    const resp = await fetch('budget-data.json');
+    if (!resp.ok) throw new Error('budget-data.json not found — run: node sales/fetch-budget-data.js');
+    const data = await resp.json();
+
+    setProgress(60, 'Processing...');
+    processInvoices(data.invoices);
+    processGrow(data.cukeGrow || [], data.lettuceGrow || []);
+
+    // Build DOM
+    createProductRows();
+    const lbGrid = document.getElementById('lbdayGrid');
+    Object.keys(CATEGORIES).forEach(c => createSplitBox(lbGrid, 'lb_'+c, c));
+    const sumGrid = document.getElementById('summaryGrid');
+    SUMMARY_CHARTS.forEach(s => createSplitBox(sumGrid, 'sum_'+s.codes[0], s.title));
+
+    setProgress(90, 'Rendering charts...');
+    document.getElementById('main').style.display = 'block';
+    await renderAll();
+
+    document.getElementById('loading').style.display = 'none';
+    const dataDate = new Date(data.ts);
+    const pad = n => String(n).padStart(2,'0');
+    const dataAge = `data: ${pad(dataDate.getMonth()+1)}/${pad(dataDate.getDate())} ${pad(dataDate.getHours())}:${pad(dataDate.getMinutes())}`;
+    document.getElementById('status').textContent = `YTD through week ${MAX_WEEK} | ${dataAge}`;
+  } catch(e) {
+    document.getElementById('loadText').textContent = 'Error: ' + e;
+    console.error(e);
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>
