@@ -614,7 +614,19 @@ function renderLettuceTable() {
 
 // ── Load Data ──
 async function loadData() {
-  const invoiceTable = await DataSource.fetchTable('invoices');
+  // Fetch every source concurrently — total time is the slowest single fetch
+  // rather than the sum of all six. The optional FS/PO sources swallow their
+  // own errors (return null) so one bad source can't blank the page.
+  const swallow = (p, name) => p.catch(e => { console.error(name + ' load error:', e); return null; });
+  const [invoiceTable, cukeTable, lettTable, empTable, caTable, poTable] = await Promise.all([
+    DataSource.fetchTable('invoices'),
+    DataSource.fetchTable('cuke_harvest'),
+    DataSource.fetchTable('lettuce_harvest'),
+    swallow(DataSource.fetchTable('fsafe_emp'), 'fsafe_emp'),
+    swallow(DataSource.fetchTable('fsafe_ca'), 'fsafe_ca'),
+    swallow(DataSource.fetchTable('lettuce_pack_orders'), 'lettuce_pack_orders'),
+  ]);
+
   invoiceRows = parseGvizTable(invoiceTable)
     .filter(r => r.CustomerGroup && r.ProductCode !== 'Sales')
     .filter(r => {
@@ -627,7 +639,6 @@ async function loadData() {
     r.Cases = Math.round(r.Cases || 0);
   });
 
-  const cukeTable = await DataSource.fetchTable('cuke_harvest');
   cukeGrowRows = parseGvizTable(cukeTable).filter(r => r._y === 2026);
   cukeGrowRows.forEach(r => {
     r.Greenhouse = r.Greenhouse || '';
@@ -636,7 +647,6 @@ async function loadData() {
     r.GreenhouseNetWeight = r.GreenhouseNetWeight || 0;
   });
 
-  const lettTable = await DataSource.fetchTable('lettuce_harvest');
   lettuceGrowRows = parseGvizTable(lettTable).filter(r => r._y === 2026);
   lettuceGrowRows.forEach(r => {
     r.Pond = r.Pond || '';
@@ -646,20 +656,11 @@ async function loadData() {
     r.GreenhouseNetWeight = r.GreenhouseNetWeight || 0;
   });
 
-  // ── Food safety + POs (default to sheets via per-source config) ──
-  // Each is wrapped so one bad source doesn't blank the whole page.
-  try {
-    empRows = parseGvizTable(await DataSource.fetchTable('fsafe_emp'));
-  } catch (e) { console.error('fsafe_emp load error:', e); empRows = []; }
-
-  try {
-    caRows = parseGvizTable(await DataSource.fetchTable('fsafe_ca'));
-  } catch (e) { console.error('fsafe_ca load error:', e); caRows = []; }
-
-  try {
-    poRows = parseGvizTable(await DataSource.fetchTable('lettuce_pack_orders'));
-    poRows.forEach(r => { r.SKU = r.SKU || ''; r.Cases = +r.Cases || 0; });
-  } catch (e) { console.error('lettuce_pack_orders load error:', e); poRows = []; }
+  // Food safety + POs (default to sheets via per-source config)
+  empRows = empTable ? parseGvizTable(empTable) : [];
+  caRows  = caTable  ? parseGvizTable(caTable)  : [];
+  poRows  = poTable  ? parseGvizTable(poTable)  : [];
+  poRows.forEach(r => { r.SKU = r.SKU || ''; r.Cases = +r.Cases || 0; });
 
   setDay('today');
 }
