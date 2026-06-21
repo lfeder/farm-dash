@@ -30,16 +30,40 @@
   .chart-box { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 24px; border: 1px solid #ddd; }
   .chart-box h3 { font-size: 1rem; font-weight: 600; color: #333; margin-bottom: 8px; }
   .chart-wrap { position: relative; height: 300px; }
+  /* Food-safety header strip */
+  .fs-strip { display: flex; gap: 8px; margin-bottom: 14px; }
+  .fs-box { padding: 10px 16px; border-radius: 4px; font-size: 1.15rem; font-weight: 600; line-height: 1.3; }
+  .fs-clean { flex: 1; background: #d3f3dd; color: #2f7d4f; border: 1px solid #a8e0bb; }
+  .fs-clean .fs-sub { font-size: 0.72rem; font-weight: 400; color: #5a9a72; }
+  .fs-ca { min-width: 130px; background: #fbe2e2; color: #c0392b; border: 1px solid #f0c0c0; display: flex; align-items: center; }
+  .fs-ca.zero { background: #eef3ee; color: #6a8a6a; border-color: #d8e2d8; }
+  /* Source settings gear */
+  .gear-btn { background: transparent; border: none; color: #fff; font-size: 1.05rem; cursor: pointer; padding: 2px 6px; line-height: 1; }
+  /* Corrective-action detail list */
+  .ca-list { margin-bottom: 24px; }
+  .ca-item { border-bottom: 1px solid #ddd; padding: 8px 4px; font-size: 0.85rem; }
+  .ca-item:last-child { border-bottom: none; }
+  .ca-item .ca-warn { color: #333; }
+  .ca-item .ca-act { color: #4a8c5c; }
+  .ca-item .ca-meta { color: #999; font-size: 0.72rem; margin-bottom: 2px; }
+  .ca-none { color: #888; font-size: 0.85rem; padding: 6px 4px; }
 </style>
 </head>
 <body>
 
 <div id="header">
   <h1>Daily</h1>
-  <span style="font-size:0.7rem;color:#fff;" id="versionStamp">04-18 00:55</span>
+  <span style="display:flex;align-items:center;gap:6px;">
+    <button class="gear-btn" id="srcGear" title="Data sources">&#9881;</button>
+    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">06-21 12:00</span>
+  </span>
 </div>
 
 <div id="content">
+  <div class="fs-strip" id="fs-strip" style="display:none;">
+    <div class="fs-box fs-clean" id="fs-clean"></div>
+    <div class="fs-box fs-ca" id="fs-ca"></div>
+  </div>
   <div id="date-line"></div>
   <div class="toggle-bar">
     <button class="toggle-btn active" id="btnToday" onclick="setDay('today')">Today</button>
@@ -67,6 +91,14 @@
   <table id="lettuce-table"><thead><tr>
     <th>Pond</th><th>Variety</th><th class="num">Boards</th><th class="num">Lb/Board</th><th class="num">Total</th>
   </tr></thead><tbody id="lettuce-tbody"></tbody></table>
+
+  <div class="section-title">Lettuce POs — next 7 days</div>
+  <table id="po-table"><thead><tr>
+    <th>Pack Date</th><th class="num">lb</th><th class="num">Cases</th><th class="num">LW</th><th class="num">LF</th><th class="num">LR</th><th class="num">WR</th>
+  </tr></thead><tbody id="po-tbody"></tbody></table>
+
+  <div class="section-title" id="ca-title">Corrective Actions</div>
+  <div class="ca-list" id="ca-list"></div>
 </div>
 
 <script>
@@ -80,7 +112,37 @@
 let invoiceRows = [];
 let cukeGrowRows = [];
 let lettuceGrowRows = [];
+let empRows = [];   // fsafe_log_emp — environmental pathogen tests
+let caRows = [];    // fsafe_log_corrective_action — corrective-action log
+let poRows = [];    // lettuce_pack_orders — forward-looking POs
 let weeklyChart = null;
+
+const SKU_LB = { LW: 10.5, LR: 2.25, LF: 10.0, WR: 2.25 };
+// A pathogen "hit" = positive EMP result for one of these (excludes APC / indicator E. coli)
+const PATHOGEN_RE = /listeria|salmonella|o157/i;
+
+// Parse "M/D/YYYY" or "M/D/YYYY HH:MM:SS" (gviz date cells expose this as cell.f)
+// into a UTC-midnight Date. Returns null if unparseable.
+function parseUsDate(v) {
+  if (!v) return null;
+  // gviz raw form Date(y,mo,d,...) — month is 0-indexed
+  let m = String(v).match(/Date\((\d+),(\d+),(\d+)/);
+  if (m) return new Date(Date.UTC(+m[1], +m[2], +m[3]));
+  // formatted "M/D/YYYY" (optionally with a time after)
+  m = String(v).match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!m) return null;
+  let y = +m[3];
+  if (y < 100) y += 2000;
+  return new Date(Date.UTC(y, +m[1] - 1, +m[2]));
+}
+function sameDay(v, rd) {
+  const dt = parseUsDate(v);
+  return !!dt && dt.getTime() === rd.getTime();
+}
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
 
 function parseGvizTable(table) {
   const cols = table.cols.map(c => c.label);
@@ -91,7 +153,9 @@ function parseGvizTable(table) {
       if (!col) return;
       if (!cell || cell.v === null || cell.v === undefined) { obj[col] = ''; return; }
       if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
-        const dm = cell.v.match(/Date\((\d+),(\d+),(\d+)\)/);
+        // Match both Date(y,m,d) and datetime Date(y,m,d,h,mi,s) — the latter
+        // (e.g. fsafe SampleDateTime) was previously dropped, leaving obj[col] unset.
+        const dm = cell.v.match(/Date\((\d+),(\d+),(\d+)/);
         if (dm) {
           obj[col] = cell.f || cell.v;
           obj['_y'] = parseInt(dm[1]);
@@ -159,10 +223,131 @@ function setDate(val) {
 }
 
 function render() {
+  renderFsHeader();
   renderSalesTable();
   renderWeeklyChart();
   renderCukeTable();
   renderLettuceTable();
+  renderPoTable();
+  renderCaSection();
+}
+
+// ── Food-safety header strip ──
+function renderFsHeader() {
+  const rd = refDate;
+
+  // Pathogen-free = days since most recent positive pathogen EMP result on/before refDate
+  let lastHit = null;
+  empRows.forEach(r => {
+    if (String(r.PositiveResults).toLowerCase() !== 'true') return;
+    if (!PATHOGEN_RE.test(String(r.TestName || ''))) return;
+    const dt = parseUsDate(r.SampleDateTime);
+    if (!dt || dt.getTime() > rd.getTime()) return;
+    if (!lastHit || dt.getTime() > lastHit.getTime()) lastHit = dt;
+  });
+
+  const cleanEl = document.getElementById('fs-clean');
+  if (lastHit) {
+    const days = Math.floor((rd.getTime() - lastHit.getTime()) / 86400000);
+    cleanEl.innerHTML = `Pathogen free for ${days} day${days === 1 ? '' : 's'}` +
+      `<div class="fs-sub">last hit ${lastHit.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</div>`;
+  } else {
+    cleanEl.textContent = empRows.length ? 'Pathogen free' : 'Pathogen data unavailable';
+  }
+
+  // CAs reported on refDate
+  const caCount = caRows.filter(r => sameDay(r.ReportedDate, rd)).length;
+  const caEl = document.getElementById('fs-ca');
+  caEl.textContent = `CAs = ${caCount}`;
+  caEl.classList.toggle('zero', caCount === 0);
+
+  document.getElementById('fs-strip').style.display = 'flex';
+}
+
+// ── Lettuce POs (next 7 days) ──
+function renderPoTable() {
+  const rd = refDate;
+  const start = rd.getTime();
+  const end = start + 6 * 86400000; // inclusive window of 7 calendar days
+
+  const byDate = {};
+  poRows.forEach(r => {
+    const dt = parseUsDate(r.PackDate) || (r._y ? new Date(Date.UTC(r._y, r._m - 1, r._d)) : null);
+    if (!dt) return;
+    const t = dt.getTime();
+    if (t < start || t > end) return;
+    const sku = r.SKU;
+    if (!(sku in SKU_LB)) return;
+    if (!byDate[t]) byDate[t] = { dt, LW: 0, LF: 0, LR: 0, WR: 0 };
+    byDate[t][sku] += (r.Cases || 0);
+  });
+
+  const tbody = document.getElementById('po-tbody');
+  tbody.innerHTML = '';
+  const keys = Object.keys(byDate).sort((a, b) => a - b);
+  if (!keys.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="color:#888;">No open POs in the next 7 days</td></tr>';
+    return;
+  }
+
+  const tot = { lb: 0, cs: 0, LW: 0, LF: 0, LR: 0, WR: 0 };
+  keys.forEach(k => {
+    const d = byDate[k];
+    const cases = d.LW + d.LF + d.LR + d.WR;
+    const lb = d.LW * SKU_LB.LW + d.LF * SKU_LB.LF + d.LR * SKU_LB.LR + d.WR * SKU_LB.WR;
+    tot.lb += lb; tot.cs += cases; tot.LW += d.LW; tot.LF += d.LF; tot.LR += d.LR; tot.WR += d.WR;
+    const label = d.dt.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', timeZone: 'UTC' }) +
+      ' (' + d.dt.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }) + ')';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${label}</td>
+      <td class="num">${Math.round(lb).toLocaleString()}</td>
+      <td class="num">${cases.toLocaleString()}</td>
+      <td class="num">${d.LW || ''}</td>
+      <td class="num">${d.LF || ''}</td>
+      <td class="num">${d.LR || ''}</td>
+      <td class="num">${d.WR || ''}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  const tr = document.createElement('tr');
+  tr.className = 'total-row';
+  tr.innerHTML = `
+    <td>Total</td>
+    <td class="num">${Math.round(tot.lb).toLocaleString()}</td>
+    <td class="num">${tot.cs.toLocaleString()}</td>
+    <td class="num">${tot.LW || ''}</td>
+    <td class="num">${tot.LF || ''}</td>
+    <td class="num">${tot.LR || ''}</td>
+    <td class="num">${tot.WR || ''}</td>`;
+  tbody.appendChild(tr);
+}
+
+// ── Corrective Actions detail (refDate) ──
+function renderCaSection() {
+  const rd = refDate;
+  const rows = caRows.filter(r => sameDay(r.ReportedDate, rd));
+  const dateStr = rd.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+  document.getElementById('ca-title').textContent = `Corrective Actions — ${dateStr}`;
+
+  const list = document.getElementById('ca-list');
+  list.innerHTML = '';
+  if (!rows.length) {
+    list.innerHTML = '<div class="ca-none">None reported.</div>';
+    return;
+  }
+  rows.forEach(r => {
+    let action = r.CorrectiveAction || '';
+    if (String(action).toLowerCase() === 'other') action = r.OtherCorrectiveAction || action;
+    const site = [r.Farm, r.SiteName].filter(Boolean).join(' · ');
+    const div = document.createElement('div');
+    div.className = 'ca-item';
+    div.innerHTML =
+      `<div class="ca-meta">${escapeHtml(r.Log || '')}${site ? ' — ' + escapeHtml(site) : ''}</div>` +
+      `<div class="ca-warn">${escapeHtml(r.Warning || '')}</div>` +
+      `<div class="ca-act">→ ${escapeHtml(action || '—')}</div>`;
+    list.appendChild(div);
+  });
 }
 
 // ── Sales $ Summary Table ──
@@ -461,8 +646,26 @@ async function loadData() {
     r.GreenhouseNetWeight = r.GreenhouseNetWeight || 0;
   });
 
+  // ── Food safety + POs (default to sheets via per-source config) ──
+  // Each is wrapped so one bad source doesn't blank the whole page.
+  try {
+    empRows = parseGvizTable(await DataSource.fetchTable('fsafe_emp'));
+  } catch (e) { console.error('fsafe_emp load error:', e); empRows = []; }
+
+  try {
+    caRows = parseGvizTable(await DataSource.fetchTable('fsafe_ca'));
+  } catch (e) { console.error('fsafe_ca load error:', e); caRows = []; }
+
+  try {
+    poRows = parseGvizTable(await DataSource.fetchTable('lettuce_pack_orders'));
+    poRows.forEach(r => { r.SKU = r.SKU || ''; r.Cases = +r.Cases || 0; });
+  } catch (e) { console.error('lettuce_pack_orders load error:', e); poRows = []; }
+
   setDay('today');
 }
+
+// Per-source settings panel behind the header gear
+if (window.DataSource && DataSource.renderSourcePanel) DataSource.renderSourcePanel('srcGear');
 
 loadData().catch(err => console.error('Load error:', err));
 </script>
