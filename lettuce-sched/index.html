@@ -145,60 +145,58 @@ function render() {
 // ── Pond rows: one row per pond/side, cycles tiled by board size in harvest
 // order (next-to-harvest on the left). A pond header shows current fill vs cap.
 function renderGantt(today) {
-  const ROW_PX = 6;                                    // px per pond-row
-  const boardsPerRow = p => (p === 'P1' ? 10 : 20);    // P1 is 10 boards wide, others 20
+  const ROW_PX = 6;                                    // px per row
   const capRows = p => (p === 'P1' ? 83 : 110);        // rows that fill a side
+  // Each side runs the full length of rows, at its own board-width.
+  // P2-7: A=10, B=9, C=1 (sum 20); AB (P5-7)=20. P1 is one 10-wide side.
+  const sideWidth = (pond, side) => {
+    if (pond === 'P1') return 10;
+    const s = (side || '').trim().toUpperCase();
+    if (s === 'AB') return 20;
+    if (s[0] === 'A') return 10;
+    if (s[0] === 'B') return 9;
+    if (s[0] === 'C') return 1;
+    return 20;
+  };
   const ponds = [...new Set(cycles.map(c => c.pond))].sort();
   const g = document.getElementById('gantt');
   g.innerHTML = '';
 
   const hdr = document.createElement('div'); hdr.className = 'g-row';
   hdr.innerHTML = `<div class="g-label"><span style="color:#999;font-weight:400;">pond/side</span></div>`
-    + `<div class="g-track" style="padding:5px 8px;font-size:0.68rem;color:#aaa;">← next to harvest &nbsp;·&nbsp; each block = a cycle (width = rows, # = boards) &nbsp;·&nbsp; dashed line = full (110 rows; 83 for P1) &nbsp;·&nbsp; dashed block = planned</div>`;
+    + `<div class="g-track" style="padding:5px 8px;font-size:0.68rem;color:#aaa;">← next to harvest &nbsp;·&nbsp; block width = rows (boards ÷ side width: A=10 B=9 C=1) &nbsp;·&nbsp; dashed line = full (110 rows; 83 for P1) &nbsp;·&nbsp; dashed block = planned</div>`;
   g.appendChild(hdr);
 
-  const ROWS_TOL = 6;
   ponds.forEach(pond => {
-    const bpr = boardsPerRow(pond);
     const capR = capRows(pond);
     const capX = capR * ROW_PX;
-    const sides = [...new Set(cycles.filter(c => c.pond === pond).map(c => c.side))].sort();
-    const sideData = sides.map(side => {
-      const list = cycles.filter(c => c.pond === pond && c.side === side && c.end >= today)
-        .sort((a, b) => a.end - b.end); // soonest harvest first
-      const sideRows = list.reduce((s, c) => s + c.boards / bpr, 0);
-      return { side, list, sideRows };
-    });
-    const totalRows = sideData.reduce((s, d) => s + d.sideRows, 0);
-
-    // Pond header: do the sides sum to the pond's capacity?
-    let cls = 'full', note = `${Math.round(totalRows)} / ${capR} rows — full`;
-    if (totalRows < capR - ROWS_TOL) { cls = 'gap'; note = `${Math.round(totalRows)} / ${capR} rows — short ${Math.round(capR - totalRows)}`; }
-    else if (totalRows > capR + ROWS_TOL) { cls = 'over'; note = `${Math.round(totalRows)} / ${capR} rows — over ${Math.round(totalRows - capR)}`; }
     const ph = document.createElement('div'); ph.className = 'g-row pondhdr';
-    ph.innerHTML = `<div class="g-label"><b>${pond}</b></div><div class="g-track" style="padding:4px 8px;"><span class="chip ${cls}">${note}</span></div>`;
+    ph.innerHTML = `<div class="g-label"><b>${pond}</b></div><div class="g-track"></div>`;
     g.appendChild(ph);
 
-    // Sides tiled cumulatively into the shared pond capacity, so the last side
-    // reaching the dashed line = pond full.
-    let offsetRows = 0;
-    sideData.forEach(d => {
-      let x = offsetRows * ROW_PX, blocks = '';
-      if (offsetRows > 0) blocks += `<div style="position:absolute;left:${x}px;top:0;bottom:0;border-left:1px dotted #bbb;z-index:1;"></div>`;
-      d.list.forEach(c => {
-        const r = c.boards / bpr;
-        const w = Math.max(4, r * ROW_PX);
-        const col = varietyColor(c.variety || c.seedName);
+    const sides = [...new Set(cycles.filter(c => c.pond === pond).map(c => c.side))].sort();
+    sides.forEach(side => {
+      const w = sideWidth(pond, side);
+      const list = cycles.filter(c => c.pond === pond && c.side === side && c.end >= today)
+        .sort((a, b) => a.end - b.end); // soonest harvest first (leftmost)
+      let x = 0, blocks = '', totalRows = 0;
+      list.forEach(c => {
+        const r = c.boards / w;
         const planned = c.status.toLowerCase().startsWith('planned') ? ' planned' : '';
+        if (!planned) totalRows += r; // fill readout = growing only; planned is upcoming
+        const bw = Math.max(4, r * ROW_PX);
+        const col = varietyColor(c.variety || c.seedName);
         const dleft = Math.round((c.end - today) / DAY);
-        blocks += `<div class="g-block${planned}" style="left:${x}px;width:${w}px;background:${col}" title="${esc(pond + d.side)} · ${esc(c.seedName)} · ${c.boards} boards (${(Math.round(r * 10) / 10)} rows) · seeded ${fmtMD(c.seed)} · harvest ${fmtMD(c.end)} (${dleft}d) · ${esc(c.status)}">${c.boards}</div>`;
-        x += w + 1;
+        blocks += `<div class="g-block${planned}" style="left:${x}px;width:${bw}px;background:${col}" title="${esc(pond + side)} · ${esc(c.seedName)} · ${c.boards} boards (${(Math.round(r * 10) / 10)} rows @ ${w} wide) · seeded ${fmtMD(c.seed)} · harvest ${fmtMD(c.end)} (${dleft}d) · ${esc(c.status)}">${c.boards}</div>`;
+        x += bw + 1;
       });
       blocks += `<div class="g-cap" style="left:${capX}px"><span>${capR}</span></div>`;
-      offsetRows += d.sideRows;
+      const rr = Math.round(totalRows);
+      let lc = '#2f7d4f'; // full = green
+      if (totalRows < capR - 6) lc = '#b3402f'; else if (totalRows > capR + 6) lc = '#9a6a00';
       const row = document.createElement('div'); row.className = 'g-row';
-      row.innerHTML = `<div class="g-label"><span style="color:#888">${esc(d.side)}</span><span class="cap">${Math.round(d.sideRows)}r</span></div>`
-        + `<div class="g-track" style="height:24px;min-width:${capX + 60}px">${blocks}</div>`;
+      row.innerHTML = `<div class="g-label"><span style="color:#888">${esc(side)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}/${capR}</span></div>`
+        + `<div class="g-track" style="height:24px;min-width:${Math.max(x, capX) + 40}px">${blocks}</div>`;
       g.appendChild(row);
     });
   });
