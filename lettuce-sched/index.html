@@ -10,7 +10,7 @@
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
   #header { background: #4a8c5c; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
   #header h1 { font-size: 1.5rem; color: #fff; font-weight: 700; }
-  #content { max-width: 1240px; margin: 0 auto; padding: 18px 24px; }
+  #content { max-width: 1240px; margin: 0 auto; padding: 10px 24px; }
 
   /* Summary banner */
   .summary { display: flex; gap: 8px; align-items: stretch; margin-bottom: 16px; flex-wrap: wrap; }
@@ -25,12 +25,11 @@
   .chip.over { border-color: #f0d890; background: #fdf6e3; color: #9a6a00; }
 
   /* Gantt */
-  .section-title { font-size: 1.05rem; font-weight: 600; color: #333; margin: 18px 0 8px; }
+  .section-title { font-size: 1.05rem; font-weight: 600; color: #333; margin: 8px 0 6px; }
   #gantt { background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow-x: auto; }
-  .g-row { display: flex; align-items: stretch; border-bottom: 1px solid #eee; min-height: 26px; }
+  .g-row { display: flex; align-items: stretch; border-bottom: 1px solid #eee; min-height: 18px; }
   .g-row:last-child { border-bottom: none; }
-  .g-row.pondhdr { background: #f3efe9; font-weight: 600; }
-  .g-label { flex: 0 0 96px; padding: 4px 8px; font-size: 0.78rem; color: #444; border-right: 1px solid #e6e0d8; position: sticky; left: 0; background: inherit; display: flex; align-items: center; justify-content: space-between; }
+  .g-label { flex: 0 0 84px; padding: 1px 8px; font-size: 0.76rem; color: #444; border-right: 1px solid #e6e0d8; position: sticky; left: 0; background: inherit; display: flex; align-items: center; justify-content: space-between; }
   .g-label .cap { color: #999; font-weight: 400; font-size: 0.7rem; }
   .g-track { position: relative; flex: 1 1 auto; }
   .g-axis { height: 22px; }
@@ -38,7 +37,7 @@
   .g-today { position: absolute; top: 0; bottom: 0; border-left: 2px solid #e07a5f; z-index: 3; }
   .g-cap { position: absolute; top: 0; bottom: 0; border-left: 2px dashed #888; z-index: 2; }
   .g-cap span { position: absolute; top: 1px; left: 3px; font-size: 0.6rem; color: #888; white-space: nowrap; }
-  .g-block { position: absolute; top: 3px; bottom: 3px; border-radius: 2px; overflow: hidden; border: 2px solid rgba(0,0,0,0.7); color: #fff; font-size: 0.6rem; line-height: 18px; text-align: center; white-space: nowrap; }
+  .g-block { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; overflow: hidden; border: 1px solid rgba(0,0,0,0.7); color: #fff; font-size: 0.58rem; line-height: 13px; text-align: center; white-space: nowrap; }
   .g-block.planned { opacity: 0.6; border-style: dashed; }
 
   /* Issues + legend */
@@ -94,6 +93,7 @@ function hstToday() {
   return new Date(Date.UTC(h.getUTCFullYear(), h.getUTCMonth(), h.getUTCDate()));
 }
 function fmtMD(d) { return (d.getUTCMonth() + 1) + '/' + d.getUTCDate(); }
+function fmtMD2(d) { return String(d.getUTCMonth() + 1).padStart(2, '0') + '/' + String(d.getUTCDate()).padStart(2, '0'); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
 
 function parseGviz(table) {
@@ -125,6 +125,7 @@ async function load() {
       side: (r.Side || '').trim(),
       variety: (r.Variety || '').trim(),
       seedName: (r.SeedName || '').trim(),
+      seedsPerBoard: +r.SeedsPerBoard || 0,
       boards: +r.Boards || 0,
       seed, end,
       status: (r.Status || '').trim(),
@@ -162,32 +163,25 @@ function renderGantt(today) {
   const g = document.getElementById('gantt');
   g.innerHTML = '';
 
-  const hdr = document.createElement('div'); hdr.className = 'g-row';
-  hdr.innerHTML = `<div class="g-label"><span style="color:#999;font-weight:400;">pond/side</span></div>`
-    + `<div class="g-track" style="padding:5px 8px;font-size:0.68rem;color:#aaa;">← next to harvest &nbsp;·&nbsp; block width = rows (boards ÷ side width: A=10 B=9 C=1) &nbsp;·&nbsp; dashed line = full (110 rows; 83 for P1) &nbsp;·&nbsp; dashed block = planned</div>`;
-  g.appendChild(hdr);
-
   ponds.forEach(pond => {
     const capR = capRows(pond);
     const capX = capR * ROW_PX;
-    const ph = document.createElement('div'); ph.className = 'g-row pondhdr';
-    ph.innerHTML = `<div class="g-label"><b>${pond}</b></div><div class="g-track"></div>`;
-    g.appendChild(ph);
 
     const sides = [...new Set(cycles.filter(c => c.pond === pond).map(c => c.side))].sort();
     sides.forEach(side => {
       const w = sideWidth(pond, side);
       const list = cycles.filter(c => c.pond === pond && c.side === side && c.end >= today)
         .sort((a, b) => a.end - b.end); // soonest harvest first (leftmost)
+      if (!list.length) return; // skip sides with no cycles (e.g. P1B)
       let x = 0, blocks = '', totalRows = 0;
       list.forEach(c => {
         const r = c.boards / w;
-        const planned = c.status.toLowerCase().startsWith('planned') ? ' planned' : '';
-        if (!planned) totalRows += r; // fill readout = growing only; planned is upcoming
+        const future = c.seed > today;                 // not yet seeded → fade
+        const faded = future ? ' planned' : '';
+        if (!future) totalRows += r;                   // fill readout = on-pond only
         const bw = Math.max(4, r * ROW_PX);
         const col = varietyColor(c.variety || c.seedName);
-        const dleft = Math.round((c.end - today) / DAY);
-        blocks += `<div class="g-block${planned}" style="left:${x}px;width:${bw}px;background:${col}" title="${esc(pond + side)} · ${esc(c.seedName)} · ${c.boards} boards (${(Math.round(r * 10) / 10)} rows @ ${w} wide) · seeded ${fmtMD(c.seed)} · harvest ${fmtMD(c.end)} (${dleft}d) · ${esc(c.status)}">${c.boards}</div>`;
+        blocks += `<div class="g-block${faded}" style="left:${x}px;width:${bw}px;background:${col}" title="H:${fmtMD2(c.end)} (exp harv), S:${fmtMD2(c.seed)} (seed), ${c.seedsPerBoard} seeds/board">${Math.round(r)}</div>`;
         x += bw + 1;
       });
       blocks += `<div class="g-cap" style="left:${capX}px"><span>${capR}</span></div>`;
@@ -195,8 +189,8 @@ function renderGantt(today) {
       let lc = '#2f7d4f'; // full = green
       if (totalRows < capR - 6) lc = '#b3402f'; else if (totalRows > capR + 6) lc = '#9a6a00';
       const row = document.createElement('div'); row.className = 'g-row';
-      row.innerHTML = `<div class="g-label"><span style="color:#888">${esc(side)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}/${capR}</span></div>`
-        + `<div class="g-track" style="height:24px;min-width:${Math.max(x, capX) + 40}px">${blocks}</div>`;
+      row.innerHTML = `<div class="g-label"><span style="color:#444;font-weight:600">${esc(pond + side)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}/${capR}</span></div>`
+        + `<div class="g-track" style="height:18px;min-width:${Math.max(x, capX) + 40}px">${blocks}</div>`;
       g.appendChild(row);
     });
   });
@@ -205,7 +199,7 @@ function renderGantt(today) {
 function renderLegend() {
   const keys = Object.keys(_varColor);
   document.getElementById('legend').innerHTML = keys.map(k => `<span><span class="sw" style="background:${_varColor[k]}"></span>${esc(k)}</span>`).join('')
-    + '<span style="color:#999">· dashed = planned · solid = growing</span>';
+    + '<span style="color:#999">· faded = not yet seeded · solid = on pond · block # = rows</span>';
 }
 
 load().catch(err => {
