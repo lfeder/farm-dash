@@ -220,13 +220,12 @@ function renderGantt(today) {
       });
       blocks += `<div class="g-cap" style="left:${capX}px"><span>${capR}</span></div>`;
       const rr = Math.round(totalRows);
-      let lc = '#2f7d4f'; // full = green
-      if (totalRows < capR - 6) lc = '#b3402f'; else if (totalRows > capR + 6) lc = '#9a6a00';
+      const lc = rr === capR ? '#2f7d4f' : '#b3402f'; // green only if exactly full, else red
       const row = document.createElement('div'); row.className = 'g-row';
       if (pi > 0 && firstInPond) row.classList.add('pond-start'); // thick line between ponds
       firstInPond = false;
       row.style.minHeight = rowH + 'px';
-      row.innerHTML = `<div class="g-label"><span style="color:#444;font-weight:600">${esc(pond + side)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}/${capR}</span></div>`
+      row.innerHTML = `<div class="g-label"><span style="color:#444;font-weight:600">${esc(pond + side)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
         + `<div class="g-track" style="height:${rowH}px;min-width:${Math.max(x, capX) + 40}px">${blocks}</div>`;
       g.appendChild(row);
     });
