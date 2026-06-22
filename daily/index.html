@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Daily Report</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260622a"></script>
+<script src="../lib/data-source.js?v=20260622b"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
@@ -248,17 +248,37 @@ function render() {
 // ── Data-quality checks (rules from prod; pre-op presence => harvest expected) ──
 function renderDataChecks() {
   const rd = refDate;
+  const isRefDay = r => r._y === rd.getUTCFullYear() && r._m === (rd.getUTCMonth() + 1) && r._d === rd.getUTCDate();
   const evaluated = [];
   checkRules.forEach(rule => {
     const preop = preopData[rule.preop_table] || [];
     const dateCol = rule.preop_date_col || 'Checked Date';
     const flagCol = rule.preop_flag_col || 'Approved to Harvest';
     // Only an expectation on days the pre-op approved harvest.
-    const approved = preop.some(r => sameDay(r[dateCol], rd) && String(r[flagCol]).toLowerCase() === 'true');
-    if (!approved) return;
-    const rows = (HARVEST_ROWS[rule.harvest_key] || (() => []))();
-    const hasHarvest = rows.some(r => r._y === rd.getUTCFullYear() && r._m === (rd.getUTCMonth() + 1) && r._d === rd.getUTCDate());
-    evaluated.push({ rule, passed: hasHarvest, detail: hasHarvest ? null : (rule.message || rule.name) });
+    const approvedRows = preop.filter(r => sameDay(r[dateCol], rd) && String(r[flagCol]).toLowerCase() === 'true');
+    if (!approvedRows.length) return;
+
+    // Expected count: a fixed number, or 'preop' = distinct members listed in
+    // the pre-op (e.g. the cuke Greenhouse(s) field).
+    let expected;
+    if (String(rule.expected).toLowerCase() === 'preop') {
+      const sep = rule.preop_members_sep || '+';
+      const set = new Set();
+      approvedRows.forEach(r => String(r[rule.preop_members_col] || '')
+        .split(sep).map(s => s.trim()).filter(Boolean).forEach(m => set.add(m)));
+      expected = set.size;
+    } else {
+      expected = Number(rule.expected) || 0;
+    }
+    if (!expected) return; // can't determine an expectation -> skip
+
+    // Actual: distinct values of the dimension in that day's harvest rows.
+    const rows = (HARVEST_ROWS[rule.harvest_key] || (() => []))().filter(isRefDay);
+    const actual = new Set(rows.map(r => String(r[rule.dimension] || '').trim()).filter(Boolean)).size;
+    const passed = actual >= expected;
+    const detail = passed ? null
+      : String(rule.message || rule.name).replace('{actual}', actual).replace('{expected}', expected);
+    evaluated.push({ rule, passed, detail });
   });
   const fails = evaluated.filter(e => !e.passed);
 
