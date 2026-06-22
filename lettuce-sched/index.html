@@ -76,7 +76,15 @@ const VIS_WEEKS = 6;          // visual horizon
 const CHECK_WEEKS = 8;        // fullness/balance check horizon (~2 months)
 const TOL = 100;              // boards tolerance before flagging under/over (5 rows)
 const DAY = 86400000;
-const VARIETY_COLORS = ['#4a90d9','#4ecca3','#f0a030','#9b59b6','#e74c3c','#16a085','#e67e22','#2c7fb8','#8e44ad','#27ae60'];
+const GA_GREEN = '#2e7d32', GL_GREEN = '#8bc34a';     // dark / light green
+const VARIETY_FIXED = {
+  GA: GA_GREEN,                                        // dark green
+  GL: GL_GREEN,                                        // light green
+  RL: '#e74c3c',                                       // red
+  WC: '#4a90d9',                                       // blue
+  MS: `repeating-linear-gradient(45deg, ${GL_GREEN} 0 5px, ${GA_GREEN} 5px 10px)`, // light+dark green mix
+};
+const VARIETY_FALLBACK = ['#f0a030','#9b59b6','#16a085','#e67e22','#2c7fb8','#8e44ad','#27ae60'];
 
 let cycles = [];
 
@@ -109,10 +117,13 @@ function parseGviz(table) {
   });
 }
 
-// Assign a stable color per variety/seed
+// Fixed color per variety code (MS = light+dark green stripes); unknowns rotate the fallback palette.
 const _varColor = {};
+let _fallbackN = 0;
 function varietyColor(key) {
-  if (!(key in _varColor)) _varColor[key] = VARIETY_COLORS[Object.keys(_varColor).length % VARIETY_COLORS.length];
+  if (!(key in _varColor)) {
+    _varColor[key] = VARIETY_FIXED[key] || VARIETY_FALLBACK[_fallbackN++ % VARIETY_FALLBACK.length];
+  }
   return _varColor[key];
 }
 
