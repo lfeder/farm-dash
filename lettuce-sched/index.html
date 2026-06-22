@@ -164,21 +164,36 @@ function renderGantt(today) {
   const g = document.getElementById('gantt');
   g.innerHTML = '';
 
-  const H_PER_W = 1.6, MIN_H = 13;                      // box height ∝ boards per row (side width)
-  const sideHeight = w => Math.max(MIN_H, Math.round(w * H_PER_W));
+  // Pond total height is fixed so every full pond is the same size: P2-P7 = POND_H
+  // (total width 20/row), P1 = POND_H/2 (width 10/row). Within a pond the height is
+  // split across its populated sides ∝ board-width, with a readable floor per side.
+  const POND_H = 60, MIN_SIDE = 12;
 
   ponds.forEach((pond, pi) => {
     const capR = capRows(pond);
     const capX = capR * ROW_PX;
+    const pondH = pond === 'P1' ? POND_H / 2 : POND_H;
 
     const sides = [...new Set(cycles.filter(c => c.pond === pond).map(c => c.side))].sort();
-    let firstInPond = true;
-    sides.forEach(side => {
+    // Gather only sides that actually have cycles, then allocate heights.
+    const rows = sides.map(side => {
       const w = sideWidth(pond, side);
       const list = cycles.filter(c => c.pond === pond && c.side === side && c.end >= today)
         .sort((a, b) => a.end - b.end); // soonest harvest first (leftmost)
-      if (!list.length) return; // skip sides with no cycles (e.g. P1B)
-      const rowH = sideHeight(w);
+      return list.length ? { side, w, list } : null; // drop empty sides (e.g. P1B)
+    }).filter(Boolean);
+    if (!rows.length) return;
+    const sumW = rows.reduce((s, r) => s + r.w, 0);
+    const extra = Math.max(0, pondH - MIN_SIDE * rows.length); // shared on top of the floor
+    let used = 0;
+    rows.forEach((r, i) => {
+      r.h = i === rows.length - 1 ? pondH - used                 // last side absorbs rounding
+        : Math.round(MIN_SIDE + extra * r.w / sumW);
+      used += r.h;
+    });
+
+    let firstInPond = true;
+    rows.forEach(({ side, w, list, h: rowH }) => {
       const lh = Math.max(8, rowH - 4);                // vertical-center the block label
       let x = 0, blocks = '', totalRows = 0;
       list.forEach(c => {
