@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Daily Report</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260621e"></script>
+<script src="../lib/data-source.js?v=20260622a"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
@@ -37,6 +37,8 @@
   .fs-clean .fs-sub { font-size: 0.72rem; font-weight: 400; color: #5a9a72; }
   .fs-ca { flex: 1; background: #fbe2e2; color: #c0392b; border: 1px solid #f0c0c0; display: flex; align-items: center; }
   .fs-ca.zero { background: #eef3ee; color: #6a8a6a; border-color: #d8e2d8; }
+  .fs-checks { flex: 1; background: #fdecc8; color: #9a6a00; border: 1px solid #f0d890; display: flex; align-items: center; }
+  .fs-checks.zero { background: #eef3ee; color: #6a8a6a; border-color: #d8e2d8; }
   /* Source settings gear */
   .gear-btn { background: transparent; border: none; color: #fff; font-size: 1.05rem; cursor: pointer; padding: 2px 6px; line-height: 1; }
   /* Corrective-action detail list */
@@ -63,6 +65,7 @@
   <div class="fs-strip" id="fs-strip" style="display:none;">
     <div class="fs-box fs-clean" id="fs-clean"></div>
     <div class="fs-box fs-ca" id="fs-ca"></div>
+    <div class="fs-box fs-checks" id="fs-checks"></div>
   </div>
   <div id="date-line"></div>
   <div class="toggle-bar">
@@ -99,6 +102,9 @@
 
   <div class="section-title" id="ca-title">Corrective Actions</div>
   <div class="ca-list" id="ca-list"></div>
+
+  <div class="section-title" id="dc-title">Data Checks</div>
+  <div class="ca-list" id="dc-list"></div>
 </div>
 
 <script>
@@ -115,7 +121,13 @@ let lettuceGrowRows = [];
 let empRows = [];   // fsafe_log_emp — environmental pathogen tests
 let caRows = [];    // fsafe_log_corrective_action — corrective-action log
 let poRows = [];    // lettuce_pack_orders — forward-looking POs
+let checkRules = [];          // data_check_rule (prod Supabase)
+let preopData = {};           // logical table name -> pre-op rows
+const _loggedCheckDates = new Set();
 let weeklyChart = null;
+
+// Maps a rule's harvest_key to the already-loaded harvest rows (avoids refetch).
+const HARVEST_ROWS = { cuke: () => cukeGrowRows, lettuce: () => lettuceGrowRows };
 
 const SKU_LB = { LW: 10.5, LR: 2.25, LF: 10.0, WR: 2.25 };
 // A pathogen "hit" = positive EMP result for one of these (excludes APC / indicator E. coli)
@@ -230,6 +242,62 @@ function render() {
   renderLettuceTable();
   renderPoTable();
   renderCaSection();
+  renderDataChecks();
+}
+
+// ── Data-quality checks (rules from prod; pre-op presence => harvest expected) ──
+function renderDataChecks() {
+  const rd = refDate;
+  const evaluated = [];
+  checkRules.forEach(rule => {
+    const preop = preopData[rule.preop_table] || [];
+    const dateCol = rule.preop_date_col || 'Checked Date';
+    const flagCol = rule.preop_flag_col || 'Approved to Harvest';
+    // Only an expectation on days the pre-op approved harvest.
+    const approved = preop.some(r => sameDay(r[dateCol], rd) && String(r[flagCol]).toLowerCase() === 'true');
+    if (!approved) return;
+    const rows = (HARVEST_ROWS[rule.harvest_key] || (() => []))();
+    const hasHarvest = rows.some(r => r._y === rd.getUTCFullYear() && r._m === (rd.getUTCMonth() + 1) && r._d === rd.getUTCDate());
+    evaluated.push({ rule, passed: hasHarvest, detail: hasHarvest ? null : (rule.message || rule.name) });
+  });
+  const fails = evaluated.filter(e => !e.passed);
+
+  const box = document.getElementById('fs-checks');
+  box.textContent = `Data issues = ${fails.length}`;
+  box.classList.toggle('zero', fails.length === 0);
+
+  const dateStr = rd.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+  document.getElementById('dc-title').textContent = `Data Checks — ${dateStr}`;
+  const list = document.getElementById('dc-list');
+  list.innerHTML = '';
+  if (!fails.length) {
+    list.innerHTML = '<div class="ca-none">All checks passed.</div>';
+  } else {
+    fails.forEach(f => {
+      const div = document.createElement('div');
+      div.className = 'ca-item';
+      div.innerHTML = `<div class="ca-warn">⚠ ${escapeHtml(f.detail)}</div>`;
+      list.appendChild(div);
+    });
+  }
+  logCheckResults(rd, evaluated);
+}
+
+// Phase 1 logging: upsert this date's evaluated results to prod (idempotent;
+// once per date per session so date-navigation doesn't spam writes).
+async function logCheckResults(rd, evaluated) {
+  if (!evaluated.length) return;
+  const key = fmtDateInput(rd);
+  if (_loggedCheckDates.has(key)) return;
+  _loggedCheckDates.add(key);
+  try {
+    const client = await DataSource.getClient('prod');
+    const payload = evaluated.map(e => ({
+      rule_id: e.rule.id, checked_date: key, passed: e.passed, detail: e.detail, run_at: new Date().toISOString(),
+    }));
+    const { error } = await client.from('data_check_result').upsert(payload, { onConflict: 'rule_id,checked_date' });
+    if (error) { console.error('data_check_result upsert error:', error); _loggedCheckDates.delete(key); }
+  } catch (e) { console.error('logCheckResults error:', e); _loggedCheckDates.delete(key); }
 }
 
 // ── Food-safety header strip ──
@@ -576,6 +644,8 @@ function renderCukeTable() {
 function renderLettuceTable() {
   const rd = refDate;
   const dayRows = lettuceGrowRows.filter(r => r._y === rd.getUTCFullYear() && r._m === (rd.getUTCMonth() + 1) && r._d === rd.getUTCDate());
+  // Order by pond (P1 → P7), natural numeric sort.
+  dayRows.sort((a, b) => String(a.Pond).localeCompare(String(b.Pond), undefined, { numeric: true, sensitivity: 'base' }));
 
   const tbody = document.getElementById('lettuce-tbody');
   tbody.innerHTML = '';
@@ -618,13 +688,17 @@ async function loadData() {
   // rather than the sum of all six. The optional FS/PO sources swallow their
   // own errors (return null) so one bad source can't blank the page.
   const swallow = (p, name) => p.catch(e => { console.error(name + ' load error:', e); return null; });
-  const [invoiceTable, cukeTable, lettTable, empTable, caTable, poTable] = await Promise.all([
+  const [invoiceTable, cukeTable, lettTable, empTable, caTable, poTable,
+         ruleTable, cukePreopTable, lettPreopTable] = await Promise.all([
     DataSource.fetchTable('invoices_daily'),
     DataSource.fetchTable('cuke_harvest_daily'),
     DataSource.fetchTable('lettuce_harvest'),
     swallow(DataSource.fetchTable('fsafe_emp'), 'fsafe_emp'),
     swallow(DataSource.fetchTable('fsafe_ca'), 'fsafe_ca'),
     swallow(DataSource.fetchTable('lettuce_pack_orders'), 'lettuce_pack_orders'),
+    swallow(DataSource.fetchTable('data_check_rule', { mode: 'prod' }), 'data_check_rule'),
+    swallow(DataSource.fetchTable('fsafe_cuke_preop'), 'fsafe_cuke_preop'),
+    swallow(DataSource.fetchTable('fsafe_lettuce_preop'), 'fsafe_lettuce_preop'),
   ]);
 
   // invoices_daily is pre-aggregated to date×farm dollar totals in sheets mode
@@ -659,6 +733,13 @@ async function loadData() {
   caRows  = caTable  ? parseGvizTable(caTable)  : [];
   poRows  = poTable  ? parseGvizTable(poTable)  : [];
   poRows.forEach(r => { r.SKU = r.SKU || ''; r.Cases = +r.Cases || 0; });
+
+  // Data-quality rules (prod) + pre-op checklists (sheets)
+  checkRules = ruleTable
+    ? parseGvizTable(ruleTable).filter(r => r.is_active !== false && String(r.is_active).toLowerCase() !== 'false')
+    : [];
+  preopData['fsafe_cuke_preop']    = cukePreopTable ? parseGvizTable(cukePreopTable) : [];
+  preopData['fsafe_lettuce_preop'] = lettPreopTable ? parseGvizTable(lettPreopTable) : [];
 
   setDay('today');
 }
