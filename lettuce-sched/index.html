@@ -36,7 +36,7 @@
   .g-axis { height: 22px; }
   .g-week { position: absolute; top: 0; bottom: 0; border-left: 1px solid #eee; font-size: 0.66rem; color: #aaa; padding-left: 3px; }
   .g-today { position: absolute; top: 0; bottom: 0; border-left: 2px solid #e07a5f; z-index: 3; }
-  .g-block { position: absolute; border-radius: 2px; overflow: hidden; border: 2px solid rgba(0,0,0,0.7); }
+  .g-block { position: absolute; top: 3px; bottom: 3px; border-radius: 2px; overflow: hidden; border: 2px solid rgba(0,0,0,0.7); color: #fff; font-size: 0.6rem; line-height: 18px; text-align: center; white-space: nowrap; }
   .g-block.planned { opacity: 0.6; border-style: dashed; }
 
   /* Issues + legend */
@@ -66,7 +66,7 @@
       <div class="pond-chips" id="pond-chips"></div>
     </div>
 
-    <div class="section-title">Pond timeline — next 6 weeks</div>
+    <div class="section-title">Pond fill — cycles by harvest order</div>
     <div id="gantt"></div>
     <div class="legend" id="legend"></div>
 
@@ -149,56 +149,49 @@ function render() {
   renderLegend();
 }
 
-// ── Gantt ──
+// ── Pond rows: one row per pond/side, cycles tiled by board size in harvest
+// order (next-to-harvest on the left). A pond header shows current fill vs cap.
 function renderGantt(today) {
-  const axisStart = new Date(today.getTime() - 7 * DAY);
-  const axisEnd = new Date(today.getTime() + VIS_WEEKS * 7 * DAY);
-  const totalDays = Math.round((axisEnd - axisStart) / DAY);
-  const pct = d => Math.max(0, Math.min(100, (d - axisStart) / DAY / totalDays * 100));
-
-  // group rows: pond -> sorted sides present
+  const SCALE = 0.4; // px per board
   const ponds = [...new Set(cycles.map(c => c.pond))].sort();
   const g = document.getElementById('gantt');
   g.innerHTML = '';
 
-  // axis header
-  const axisRow = document.createElement('div'); axisRow.className = 'g-row';
-  let weeks = '';
-  for (let d = 0; d <= totalDays; d += 7) {
-    const dt = new Date(axisStart.getTime() + d * DAY);
-    weeks += `<div class="g-week" style="left:${d / totalDays * 100}%">${fmtMD(dt)}</div>`;
-  }
-  weeks += `<div class="g-today" style="left:${pct(today)}%"></div>`;
-  axisRow.innerHTML = `<div class="g-label"><span style="color:#999;font-weight:400;">pond/side</span></div><div class="g-track g-axis">${weeks}</div>`;
-  g.appendChild(axisRow);
+  const hdr = document.createElement('div'); hdr.className = 'g-row';
+  hdr.innerHTML = `<div class="g-label"><span style="color:#999;font-weight:400;">pond/side</span></div>`
+    + `<div class="g-track" style="padding:5px 8px;font-size:0.68rem;color:#aaa;">← next to harvest &nbsp;·&nbsp; each block = a cycle (width ∝ boards, # = boards) &nbsp;·&nbsp; dashed = planned</div>`;
+  g.appendChild(hdr);
 
-  const LANE_H = 13;
   ponds.forEach(pond => {
+    const cap = CAP[pond] || 0;
+    const onNow = cycles
+      .filter(c => c.pond === pond && c.seed.getTime() <= today.getTime() && c.end.getTime() > today.getTime())
+      .reduce((s, c) => s + c.boards, 0);
+    let cls = 'full', note = `${onNow} / ${cap} — full`;
+    if (onNow < cap - TOL) { cls = 'gap'; note = `${onNow} / ${cap} — gap ${cap - onNow}`; }
+    else if (onNow > cap + TOL) { cls = 'over'; note = `${onNow} / ${cap} — over ${onNow - cap}`; }
+    const ph = document.createElement('div'); ph.className = 'g-row pondhdr';
+    ph.innerHTML = `<div class="g-label"><b>${pond}</b></div>`
+      + `<div class="g-track" style="padding:4px 8px;"><span class="chip ${cls}">${note}</span></div>`;
+    g.appendChild(ph);
+
     const sides = [...new Set(cycles.filter(c => c.pond === pond).map(c => c.side))].sort();
-    sides.forEach((side, i) => {
-      const rows = cycles.filter(c => c.pond === pond && c.side === side && c.end >= axisStart && c.seed <= axisEnd)
-        .sort((a, b) => a.seed - b.seed);
-      // Greedy lane packing so overlapping cycles stack instead of hiding each other.
-      const laneEnd = [];
+    sides.forEach(side => {
+      const rows = cycles.filter(c => c.pond === pond && c.side === side && c.end >= today)
+        .sort((a, b) => a.end - b.end); // soonest harvest first (leftmost)
+      let x = 0, blocks = '';
       rows.forEach(c => {
-        let lane = laneEnd.findIndex(e => e <= c.seed.getTime());
-        if (lane === -1) { lane = laneEnd.length; laneEnd.push(0); }
-        laneEnd[lane] = c.end.getTime();
-        c._lane = lane;
-      });
-      const nLanes = Math.max(1, laneEnd.length);
-      const h = nLanes * LANE_H + 4;
-      const row = document.createElement('div'); row.className = 'g-row';
-      let blocks = `<div class="g-today" style="left:${pct(today)}%"></div>`;
-      rows.forEach(c => {
-        const left = pct(c.seed), right = pct(c.end);
-        const w = Math.max(0.5, right - left);
+        const w = Math.max(7, Math.round(c.boards * SCALE));
         const col = varietyColor(c.variety || c.seedName);
         const planned = c.status.toLowerCase().startsWith('planned') ? ' planned' : '';
-        blocks += `<div class="g-block${planned}" style="left:${left}%;width:${w}%;top:${c._lane * LANE_H + 2}px;height:${LANE_H - 3}px;background:${col}" title="${esc(pond + side)} · ${esc(c.seedName)} · ${c.boards} boards · ${fmtMD(c.seed)}→${fmtMD(c.end)} · ${esc(c.status)}"></div>`;
+        const dleft = Math.round((c.end - today) / DAY);
+        blocks += `<div class="g-block${planned}" style="left:${x}px;width:${w}px;background:${col}" title="${esc(pond + side)} · ${esc(c.seedName)} · ${c.boards} boards · seeded ${fmtMD(c.seed)} · harvest ${fmtMD(c.end)} (${dleft}d) · ${esc(c.status)}">${c.boards}</div>`;
+        x += w + 1;
       });
-      const label = i === 0 ? `<b>${pond}</b>${side}` : `<span style="color:#aaa">${pond}</span>${side}`;
-      row.innerHTML = `<div class="g-label" style="height:${h}px"><span>${label}</span></div><div class="g-track" style="min-width:680px;height:${h}px">${blocks}</div>`;
+      const total = rows.reduce((s, c) => s + c.boards, 0);
+      const row = document.createElement('div'); row.className = 'g-row';
+      row.innerHTML = `<div class="g-label"><span style="color:#888">${esc(side)}</span><span class="cap">${total}</span></div>`
+        + `<div class="g-track" style="height:24px;min-width:${Math.max(x, 100)}px">${blocks}</div>`;
       g.appendChild(row);
     });
   });
