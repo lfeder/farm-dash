@@ -63,17 +63,9 @@
 <div id="content">
   <div id="loading">Loading schedule…</div>
   <div id="main" style="display:none;">
-    <div class="summary">
-      <div class="sum-box" id="sum-status"></div>
-      <div class="pond-chips" id="pond-chips"></div>
-    </div>
-
     <div class="section-title">Pond fill — cycles by harvest order</div>
     <div id="gantt"></div>
     <div class="legend" id="legend"></div>
-
-    <div class="section-title" id="issues-title">Schedule issues</div>
-    <div id="issues"></div>
   </div>
 </div>
 
@@ -147,7 +139,6 @@ async function load() {
 function render() {
   const today = hstToday();
   renderGantt(today);
-  renderChecks(today);
   renderLegend();
 }
 
@@ -210,70 +201,6 @@ function renderGantt(today) {
         + `<div class="g-track" style="height:24px;min-width:${capX + 60}px">${blocks}</div>`;
       g.appendChild(row);
     });
-  });
-}
-
-// ── Fullness / balance check (per pond, next CHECK_WEEKS) ──
-// Reports the actionable signal: how far out each pond is covered (stays full)
-// before it draws down for lack of planned seedings, plus any over-capacity.
-function renderChecks(today) {
-  const start = today;
-  const end = new Date(today.getTime() + CHECK_WEEKS * 7 * DAY);
-  const ponds = Object.keys(CAP);
-  const chips = document.getElementById('pond-chips');
-  const issuesEl = document.getElementById('issues');
-  chips.innerHTML = ''; issuesEl.innerHTML = '';
-  const issues = [];
-
-  ponds.forEach(pond => {
-    const cap = CAP[pond];
-    const cs = cycles.filter(c => c.pond === pond);
-    let firstShort = null, maxOver = 0, overDate = null, minOn = Infinity, minDate = null, hasData = false;
-    for (let t = start.getTime(); t <= end.getTime(); t += DAY) {
-      const on = cs.filter(c => c.seed.getTime() <= t && c.end.getTime() > t).reduce((s, c) => s + c.boards, 0);
-      if (on > 0) hasData = true;
-      if (on < minOn) { minOn = on; minDate = new Date(t); }
-      if (on < cap - TOL && firstShort === null) firstShort = new Date(t);
-      if (on - cap > maxOver) { maxOver = on - cap; overDate = new Date(t); }
-    }
-
-    // chip
-    let cls = 'full', note = 'full';
-    if (!hasData) { cls = ''; note = 'no cycles'; }
-    else if (firstShort) { cls = 'gap'; note = `→ ${fmtMD(new Date(firstShort.getTime() - DAY))}`; }
-    else if (maxOver > TOL) { cls = 'over'; note = `over ${Math.round(maxOver)}`; }
-    chips.innerHTML += `<span class="chip ${cls}"><b>${pond}</b> ${note}</span>`;
-
-    if (hasData && firstShort) {
-      issues.push({ pond, type: 'gap', covered: new Date(firstShort.getTime() - DAY), minOn: Math.round(minOn), minDate });
-    }
-    if (hasData && maxOver > TOL) {
-      issues.push({ pond, type: 'over', maxOver: Math.round(maxOver), overDate });
-    }
-  });
-
-  const shortCount = issues.filter(i => i.type === 'gap').length;
-  const sum = document.getElementById('sum-status');
-  sum.className = 'sum-box ' + (issues.length ? 'sum-warn' : 'sum-ok');
-  sum.textContent = issues.length
-    ? `${shortCount} pond${shortCount === 1 ? '' : 's'} run short within ${CHECK_WEEKS} wks`
-    : 'Schedule clean — all ponds full';
-
-  document.getElementById('issues-title').textContent = `Schedule issues — next ${CHECK_WEEKS} weeks`;
-  if (!issues.length) {
-    issuesEl.innerHTML = `<div class="none">All ponds stay full (±${TOL} boards) for the next ${CHECK_WEEKS} weeks.</div>`;
-    return;
-  }
-  issues.sort((a, b) => (a.covered || a.overDate) - (b.covered || b.overDate));
-  issues.forEach(it => {
-    const div = document.createElement('div');
-    div.className = 'issue ' + it.type;
-    if (it.type === 'gap') {
-      div.innerHTML = `<span class="pill">${it.pond}</span> full through <b>${fmtMD(it.covered)}</b>, then draws down — needs seedings (down to ${it.minOn} boards by ${fmtMD(it.minDate)}).`;
-    } else {
-      div.innerHTML = `<span class="pill">${it.pond}</span> over capacity by ${it.maxOver} boards around ${fmtMD(it.overDate)}.`;
-    }
-    issuesEl.appendChild(div);
   });
 }
 
