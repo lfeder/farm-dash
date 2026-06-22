@@ -215,7 +215,7 @@ function renderGantt(today) {
         if (!notOnPond) totalRows += r;                // fill readout = on-pond only
         const bw = Math.max(4, r * ROW_PX);
         const col = varietyColor(c.variety || c.seedName);
-        blocks += `<div class="g-block${faded}" style="left:${x}px;width:${bw}px;line-height:${lh}px;background:${col}" title="H:${fmtMD2(c.end)}, S:${fmtMD2(c.seed)}, D:${c.seedsPerBoard}">${Math.round(r)}</div>`;
+        blocks += `<div class="g-block${faded}" style="left:${x}px;width:${bw}px;line-height:${lh}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}">${Math.round(r)}</div>`;
         x += bw + 1;
       });
       blocks += `<div class="g-cap" style="left:${capX}px"><span>${capR}</span></div>`;
