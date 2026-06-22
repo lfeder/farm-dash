@@ -120,6 +120,7 @@ async function load() {
   const table = await DataSource.fetchTable('lettuce_schedule');
   cycles = parseGviz(table).map(r => {
     const seed = parseUsDate(r.SeedingDate);
+    const ponded = parseUsDate(r.PondDate);
     const end = parseUsDate(r.HarvestDate) || parseUsDate(r.ExpHarvestDate);
     return {
       pond: (r.Pond || '').trim(),
@@ -128,7 +129,7 @@ async function load() {
       seedName: (r.SeedName || '').trim(),
       seedsPerBoard: +r.SeedsPerBoard || 0,
       boards: +r.Boards || 0,
-      seed, end,
+      seed, ponded, end,
       status: (r.Status || '').trim(),
     };
   }).filter(c => c.pond && c.seed && c.end && c.end > c.seed);
@@ -198,9 +199,9 @@ function renderGantt(today) {
       let x = 0, blocks = '', totalRows = 0;
       list.forEach(c => {
         const r = c.boards / w;
-        const future = c.seed > today;                 // not yet seeded → fade
-        const faded = future ? ' planned' : '';
-        if (!future) totalRows += r;                   // fill readout = on-pond only
+        const notOnPond = (c.ponded || c.seed) > today; // not yet on pond → fade
+        const faded = notOnPond ? ' planned' : '';
+        if (!notOnPond) totalRows += r;                // fill readout = on-pond only
         const bw = Math.max(4, r * ROW_PX);
         const col = varietyColor(c.variety || c.seedName);
         blocks += `<div class="g-block${faded}" style="left:${x}px;width:${bw}px;line-height:${lh}px;background:${col}" title="H:${fmtMD2(c.end)}, S:${fmtMD2(c.seed)}, D:${c.seedsPerBoard}">${Math.round(r)}</div>`;
@@ -224,7 +225,7 @@ function renderGantt(today) {
 function renderLegend() {
   const keys = Object.keys(_varColor);
   document.getElementById('legend').innerHTML = keys.map(k => `<span><span class="sw" style="background:${_varColor[k]}"></span>${esc(k)}</span>`).join('')
-    + '<span style="color:#999">· faded = not yet seeded · solid = on pond · block # = rows</span>';
+    + '<span style="color:#999">· faded = not yet on pond · solid = on pond · block # = rows</span>';
 }
 
 load().catch(err => {
