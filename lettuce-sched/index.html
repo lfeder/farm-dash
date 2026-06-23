@@ -218,7 +218,7 @@ function renderGantt(today) {
 
     let firstInPond = true;
     rows.forEach(({ side, w, list, h: rowH }) => {
-      let x = 0, blocks = '', totalRows = 0;
+      let x = 0, blocks = '', totalRows = 0, prevDays = null;
       list.forEach(c => {
         const r = c.boards / w;
         const notOnPond = (c.ponded || c.seed) > today; // not yet on pond → fade
@@ -227,7 +227,12 @@ function renderGantt(today) {
         const bw = Math.max(4, r * ROW_PX);
         const col = varietyColor(c.variety || c.seedName);
         const pondDays = Math.round((c.end - (c.ponded || c.seed)) / DAY); // days on pond (pond date → harvest)
-        blocks += `<div class="g-block${faded}" style="left:${x}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days"${pondDays > 28 ? ' style="color:#ff5252"' : ''}>${pondDays}</span></div>`;
+        // day-number color: red if overdue (>28), else black if it jumps >2 from the prior cycle
+        let dayStyle = '';
+        if (pondDays > 28) dayStyle = ' style="color:#ff5252"';
+        else if (prevDays != null && Math.abs(pondDays - prevDays) > 2) dayStyle = ' style="color:#000"';
+        prevDays = pondDays;
+        blocks += `<div class="g-block${faded}" style="left:${x}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days"${dayStyle}>${pondDays}</span></div>`;
         x += bw + 1;
       });
       blocks += `<div class="g-cap" style="left:${capX}px"><span>${capR}</span></div>`;
