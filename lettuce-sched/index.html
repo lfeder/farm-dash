@@ -235,7 +235,7 @@ function renderGantt(today) {
         blocks += `<div class="g-block${faded}" style="left:${x}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days"${dayStyle}>${pondDays}</span></div>`;
         x += bw + 1;
       });
-      blocks += `<div class="g-cap" style="left:${capX}px"><span>${capR}</span></div>`;
+      blocks += `<div class="g-cap" style="left:${capX}px"></div>`;
       const rr = Math.round(totalRows);
       const lc = rr === capR ? '#2f7d4f' : '#b3402f'; // green only if exactly full, else red
       const row = document.createElement('div'); row.className = 'g-row';
