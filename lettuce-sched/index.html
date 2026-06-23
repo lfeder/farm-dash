@@ -178,14 +178,14 @@ function render() {
 }
 
 // Flag true duplicate cycles: same pond · side · seeding date · exp-harvest date
-// · variety. C sides are trials and excluded. A "duplicate" is ≥2 rows sharing
+// · seed name. C sides are trials and excluded. A "duplicate" is ≥2 rows sharing
 // that full key — i.e. the same planting entered more than once.
 function findDupes() {
   const dt = d => d ? d.getTime() : '?';
   const map = new Map();
   cycles.forEach(c => {
     if ((c.side || '').trim().toUpperCase()[0] === 'C') return; // skip trial sides
-    const key = [c.pond, c.side, dt(c.seed), dt(c.exp || c.end), c.variety].join('|');
+    const key = [c.pond, c.side, dt(c.seed), dt(c.exp || c.end), c.seedName].join('|');
     (map.get(key) || map.set(key, []).get(key)).push(c);
   });
   return [...map.values()].filter(g => g.length > 1)
@@ -198,11 +198,11 @@ function renderDupeFlag() {
   if (!dupes.length) { el.innerHTML = ''; return; }
   const items = dupes.map(g => {
     const c = g[0];
-    return `<li>${esc(c.pond + c.side)} · ${esc(c.variety)} · seed ${fmtMD2(c.seed)} → harv ${fmtMD2(c.exp || c.end)} `
-      + `<b>×${g.length}</b> (${g.map(x => esc(x.seedName || '?')).join(', ')})</li>`;
+    return `<li>${esc(c.pond + c.side)} · ${esc(c.seedName || '?')} · seed ${fmtMD2(c.seed)} → harv ${fmtMD2(c.exp || c.end)} `
+      + `<b>×${g.length}</b> (${g.map(x => esc(x.variety || '?')).join(', ')})</li>`;
   }).join('');
   el.innerHTML = `<div class="dup-box"><b>⚠ ${dupes.length} duplicate cycle${dupes.length > 1 ? 's' : ''}</b>`
-    + ` — same pond·side·seed-date·harvest·variety entered more than once (C-side trials excluded):<ul>${items}</ul></div>`;
+    + ` — same pond·side·seed-date·harvest·seed-name entered more than once (C-side trials excluded):<ul>${items}</ul></div>`;
 }
 
 // ── Pond rows: one row per pond/side, cycles tiled by board size in harvest
