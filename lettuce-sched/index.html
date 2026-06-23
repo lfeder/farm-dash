@@ -231,7 +231,7 @@ function renderGantt(today) {
         // (drop the dark halo on colored numbers so the color reads clean)
         let dayStyle = '';
         if (pondDays > 28) dayStyle = ' style="color:#ff5252;text-shadow:none"';
-        else if (prevDays != null && Math.abs(pondDays - prevDays) > 2) dayStyle = ' style="color:#888;text-shadow:none"';
+        else if (prevDays != null && Math.abs(pondDays - prevDays) > 2) dayStyle = ' style="color:#333;text-shadow:none"';
         prevDays = pondDays;
         blocks += `<div class="g-block${faded}" style="left:${x}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days"${dayStyle}>${pondDays}</span></div>`;
         x += bw + 1;
