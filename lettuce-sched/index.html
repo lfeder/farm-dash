@@ -8,8 +8,12 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
-  #header { background: #4a8c5c; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+  #header { background: #4a8c5c; padding: 10px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
   #header h1 { font-size: 1.5rem; color: #fff; font-weight: 700; }
+  .hdr-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .hdr-as { font-size: 0.85rem; color: #fff; font-weight: 600; }
+  #asof { font: inherit; padding: 2px 6px; border: 1px solid #bbb; border-radius: 4px; }
+  #versionStamp { margin-left: auto; font-size: 0.7rem; color: #fff; opacity: 0.8; }
   #content { max-width: 1240px; margin: 0 auto; padding: 10px 24px; }
 
   /* Summary banner */
@@ -62,7 +66,7 @@
   .g-row.side-c .g-block { font-size: 0.58rem; }
   .toggle { display: inline-flex; border: 1px solid #bbb; border-radius: 5px; overflow: hidden; font-size: 0.72rem; font-weight: 600; }
   .toggle button { border: none; background: #fff; color: #555; padding: 3px 12px; cursor: pointer; font: inherit; }
-  .toggle button.active { background: #4a8c5c; color: #fff; }
+  .toggle button.active { background: #25623c; color: #fff; }
   .g-block.planned { opacity: 0.6; border-style: dashed; }
 
   /* Issues + legend */
@@ -76,7 +80,7 @@
   .legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
   #loading { padding: 40px; text-align: center; color: #4a8c5c; }
   /* Duplicate-cycle flag */
-  #dupflag { margin: 0 0 12px; }
+  #dupflag { margin: 14px 0 0; }
   #dupflag .dup-box { background: #fdeeee; border: 1px solid #f0c0c0; border-radius: 6px; padding: 8px 12px; font-size: 0.82rem; color: #b3402f; }
   #dupflag .dup-box b { font-weight: 700; }
   #dupflag ul { margin: 6px 0 0; padding-left: 18px; }
@@ -87,28 +91,24 @@
 
 <div id="header">
   <h1>Lettuce Schedule</h1>
-  <span style="font-size:0.7rem;color:#fff;" id="versionStamp">06-22</span>
+  <div class="hdr-controls">
+    <span class="hdr-as">As of</span>
+    <button id="asofPrev" class="step-btn" title="Previous day">◄</button>
+    <input type="date" id="asof" min="2026-01-01" max="2026-12-31">
+    <button id="asofNext" class="step-btn" title="Next day">►</button>
+    <span class="toggle" id="labelToggle">
+      <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button>
+    </span>
+  </div>
+  <span id="versionStamp">06-22</span>
 </div>
 
 <div id="content">
   <div id="loading">Loading schedule…</div>
   <div id="main" style="display:none;">
-    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-      <span style="font-size:0.85rem; color:#444; font-weight:600;">As of</span>
-      <button id="asofPrev" class="step-btn" title="Previous day">◄</button>
-      <input type="date" id="asof" min="2026-01-01" max="2026-12-31" style="font:inherit; padding:2px 6px; border:1px solid #bbb; border-radius:4px;">
-      <button id="asofNext" class="step-btn" title="Next day">►</button>
-      <button id="asofToday" style="font:inherit; font-size:0.8rem; padding:3px 10px; border:1px solid #bbb; border-radius:4px; background:#fff; cursor:pointer;">Today</button>
-    </div>
-    <div class="section-title" style="display:flex; align-items:center; gap:12px;">
-      <span>Pond fill — cycles by harvest order</span>
-      <span class="toggle" id="labelToggle">
-        <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button>
-      </span>
-    </div>
-    <div id="dupflag"></div>
     <div id="gantt"></div>
     <div class="legend" id="legend"></div>
+    <div id="dupflag"></div>
   </div>
 </div>
 
@@ -204,9 +204,6 @@ async function load() {
     const [y, m, d] = v.split('-').map(Number);
     asOf = new Date(Date.UTC(y, m - 1, d));
     render();
-  });
-  document.getElementById('asofToday').addEventListener('click', () => {
-    asOf = hstToday(); inp.value = ymd(asOf); render();
   });
   const stepDay = n => {
     const t = asOf.getTime() + n * DAY;
