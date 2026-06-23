@@ -37,9 +37,15 @@
   .c-cell.c-pond { left: 34px; }
   .c-cell.c-seed { left: 68px; border-right: 2px solid #c9b896; }
   .c-cell.c-zero { color: #ccc; }
-  .g-head { background: #faf7f2; min-height: 20px; border-bottom: 2px solid #c9b896; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #888; }
+  .g-head { background: #faf7f2; min-height: 22px; border-bottom: 2px solid #c9b896; font-size: 0.55rem; font-weight: 700; letter-spacing: 0; color: #999; }
   .g-head .c-cell, .g-head .g-label { color: #999; }
-  .g-head .g-track { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
+  .g-head .g-track { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; overflow: visible; }
+  .g-head .g-track span { position: sticky; font-size: 0.74rem; font-weight: 800; color: #555; white-space: nowrap; background: #faf7f2; padding: 0 3px; }
+  .g-head .g-track span:first-child { left: 8px; }
+  .g-head .g-track span:last-child { right: 8px; }
+  .g-foot { background: #faf7f2; border-top: 2px solid #c9b896; font-weight: 700; }
+  .g-foot .c-cell, .g-foot .g-label { color: #555; }
+  .step-btn { font: inherit; font-size: 0.8rem; padding: 3px 9px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
   .g-label .cap { color: #999; font-weight: 400; font-size: 0.7rem; }
   .g-track { position: relative; flex: 1 1 auto; }
   .g-axis { height: 22px; }
@@ -85,8 +91,11 @@
 <div id="content">
   <div id="loading">Loading schedule…</div>
   <div id="main" style="display:none;">
-    <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-      <label style="font-size:0.85rem; color:#444; font-weight:600;">As of <input type="date" id="asof" style="font:inherit; padding:2px 6px; border:1px solid #bbb; border-radius:4px;"></label>
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+      <span style="font-size:0.85rem; color:#444; font-weight:600;">As of</span>
+      <button id="asofPrev" class="step-btn" title="Previous day">◄</button>
+      <input type="date" id="asof" min="2026-01-01" max="2026-12-31" style="font:inherit; padding:2px 6px; border:1px solid #bbb; border-radius:4px;">
+      <button id="asofNext" class="step-btn" title="Next day">►</button>
       <button id="asofToday" style="font:inherit; font-size:0.8rem; padding:3px 10px; border:1px solid #bbb; border-radius:4px; background:#fff; cursor:pointer;">Today</button>
     </div>
     <div class="section-title" style="display:flex; align-items:center; gap:12px;">
@@ -178,7 +187,9 @@ async function load() {
       exp: parseUsDate(r.ExpHarvestDate),
       status: (r.Status || '').trim(),
     };
-  }).filter(c => c.pond && c.seed && c.end && c.end > c.seed);
+  }).filter(c => c.pond && c.seed && c.end && c.end > c.seed)
+    // Keep only cycles active during 2026 (seeded by year-end, harvest in/after Jan).
+    .filter(c => c.end.getTime() >= Date.UTC(2026, 0, 1) && c.seed.getTime() <= Date.UTC(2026, 11, 31));
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('main').style.display = 'block';
@@ -195,6 +206,13 @@ async function load() {
   document.getElementById('asofToday').addEventListener('click', () => {
     asOf = hstToday(); inp.value = ymd(asOf); render();
   });
+  const stepDay = n => {
+    const t = asOf.getTime() + n * DAY;
+    if (t < Date.UTC(2026, 0, 1) || t > Date.UTC(2026, 11, 31)) return; // clamp to 2026
+    asOf = new Date(t); inp.value = ymd(asOf); render();
+  };
+  document.getElementById('asofPrev').addEventListener('click', () => stepDay(-1));
+  document.getElementById('asofNext').addEventListener('click', () => stepDay(1));
 
   render();
 }
@@ -263,10 +281,10 @@ function renderGantt(today) {
   head.innerHTML = `<div class="c-cell c-harv" title="Boards with expected harvest on this date">Harv</div>`
     + `<div class="c-cell c-pond" title="Boards going on pond on this date">Pond</div>`
     + `<div class="c-cell c-seed" title="Boards seeding on this date">Seed</div>`
-    + `<div class="g-label"></div>`
+    + `<div class="g-label"><span></span><span class="cap">#rows</span></div>`
     + `<div class="g-track" id="axisTrack"><span>◄ Harvest</span><span>Seedling ►</span></div>`;
   g.appendChild(head);
-  let maxTrackW = 0;
+  let maxTrackW = 0, tH = 0, tP = 0, tS = 0;
 
   // Pond total height is fixed so every full pond is the same size: P2-P7 = POND_H
   // (total width 20/row), P1 = POND_H/2 (width 10/row). Within a pond the height is
@@ -328,9 +346,10 @@ function renderGantt(today) {
       maxTrackW = Math.max(maxTrackW, trackW);
       // Counts (boards) for this pond/side falling on the as-of date.
       const all = cycles.filter(c => c.pond === pond && c.side === side);
-      const nH = Math.round(all.filter(c => dEq(c.exp || c.end, today)).reduce((s, c) => s + c.boards, 0));
+      const nH = Math.round(all.filter(c => dEq(c.end, today)).reduce((s, c) => s + c.boards, 0)); // actual harvest if present, else expected
       const nP = Math.round(all.filter(c => dEq(c.ponded, today)).reduce((s, c) => s + c.boards, 0));
       const nS = Math.round(all.filter(c => dEq(c.seed, today)).reduce((s, c) => s + c.boards, 0));
+      tH += nH; tP += nP; tS += nS;
       const cc = (v, cls) => `<div class="c-cell ${cls}${v ? '' : ' c-zero'}">${v}</div>`;
       row.innerHTML = cc(nH, 'c-harv') + cc(nP, 'c-pond') + cc(nS, 'c-seed')
         + `<div class="g-label"><span style="color:#444;font-weight:600">${esc(pond + side)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
@@ -338,6 +357,14 @@ function renderGantt(today) {
       g.appendChild(row);
     });
   });
+  // Totals row under the counts table.
+  const foot = document.createElement('div');
+  foot.className = 'g-row g-foot';
+  const fc = (v, cls) => `<div class="c-cell ${cls}">${v}</div>`;
+  foot.innerHTML = fc(tH, 'c-harv') + fc(tP, 'c-pond') + fc(tS, 'c-seed')
+    + `<div class="g-label"><span>Total</span></div><div class="g-track"></div>`;
+  g.appendChild(foot);
+
   const at = document.getElementById('axisTrack');
   if (at) at.style.minWidth = maxTrackW + 'px';
 }
