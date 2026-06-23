@@ -178,13 +178,16 @@ function render() {
 }
 
 // Flag true duplicate cycles: same pond · side · seeding date · exp-harvest date
-// · seed name. C sides are trials and excluded. A "duplicate" is ≥2 rows sharing
-// that full key — i.e. the same planting entered more than once.
+// · seed name. C sides are trials and excluded; only cycles whose expected
+// harvest is still ahead (> today) are checked. A "duplicate" is ≥2 rows
+// sharing that full key — i.e. the same planting entered more than once.
 function findDupes() {
+  const today = hstToday();
   const dt = d => d ? d.getTime() : '?';
   const map = new Map();
   cycles.forEach(c => {
     if ((c.side || '').trim().toUpperCase()[0] === 'C') return; // skip trial sides
+    if (!((c.exp || c.end) > today)) return;                    // only future harvests
     const key = [c.pond, c.side, dt(c.seed), dt(c.exp || c.end), c.seedName].join('|');
     (map.get(key) || map.set(key, []).get(key)).push(c);
   });
