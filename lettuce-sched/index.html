@@ -68,6 +68,8 @@
   .toggle { display: inline-flex; border: 1px solid #bbb; border-radius: 5px; overflow: hidden; font-size: 0.72rem; font-weight: 600; }
   .toggle button { border: none; background: #fff; color: #555; padding: 3px 12px; cursor: pointer; font: inherit; }
   .toggle button.active { background: #25623c; color: #fff; }
+  #labelToggle { margin-left: 24px; }
+  #filterwarn { margin: 0 0 12px; background: #fdf6e3; border: 1px solid #f0d890; color: #9a6a00; border-radius: 6px; padding: 8px 12px; font-size: 0.85rem; font-weight: 600; }
   .g-block.planned { opacity: 0.6; border-style: dashed; }
 
   /* Issues + legend */
@@ -101,6 +103,7 @@
 <div id="content">
   <div id="loading">Loading schedule…</div>
   <div id="main" style="display:none;">
+    <div id="filterwarn" style="display:none;"></div>
     <div id="gantt"></div>
     <div class="legend" id="legend"></div>
   </div>
@@ -166,8 +169,23 @@ function varietyColor(key) {
   return _varColor[key];
 }
 
+const MIN_ROWS = 1000;   // 2026 query normally returns ~1,300 rows; fewer ⇒ sheet likely filtered
+
 async function load() {
   const table = await DataSource.fetchTable('lettuce_schedule');
+
+  // A basic filter on the source sheet silently truncates the gviz feed. We can't
+  // read the filter directly, so warn when far fewer rows than expected come back.
+  const rawCount = (table.rows || []).length;
+  const warn = document.getElementById('filterwarn');
+  if (rawCount < MIN_ROWS) {
+    warn.textContent = `⚠ Only ${rawCount.toLocaleString()} rows loaded (normally ~1,300). `
+      + `The source sheet likely has a filter applied — clear it so the dashboard sees all data.`;
+    warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
+  }
+
   cycles = parseGviz(table).map(r => {
     const seed = parseUsDate(r.SeedingDate);
     const ponded = parseUsDate(r.PondDate);
