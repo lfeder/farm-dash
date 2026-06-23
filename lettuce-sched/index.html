@@ -27,10 +27,19 @@
   /* Gantt */
   .section-title { font-size: 1.05rem; font-weight: 600; color: #333; margin: 8px 0 6px; }
   #gantt { background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow-x: auto; }
-  .g-row { display: flex; align-items: stretch; border-bottom: 1px solid #eee; min-height: 13px; }
+  .g-row { display: flex; align-items: stretch; border-bottom: 1px solid #eee; min-height: 13px; background: #fff; }
   .g-row:last-child { border-bottom: none; }
   .g-row.pond-start { border-top: 3px solid #c9b896; }
-  .g-label { flex: 0 0 100px; min-width: 0; overflow: hidden; padding: 0 8px; gap: 6px; font-size: 0.72rem; line-height: 1; color: #444; border-right: 1px solid #e6e0d8; position: sticky; left: 0; background: inherit; display: flex; align-items: center; justify-content: space-between; }
+  .g-label { flex: 0 0 100px; min-width: 0; overflow: hidden; padding: 0 8px; gap: 6px; font-size: 0.72rem; line-height: 1; color: #444; border-right: 1px solid #e6e0d8; position: sticky; left: 102px; z-index: 5; background: inherit; display: flex; align-items: center; justify-content: space-between; }
+  /* Counts table (left of sim) + axis header */
+  .c-cell { flex: 0 0 34px; min-width: 0; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; line-height: 1; color: #444; border-right: 1px solid #f0ece6; position: sticky; background: inherit; z-index: 5; }
+  .c-cell.c-harv { left: 0; }
+  .c-cell.c-pond { left: 34px; }
+  .c-cell.c-seed { left: 68px; border-right: 2px solid #c9b896; }
+  .c-cell.c-zero { color: #ccc; }
+  .g-head { background: #faf7f2; min-height: 20px; border-bottom: 2px solid #c9b896; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #888; }
+  .g-head .c-cell, .g-head .g-label { color: #999; }
+  .g-head .g-track { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
   .g-label .cap { color: #999; font-weight: 400; font-size: 0.7rem; }
   .g-track { position: relative; flex: 1 1 auto; }
   .g-axis { height: 22px; }
@@ -76,6 +85,10 @@
 <div id="content">
   <div id="loading">Loading schedule…</div>
   <div id="main" style="display:none;">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+      <label style="font-size:0.85rem; color:#444; font-weight:600;">As of <input type="date" id="asof" style="font:inherit; padding:2px 6px; border:1px solid #bbb; border-radius:4px;"></label>
+      <button id="asofToday" style="font:inherit; font-size:0.8rem; padding:3px 10px; border:1px solid #bbb; border-radius:4px; background:#fff; cursor:pointer;">Today</button>
+    </div>
     <div class="section-title" style="display:flex; align-items:center; gap:12px;">
       <span>Pond fill — cycles by harvest order</span>
       <span class="toggle" id="labelToggle">
@@ -106,6 +119,7 @@ const VARIETY_FIXED = {
 const VARIETY_FALLBACK = ['#f0a030','#9b59b6','#16a085','#e67e22','#2c7fb8','#8e44ad','#27ae60'];
 
 let cycles = [];
+let asOf = hstToday();   // "run as of" date; drives the whole view (default today)
 
 function parseUsDate(v) {
   if (!v) return null;
@@ -122,6 +136,7 @@ function hstToday() {
 }
 function fmtMD(d) { return (d.getUTCMonth() + 1) + '/' + d.getUTCDate(); }
 function fmtMD2(d) { return String(d.getUTCMonth() + 1).padStart(2, '0') + '/' + String(d.getUTCDate()).padStart(2, '0'); }
+function ymd(d) { return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0'); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
 
 function parseGviz(table) {
@@ -167,13 +182,26 @@ async function load() {
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('main').style.display = 'block';
+
+  // As-of date picker: default today, re-render everything on change.
+  const inp = document.getElementById('asof');
+  inp.value = ymd(asOf);
+  inp.addEventListener('change', () => {
+    const v = inp.value; if (!v) return;
+    const [y, m, d] = v.split('-').map(Number);
+    asOf = new Date(Date.UTC(y, m - 1, d));
+    render();
+  });
+  document.getElementById('asofToday').addEventListener('click', () => {
+    asOf = hstToday(); inp.value = ymd(asOf); render();
+  });
+
   render();
 }
 
 function render() {
-  const today = hstToday();
   renderDupeFlag();
-  renderGantt(today);
+  renderGantt(asOf);
   renderLegend();
 }
 
@@ -182,7 +210,7 @@ function render() {
 // harvest is still ahead (> today) are checked. A "duplicate" is ≥2 rows
 // sharing that full key — i.e. the same planting entered more than once.
 function findDupes() {
-  const today = hstToday();
+  const today = asOf;
   const dt = d => d ? d.getTime() : '?';
   const map = new Map();
   cycles.forEach(c => {
@@ -227,6 +255,18 @@ function renderGantt(today) {
   const ponds = [...new Set(cycles.map(c => c.pond))].sort();
   const g = document.getElementById('gantt');
   g.innerHTML = '';
+  const dEq = (a, b) => a && b && a.getTime() === b.getTime();   // same calendar day
+
+  // Header: counts-column labels + harvest→seedling direction over the sim track.
+  const head = document.createElement('div');
+  head.className = 'g-row g-head';
+  head.innerHTML = `<div class="c-cell c-harv" title="Boards with expected harvest on this date">Harv</div>`
+    + `<div class="c-cell c-pond" title="Boards going on pond on this date">Pond</div>`
+    + `<div class="c-cell c-seed" title="Boards seeding on this date">Seed</div>`
+    + `<div class="g-label"></div>`
+    + `<div class="g-track" id="axisTrack"><span>◄ Harvest</span><span>Seedling ►</span></div>`;
+  g.appendChild(head);
+  let maxTrackW = 0;
 
   // Pond total height is fixed so every full pond is the same size: P2-P7 = POND_H
   // (total width 20/row), P1 = POND_H/2 (width 10/row). Within a pond the height is
@@ -284,11 +324,22 @@ function renderGantt(today) {
       if (pi > 0 && firstInPond) row.classList.add('pond-start'); // thick line between ponds
       firstInPond = false;
       row.style.minHeight = rowH + 'px';
-      row.innerHTML = `<div class="g-label"><span style="color:#444;font-weight:600">${esc(pond + side)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
-        + `<div class="g-track" style="height:${rowH}px;min-width:${Math.max(x, capX) + 40}px">${blocks}</div>`;
+      const trackW = Math.max(x, capX) + 40;
+      maxTrackW = Math.max(maxTrackW, trackW);
+      // Counts (boards) for this pond/side falling on the as-of date.
+      const all = cycles.filter(c => c.pond === pond && c.side === side);
+      const nH = Math.round(all.filter(c => dEq(c.exp || c.end, today)).reduce((s, c) => s + c.boards, 0));
+      const nP = Math.round(all.filter(c => dEq(c.ponded, today)).reduce((s, c) => s + c.boards, 0));
+      const nS = Math.round(all.filter(c => dEq(c.seed, today)).reduce((s, c) => s + c.boards, 0));
+      const cc = (v, cls) => `<div class="c-cell ${cls}${v ? '' : ' c-zero'}">${v}</div>`;
+      row.innerHTML = cc(nH, 'c-harv') + cc(nP, 'c-pond') + cc(nS, 'c-seed')
+        + `<div class="g-label"><span style="color:#444;font-weight:600">${esc(pond + side)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
+        + `<div class="g-track" style="height:${rowH}px;min-width:${trackW}px">${blocks}</div>`;
       g.appendChild(row);
     });
   });
+  const at = document.getElementById('axisTrack');
+  if (at) at.style.minWidth = maxTrackW + 'px';
 }
 
 function renderLegend() {
