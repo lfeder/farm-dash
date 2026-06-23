@@ -45,11 +45,11 @@
   .g-head { background: #faf7f2; min-height: 22px; border-bottom: 2px solid #c9b896; font-size: 0.55rem; font-weight: 700; letter-spacing: 0; color: #999; }
   .g-head .c-cell, .g-head .g-label { color: #999; }
   .g-head .g-track { position: relative; overflow: visible; }
-  .g-head .g-track span { font-size: 0.74rem; font-weight: 800; color: #555; white-space: nowrap; background: #faf7f2; padding: 0 3px; line-height: 22px; }
+  .g-head .g-track span { font-size: 0.74rem; font-weight: 800; color: #555; white-space: nowrap; padding: 0 3px; line-height: 22px; }
   .ax-harv { position: sticky; left: 8px; }
-  /* Seedling sits right-aligned at the cap (110-row) line; cycles past it are future/off-pond. */
-  /* transparent so its full-width box doesn't paint over the Harvest label at track-left */
-  .ax-seed { position: absolute; left: 0; text-align: right; padding-right: 6px; background: transparent; }
+  /* Seedling right-aligned at the cap (110-row) line; cycles past it are future/off-pond.
+     No background so its full-width box never paints over the Harvest label at track-left. */
+  .ax-seed { position: absolute; left: 0; text-align: right; padding-right: 6px; }
   .g-foot { background: #faf7f2; border-top: 2px solid #c9b896; font-weight: 700; }
   .g-foot .c-cell, .g-foot .g-label { color: #555; }
   .step-btn { font: inherit; font-size: 0.8rem; padding: 3px 9px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
@@ -223,18 +223,19 @@ function render() {
   renderLegend();
 }
 
-// Flag true duplicate cycles: same pond · side · seeding date · exp-harvest date
-// · seed name. C sides are trials and excluded; only cycles whose expected
-// harvest is still ahead (> today) are checked. A "duplicate" is ≥2 rows
-// sharing that full key — i.e. the same planting entered more than once.
+// Flag true duplicate cycles: same pond · side · seeding date · harvest date
+// · seed name. Harvest date is the actual harvest if present, else expected
+// (c.end). C sides are trials and excluded; only cycles whose harvest is still
+// ahead (> today) are checked. A "duplicate" is ≥2 rows sharing that full key —
+// i.e. the same planting entered more than once.
 function findDupes() {
   const today = asOf;
   const dt = d => d ? d.getTime() : '?';
   const map = new Map();
   cycles.forEach(c => {
     if ((c.side || '').trim().toUpperCase()[0] === 'C') return; // skip trial sides
-    if (!((c.exp || c.end) > today)) return;                    // only future harvests
-    const key = [c.pond, c.side, dt(c.seed), dt(c.exp || c.end), c.seedName].join('|');
+    if (!(c.end > today)) return;                               // only future harvests
+    const key = [c.pond, c.side, dt(c.seed), dt(c.end), c.seedName].join('|');
     (map.get(key) || map.set(key, []).get(key)).push(c);
   });
   return [...map.values()].filter(g => g.length > 1)
@@ -247,7 +248,7 @@ function renderDupeFlag() {
   if (!dupes.length) { el.innerHTML = ''; return; }
   const items = dupes.map(g => {
     const c = g[0];
-    return `<li>${esc(c.pond + c.side)} · ${esc(c.seedName || '?')} · seed ${fmtMD2(c.seed)} → harv ${fmtMD2(c.exp || c.end)} `
+    return `<li>${esc(c.pond + c.side)} · ${esc(c.seedName || '?')} · seed ${fmtMD2(c.seed)} → harv ${fmtMD2(c.end)} `
       + `<b>×${g.length}</b> (${g.map(x => esc(x.variety || '?')).join(', ')})</li>`;
   }).join('');
   el.innerHTML = `<div class="dup-box"><b>⚠ ${dupes.length} duplicate cycle${dupes.length > 1 ? 's' : ''}</b>`
