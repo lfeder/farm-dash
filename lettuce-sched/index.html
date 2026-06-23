@@ -39,10 +39,11 @@
   .c-cell.c-zero { color: #ccc; }
   .g-head { background: #faf7f2; min-height: 22px; border-bottom: 2px solid #c9b896; font-size: 0.55rem; font-weight: 700; letter-spacing: 0; color: #999; }
   .g-head .c-cell, .g-head .g-label { color: #999; }
-  .g-head .g-track { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; overflow: visible; }
-  .g-head .g-track span { position: sticky; font-size: 0.74rem; font-weight: 800; color: #555; white-space: nowrap; background: #faf7f2; padding: 0 3px; }
-  .g-head .g-track span:first-child { left: 8px; }
-  .g-head .g-track span:last-child { right: 8px; }
+  .g-head .g-track { position: relative; overflow: visible; }
+  .g-head .g-track span { font-size: 0.74rem; font-weight: 800; color: #555; white-space: nowrap; background: #faf7f2; padding: 0 3px; line-height: 22px; }
+  .ax-harv { position: sticky; left: 8px; }
+  /* Seedling sits right-aligned at the cap (110-row) line; cycles past it are future/off-pond. */
+  .ax-seed { position: absolute; left: 0; text-align: right; padding-right: 6px; }
   .g-foot { background: #faf7f2; border-top: 2px solid #c9b896; font-weight: 700; }
   .g-foot .c-cell, .g-foot .g-label { color: #555; }
   .step-btn { font: inherit; font-size: 0.8rem; padding: 3px 9px; border: 1px solid #bbb; border-radius: 4px; background: #fff; cursor: pointer; }
@@ -282,7 +283,7 @@ function renderGantt(today) {
     + `<div class="c-cell c-pond" title="Boards going on pond on this date">Pond</div>`
     + `<div class="c-cell c-seed" title="Boards seeding on this date">Seed</div>`
     + `<div class="g-label"><span></span><span class="cap">#rows</span></div>`
-    + `<div class="g-track" id="axisTrack"><span>◄ Harvest</span><span>Seedling ►</span></div>`;
+    + `<div class="g-track" id="axisTrack"><span class="ax-harv">◄ Harvest</span><span class="ax-seed" style="width:${110 * ROW_PX}px">Seedling ►</span></div>`;
   g.appendChild(head);
   let maxTrackW = 0, tH = 0, tP = 0, tS = 0;
 
