@@ -42,6 +42,7 @@
   .g-block .lbl-days { display: none; }
   #gantt.show-days .g-block .lbl-rows { display: none; }
   #gantt.show-days .g-block .lbl-days { display: inline; }
+  .g-row.side-c .g-block { font-size: 0.58rem; }
   .toggle { display: inline-flex; border: 1px solid #bbb; border-radius: 5px; overflow: hidden; font-size: 0.72rem; font-weight: 600; }
   .toggle button { border: none; background: #fff; color: #555; padding: 3px 12px; cursor: pointer; font: inherit; }
   .toggle button.active { background: #4a8c5c; color: #fff; }
@@ -233,6 +234,7 @@ function renderGantt(today) {
       const rr = Math.round(totalRows);
       const lc = rr === capR ? '#2f7d4f' : '#b3402f'; // green only if exactly full, else red
       const row = document.createElement('div'); row.className = 'g-row';
+      if ((side || '').trim().toUpperCase()[0] === 'C') row.classList.add('side-c'); // thin 1-wide row → smaller label
       if (pi > 0 && firstInPond) row.classList.add('pond-start'); // thick line between ponds
       firstInPond = false;
       row.style.minHeight = rowH + 'px';
