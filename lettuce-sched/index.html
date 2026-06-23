@@ -38,10 +38,13 @@
   .g-today { position: absolute; top: 0; bottom: 0; border-left: 2px solid #e07a5f; z-index: 3; }
   .g-cap { position: absolute; top: 0; bottom: 0; border-left: 4px solid #555; z-index: 2; }
   .g-cap span { position: absolute; top: 1px; left: 3px; font-size: 0.6rem; color: #888; white-space: nowrap; }
-  .g-block { position: absolute; top: 1px; bottom: 1px; border-radius: 2px; overflow: hidden; border: 1px solid rgba(0,0,0,0.7); color: #fff; font-size: 0.6rem; font-weight: 700; white-space: nowrap; text-shadow: 0 0 2px rgba(0,0,0,0.9), 0 1px 1px rgba(0,0,0,0.9); }
-  .g-block .lbl { position: absolute; line-height: 1; }
-  .g-block .r { top: 1px; left: 2px; }
-  .g-block .d { bottom: 1px; right: 2px; }
+  .g-block { position: absolute; top: 1px; bottom: 1px; border-radius: 2px; overflow: hidden; border: 1px solid rgba(0,0,0,0.7); color: #fff; font-size: 0.78rem; font-weight: 700; line-height: 1; white-space: nowrap; text-shadow: 0 0 2px rgba(0,0,0,0.9), 0 1px 1px rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; }
+  .g-block .lbl-days { display: none; }
+  #gantt.show-days .g-block .lbl-rows { display: none; }
+  #gantt.show-days .g-block .lbl-days { display: inline; }
+  .toggle { display: inline-flex; border: 1px solid #bbb; border-radius: 5px; overflow: hidden; font-size: 0.72rem; font-weight: 600; }
+  .toggle button { border: none; background: #fff; color: #555; padding: 3px 12px; cursor: pointer; font: inherit; }
+  .toggle button.active { background: #4a8c5c; color: #fff; }
   .g-block.planned { opacity: 0.6; border-style: dashed; }
 
   /* Issues + legend */
@@ -66,7 +69,12 @@
 <div id="content">
   <div id="loading">Loading schedule…</div>
   <div id="main" style="display:none;">
-    <div class="section-title">Pond fill — cycles by harvest order</div>
+    <div class="section-title" style="display:flex; align-items:center; gap:12px;">
+      <span>Pond fill — cycles by harvest order</span>
+      <span class="toggle" id="labelToggle">
+        <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button>
+      </span>
+    </div>
     <div id="gantt"></div>
     <div class="legend" id="legend"></div>
   </div>
@@ -218,7 +226,7 @@ function renderGantt(today) {
         const bw = Math.max(4, r * ROW_PX);
         const col = varietyColor(c.variety || c.seedName);
         const pondDays = Math.round((c.end - (c.ponded || c.seed)) / DAY); // days on pond (pond date → harvest)
-        blocks += `<div class="g-block${faded}" style="left:${x}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}"><span class="lbl r">${Math.round(r)}</span><span class="lbl d">#:${pondDays}</span></div>`;
+        blocks += `<div class="g-block${faded}" style="left:${x}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days">${pondDays}</span></div>`;
         x += bw + 1;
       });
       blocks += `<div class="g-cap" style="left:${capX}px"><span>${capR}</span></div>`;
@@ -238,8 +246,15 @@ function renderGantt(today) {
 function renderLegend() {
   const keys = Object.keys(_varColor);
   document.getElementById('legend').innerHTML = keys.map(k => `<span><span class="sw" style="background:${_varColor[k]}"></span>${esc(k)}</span>`).join('')
-    + '<span style="color:#999">· faded = not yet on pond · solid = on pond · block: top-left = rows, bottom-right = #:days on pond</span>';
+    + '<span style="color:#999">· faded = not yet on pond · solid = on pond · block # = rows or days on pond (toggle)</span>';
 }
+
+// Rows/Days toggle: flips a class on #gantt so CSS swaps which label shows.
+document.getElementById('labelToggle').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#labelToggle button').forEach(x => x.classList.toggle('active', x === b));
+  document.getElementById('gantt').classList.toggle('show-days', b.dataset.mode === 'days');
+});
 
 load().catch(err => {
   document.getElementById('loading').textContent = 'Error: ' + (err.message || err);
