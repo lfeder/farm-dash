@@ -37,6 +37,7 @@
   .c-cell.c-pond { left: 34px; }
   .c-cell.c-seed { left: 68px; border-right: 2px solid #c9b896; }
   .c-cell.c-zero { color: #ccc; }
+  .c-cell.c-mismatch { color: #d33; font-weight: 700; }   /* on-pond ≠ harvest for that pond/side */
   .g-head { background: #faf7f2; min-height: 22px; border-bottom: 2px solid #c9b896; font-size: 0.55rem; font-weight: 700; letter-spacing: 0; color: #999; }
   .g-head .c-cell, .g-head .g-label { color: #999; }
   .g-head .g-track { position: relative; overflow: visible; }
@@ -351,8 +352,8 @@ function renderGantt(today) {
       const nP = Math.round(all.filter(c => dEq(c.ponded, today)).reduce((s, c) => s + c.boards, 0));
       const nS = Math.round(all.filter(c => dEq(c.seed, today)).reduce((s, c) => s + c.boards, 0));
       tH += nH; tP += nP; tS += nS;
-      const cc = (v, cls) => `<div class="c-cell ${cls}${v ? '' : ' c-zero'}">${v}</div>`;
-      row.innerHTML = cc(nH, 'c-harv') + cc(nP, 'c-pond') + cc(nS, 'c-seed')
+      const cc = (v, cls, red) => `<div class="c-cell ${cls}${v ? '' : ' c-zero'}${red ? ' c-mismatch' : ''}">${v}</div>`;
+      row.innerHTML = cc(nH, 'c-harv') + cc(nP, 'c-pond', nP !== nH) + cc(nS, 'c-seed')
         + `<div class="g-label"><span style="color:#444;font-weight:600">${esc(pond + side)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
         + `<div class="g-track" style="height:${rowH}px;min-width:${trackW}px">${blocks}</div>`;
       g.appendChild(row);
