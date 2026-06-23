@@ -58,6 +58,12 @@
   .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 0.76rem; color: #555; }
   .legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
   #loading { padding: 40px; text-align: center; color: #4a8c5c; }
+  /* Duplicate-cycle flag */
+  #dupflag { margin: 0 0 12px; }
+  #dupflag .dup-box { background: #fdeeee; border: 1px solid #f0c0c0; border-radius: 6px; padding: 8px 12px; font-size: 0.82rem; color: #b3402f; }
+  #dupflag .dup-box b { font-weight: 700; }
+  #dupflag ul { margin: 6px 0 0; padding-left: 18px; }
+  #dupflag li { margin: 1px 0; color: #8a3326; }
 </style>
 </head>
 <body>
@@ -76,6 +82,7 @@
         <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button>
       </span>
     </div>
+    <div id="dupflag"></div>
     <div id="gantt"></div>
     <div class="legend" id="legend"></div>
   </div>
@@ -153,6 +160,7 @@ async function load() {
       seedsPerBoard: +r.SeedsPerBoard || 0,
       boards: +r.Boards || 0,
       seed, ponded, end,
+      exp: parseUsDate(r.ExpHarvestDate),
       status: (r.Status || '').trim(),
     };
   }).filter(c => c.pond && c.seed && c.end && c.end > c.seed);
@@ -164,8 +172,37 @@ async function load() {
 
 function render() {
   const today = hstToday();
+  renderDupeFlag();
   renderGantt(today);
   renderLegend();
+}
+
+// Flag true duplicate cycles: same pond · side · seeding date · exp-harvest date
+// · variety. C sides are trials and excluded. A "duplicate" is ≥2 rows sharing
+// that full key — i.e. the same planting entered more than once.
+function findDupes() {
+  const dt = d => d ? d.getTime() : '?';
+  const map = new Map();
+  cycles.forEach(c => {
+    if ((c.side || '').trim().toUpperCase()[0] === 'C') return; // skip trial sides
+    const key = [c.pond, c.side, dt(c.seed), dt(c.exp || c.end), c.variety].join('|');
+    (map.get(key) || map.set(key, []).get(key)).push(c);
+  });
+  return [...map.values()].filter(g => g.length > 1)
+    .sort((a, b) => (a[0].exp || a[0].end) - (b[0].exp || b[0].end));
+}
+
+function renderDupeFlag() {
+  const el = document.getElementById('dupflag');
+  const dupes = findDupes();
+  if (!dupes.length) { el.innerHTML = ''; return; }
+  const items = dupes.map(g => {
+    const c = g[0];
+    return `<li>${esc(c.pond + c.side)} · ${esc(c.variety)} · seed ${fmtMD2(c.seed)} → harv ${fmtMD2(c.exp || c.end)} `
+      + `<b>×${g.length}</b> (${g.map(x => esc(x.seedName || '?')).join(', ')})</li>`;
+  }).join('');
+  el.innerHTML = `<div class="dup-box"><b>⚠ ${dupes.length} duplicate cycle${dupes.length > 1 ? 's' : ''}</b>`
+    + ` — same pond·side·seed-date·harvest·variety entered more than once (C-side trials excluded):<ul>${items}</ul></div>`;
 }
 
 // ── Pond rows: one row per pond/side, cycles tiled by board size in harvest
