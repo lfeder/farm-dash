@@ -1,0 +1,7 @@
+{
+  "_comment": "Defaults for the WC / TDI page. The TDI cap is editable on the page; commit this file to change the default everyone loads.",
+  "tdi": {
+    "quarterly_emp_cap": 19502.73,
+    "note": "Per-employee TDI taxable wage cap, per quarter (Hawaii 2026: weekly wage base $1,500.21 x 13 weeks = $19,502.73). Each employee's quarterly covered wages are capped at this before summing."
+  }
+}

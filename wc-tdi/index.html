@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WC / TDI Wage Basis</title>
-<script src="../lib/data-source.js?v=20260626b"></script>
+<script src="../lib/data-source.js?v=20260626c"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 16px 20px 60px; font-size: 0.85rem; }
@@ -14,8 +14,11 @@
   .seg { display: inline-flex; border: 1px solid #0f3460; border-radius: 6px; overflow: hidden; }
   .seg button { background: #16213e; color: #aab; border: none; padding: 6px 14px; cursor: pointer; font-size: 0.8rem; }
   .seg button.active { background: #4ecca3; color: #06281f; font-weight: 600; }
+  .seg.sm button { padding: 5px 10px; font-size: 0.74rem; }
   button.btn { background: #16213e; color: #cde; border: 1px solid #0f3460; border-radius: 5px; padding: 6px 12px; cursor: pointer; font-size: 0.78rem; }
   button.btn:hover { background: #1d2b50; }
+  .capfld { display: inline-flex; align-items: center; gap: 6px; font-size: 0.74rem; color: #9ab; }
+  .capfld input { background: #111; color: #ddd; border: 1px solid #335; border-radius: 4px; padding: 5px 8px; font-size: 0.82rem; width: 110px; text-align: right; }
   table { border-collapse: collapse; margin-top: 6px; font-variant-numeric: tabular-nums; }
   th, td { border: 1px solid #25325a; padding: 5px 12px; text-align: right; white-space: nowrap; }
   th { background: #16213e; color: #9fc; font-weight: 600; font-size: 0.74rem; }
@@ -30,8 +33,9 @@
   .pill .n { font-size: 1.1rem; font-weight: 700; color: #4ecca3; }
   .pill .k { font-size: 0.64rem; color: #9ab; text-transform: uppercase; letter-spacing: .4px; }
   #status { color: #8aa; padding: 30px 0; }
-  .note { background:#11182e; border:1px solid #0f3460; border-radius:8px; padding:10px 14px; margin-top:18px; max-width:780px; color:#9ab; font-size:0.72rem; line-height:1.5; }
+  .note { background:#11182e; border:1px solid #0f3460; border-radius:8px; padding:10px 14px; margin-top:18px; max-width:820px; color:#9ab; font-size:0.72rem; line-height:1.5; }
   .note b { color:#cde; }
+  code { background:#0c1226; padding:1px 4px; border-radius:3px; color:#9fd; }
 </style>
 </head>
 <body>
@@ -43,6 +47,14 @@
     <button data-v="wc" class="active">Workers' Comp · monthly</button>
     <button data-v="tdi">TDI · quarterly</button>
   </div>
+  <div class="seg sm" id="grainSeg">
+    <button data-g="month" class="active">By month</button>
+    <button data-g="paycheck">By payroll</button>
+  </div>
+  <span class="capfld" id="capWrap">Per-employee quarterly cap $
+    <input type="number" step="0.01" id="capInput">
+    <button class="btn" id="saveCap" title="Download params.json with this cap as the new default to commit">Save default</button>
+  </span>
   <button class="btn" id="exportBtn">Export CSV</button>
 </div>
 
@@ -59,7 +71,9 @@ const fmt = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleSt
 const MN = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const CLASS_LABEL = { '0008': 'Farm / Market Gardening', '8742': 'Outside Sales', '8810': 'Clerical Office', 'Unclassified': 'Unclassified' };
 
-let VIEW = 'wc', YEAR = null, WC = [], TDI = [], CAP = null;
+let VIEW = 'wc', WCGRAIN = 'month', YEAR = null;
+let WC = [], WCPC = [], TDIQ = [], TAX = [];
+let CAP = null, CAP_DEFAULT = null;
 
 function parseDateV(v) {
   if (!v) return null;
@@ -74,46 +88,77 @@ function parseTable(t) {
 }
 
 async function load() {
-  let wcT, tdiT, pT;
+  let params;
+  try { params = await fetch('params.json?v=' + Date.now()).then(r => r.json()); }
+  catch (_) { params = { tdi: { quarterly_emp_cap: 19502.73 } }; }
+  CAP_DEFAULT = num(params.tdi && params.tdi.quarterly_emp_cap) || 19502.73;
+  CAP = CAP_DEFAULT;
+
+  let wcT, pcT, tdiT;
   try {
-    [wcT, tdiT, pT] = await Promise.all([
+    [wcT, pcT, tdiT] = await Promise.all([
       DataSource.fetchTable('wc_basis_monthly', { mode: 'prod' }),
+      DataSource.fetchTable('wc_basis_paycheck', { mode: 'prod' }),
       DataSource.fetchTable('tdi_quarterly', { mode: 'prod' }),
-      DataSource.fetchTable('wc_tdi_param', { mode: 'prod' }),
     ]);
   } catch (e) { $('status').innerHTML = '<span style="color:#f5a">Load failed: ' + e + '</span>'; return; }
+
   WC = parseTable(wcT).map(r => ({ year: num(r.Year), month: num(r.Month), code: r.Code, base: num(r.Base), ot: num(r.OT) }));
-  TDI = parseTable(tdiT).map(r => ({ year: num(r.Year), q: num(r.Quarter), gross: num(r.Gross), taxable: num(r.Taxable), last: parseDateV(r.LastCheck), male: num(r.Male), female: num(r.Female) }));
-  const params = parseTable(pT).map(r => ({ year: num(r.Year), cap: num(r.Cap), rate: num(r.Rate) }));
-  const years = [...new Set([...WC.map(r => r.year), ...TDI.map(r => r.year)])];
+  WCPC = parseTable(pcT).map(r => ({ year: num(r.Year), month: num(r.Month), check: parseDateV(r.Check), code: r.Code, base: num(r.Base), ot: num(r.OT) }));
+  TDIQ = parseTable(tdiT).map(r => ({ year: num(r.Year), q: num(r.Quarter), last: parseDateV(r.LastCheck), male: num(r.Male), female: num(r.Female) }));
+
+  const years = [...new Set([...WC.map(r => r.year), ...TDIQ.map(r => r.year)])];
   YEAR = years.length ? Math.max(...years) : 2026;
-  const pr = params.find(p => p.year === YEAR) || params[0] || { cap: 1500.21, rate: 0.5 };
-  CAP = pr;
+  $('capInput').value = CAP.toFixed(2);
   $('status').style.display = 'none';
-  $('sub').textContent = `Source: prod payroll (HRB; HF & board excluded) · FY ${YEAR} · TDI weekly cap ${fmt(pr.cap)} @ ${pr.rate}%`;
+  $('sub').textContent = `Source: prod payroll (HRB; HF & board excluded) · FY ${YEAR}`;
   renderRules();
+  await recomputeTax();
   render();
 }
 
-function renderWC() {
-  const rows = WC.filter(r => r.year === YEAR && r.code !== 'N/A');
-  const codes = [...new Set(rows.map(r => r.code))].sort();
-  const months = [...new Set(rows.map(r => r.month))].sort((a, b) => a - b);
-  const g = {}; months.forEach(m => { g[m] = {}; codes.forEach(c => g[m][c] = { base: 0, ot: 0 }); });
-  rows.forEach(r => { g[r.month][r.code].base += r.base; g[r.month][r.code].ot += r.ot; });
+// Recompute TDI taxable for the current cap via the aggregates-only RPC.
+async function recomputeTax() {
+  try {
+    const client = await DataSource.getClient('prod');
+    const { data, error } = await client.rpc('tdi_quarterly_taxable', { p_year: YEAR, p_cap: CAP });
+    if (error) throw error;
+    TAX = (data || []).map(r => ({ q: num(r.quarter), gross: num(r.gross_wages), taxable: num(r.taxable_wages) }));
+  } catch (e) { TAX = []; }
+}
 
-  let h = '<table><thead><tr><th class="lbl" rowspan="2">Month</th>';
+function render() {
+  $('grainSeg').style.display = VIEW === 'wc' ? '' : 'none';
+  $('capWrap').style.display = VIEW === 'tdi' ? '' : 'none';
+  if (VIEW === 'wc') renderWC(); else renderTDI();
+}
+
+function renderWC() {
+  const byPaycheck = WCGRAIN === 'paycheck';
+  const src = byPaycheck
+    ? WCPC.filter(r => r.year === YEAR && r.code !== 'N/A')
+    : WC.filter(r => r.year === YEAR && r.code !== 'N/A');
+  const codes = [...new Set(src.map(r => r.code))].sort();
+
+  // group key: month number, or check-date string
+  const keyOf = r => byPaycheck ? (r.check ? `${r.check.y}-${String(r.check.m).padStart(2,'0')}-${String(r.check.d).padStart(2,'0')}` : '?') : r.month;
+  const labelOf = byPaycheck ? (k => { const d = k.split('-'); return `${+d[1]}/${+d[2]}`; }) : (k => MN[k]);
+  const keys = [...new Set(src.map(keyOf))].sort();
+  const g = {}; keys.forEach(k => { g[k] = {}; codes.forEach(c => g[k][c] = { base: 0, ot: 0 }); });
+  src.forEach(r => { const k = keyOf(r); g[k][r.code].base += r.base; g[k][r.code].ot += r.ot; });
+
+  let h = `<table><thead><tr><th class="lbl" rowspan="2">${byPaycheck ? 'Payroll' : 'Month'}</th>`;
   codes.forEach(c => h += `<th class="grp sep" colspan="2">${c}${CLASS_LABEL[c] ? ' · ' + CLASS_LABEL[c] : ''}</th>`);
   h += '<th class="grp sep tot" colspan="2">Total</th></tr><tr>';
   codes.forEach(() => h += '<th class="sep">Base</th><th>OT (full)</th>');
   h += '<th class="sep tot">Base</th><th class="tot">OT</th></tr></thead><tbody>';
 
   const colT = {}; codes.forEach(c => colT[c] = { base: 0, ot: 0 }); let gB = 0, gO = 0;
-  months.forEach(m => {
+  keys.forEach(k => {
     let rB = 0, rO = 0;
-    h += `<tr><td class="lbl">${MN[m]}</td>`;
+    h += `<tr><td class="lbl">${labelOf(k)}</td>`;
     codes.forEach(c => {
-      const v = g[m][c]; colT[c].base += v.base; colT[c].ot += v.ot; rB += v.base; rO += v.ot;
+      const v = g[k][c]; colT[c].base += v.base; colT[c].ot += v.ot; rB += v.base; rO += v.ot;
       h += `<td class="sep">${v.base ? fmt(v.base) : '<span class="muted">–</span>'}</td><td>${v.ot ? fmt(v.ot) : '<span class="muted">–</span>'}</td>`;
     });
     gB += rB; gO += rO;
@@ -123,23 +168,25 @@ function renderWC() {
   codes.forEach(c => h += `<td class="sep">${fmt(colT[c].base)}</td><td>${fmt(colT[c].ot)}</td>`);
   h += `<td class="sep">${fmt(gB)}</td><td>${fmt(gO)}</td></tr></tbody></table>`;
   $('main').innerHTML = h;
-
-  pills([['Total base ' + YEAR, fmt(gB)], ['Total OT (full)', fmt(gO)], ['Classes', String(codes.length)]]);
+  pills([['Total base ' + YEAR, fmt(gB)], ['Total OT (full)', fmt(gO)], [byPaycheck ? 'Payrolls' : 'Months', String(keys.length)]]);
 }
 
 function renderTDI() {
-  const rows = TDI.filter(r => r.year === YEAR).sort((a, b) => a.q - b.q);
+  const taxByQ = {}; TAX.forEach(r => taxByQ[r.q] = r);
+  const quarters = [...new Set([...TDIQ.filter(r => r.year === YEAR).map(r => r.q), ...TAX.map(r => r.q)])].sort();
   let h = '<table><thead><tr><th class="lbl">Quarter</th><th>Covered wages</th><th>Taxable wages</th><th class="sep">Male</th><th>Female</th><th>Total emp.</th><th class="lbl">Headcount as of</th></tr></thead><tbody>';
   let tG = 0, tT = 0;
-  rows.forEach(r => {
-    tG += r.gross; tT += r.taxable;
-    const d = r.last ? `${r.last.m}/${r.last.d}/${r.last.y}` : '—';
-    h += `<tr><td class="lbl">Q${r.q}</td><td>${fmt(r.gross)}</td><td>${fmt(r.taxable)}</td><td class="sep">${r.male}</td><td>${r.female}</td><td>${r.male + r.female}</td><td class="lbl muted">${d}</td></tr>`;
+  quarters.forEach(q => {
+    const t = taxByQ[q] || { gross: 0, taxable: 0 };
+    const hc = TDIQ.find(r => r.year === YEAR && r.q === q) || { male: 0, female: 0, last: null };
+    tG += t.gross; tT += t.taxable;
+    const d = hc.last ? `${hc.last.m}/${hc.last.d}/${hc.last.y}` : '—';
+    h += `<tr><td class="lbl">Q${q}</td><td>${fmt(t.gross)}</td><td>${fmt(t.taxable)}</td><td class="sep">${hc.male}</td><td>${hc.female}</td><td>${hc.male + hc.female}</td><td class="lbl muted">${d}</td></tr>`;
   });
   h += `<tr class="tot"><td class="lbl">Year ${YEAR}</td><td>${fmt(tG)}</td><td>${fmt(tT)}</td><td class="sep muted">—</td><td class="muted">—</td><td class="muted">—</td><td></td></tr>`;
   h += '</tbody></table>';
   $('main').innerHTML = h;
-  pills([['Year taxable', fmt(tT)], ['Year covered', fmt(tG)], ['Quarters', String(rows.length)]]);
+  pills([['Year taxable', fmt(tT)], ['Year covered', fmt(tG)], ['Cap / emp / qtr', fmt(CAP)]]);
 }
 
 function pills(items) {
@@ -149,28 +196,32 @@ function pills(items) {
 
 function renderRules() {
   $('rulesNote').innerHTML =
-    `<b>How these are computed</b> (rules live in the prod views, not this page):<br>` +
-    `• <b>WC, monthly by class code</b> — <b>Base wages</b> = gross − full overtime − per diem − auto allowance; <b>OT (full)</b> = total overtime pay (1.5×). The carrier applies its own overtime credit, so both are reported un-adjusted. N/A (board) class hidden.<br>` +
-    `• <b>TDI, quarterly</b> — <b>Covered wages</b> = gross − per diem − auto allowance; <b>Taxable</b> caps each check at ${fmt(CAP.cap)}/week × weeks-in-check. <b>Male/Female</b> = headcount from the quarter's last paycheck, excluding HF and board.<br>` +
-    `• Excludes HF processor and (for headcount) board/Corp officers throughout. Update the yearly TDI cap in the <code>wc_tdi_param</code> table.`;
+    `<b>How these are computed</b> (rules live in the prod views; cap is editable above):<br>` +
+    `• <b>WC, by class code</b> — <b>Base wages</b> = gross − full overtime − per diem − auto allowance; <b>OT (full)</b> = total overtime pay (1.5×). The carrier applies its own overtime credit. Toggle <b>By month / By payroll</b>. N/A (board) class hidden.<br>` +
+    `• <b>TDI, quarterly</b> — <b>Covered wages</b> = gross − per diem − auto allowance; <b>Taxable</b> caps each employee's quarterly wages at the editable per-employee cap (default ${fmt(CAP_DEFAULT)} = $1,500.21/wk × 13). <b>Male/Female</b> = headcount from the quarter's last paycheck, excluding HF and board.<br>` +
+    `• Edit the cap to recompute live; <b>Save default</b> downloads <code>params.json</code> to commit as the shared default.`;
 }
 
 function exportCSV() {
   let csv = '', name = '';
   if (VIEW === 'wc') {
-    const rows = WC.filter(r => r.year === YEAR && r.code !== 'N/A');
-    const codes = [...new Set(rows.map(r => r.code))].sort();
-    const months = [...new Set(rows.map(r => r.month))].sort((a, b) => a - b);
-    const g = {}; months.forEach(m => { g[m] = {}; codes.forEach(c => g[m][c] = { base: 0, ot: 0 }); });
-    rows.forEach(r => { g[r.month][r.code].base += r.base; g[r.month][r.code].ot += r.ot; });
-    csv = 'Month,' + codes.map(c => `"${c} Base","${c} OT"`).join(',') + '\n';
-    months.forEach(m => { csv += MN[m] + ',' + codes.map(c => g[m][c].base.toFixed(2) + ',' + g[m][c].ot.toFixed(2)).join(',') + '\n'; });
-    name = `wc_wages_${YEAR}.csv`;
+    const byPaycheck = WCGRAIN === 'paycheck';
+    const src = (byPaycheck ? WCPC : WC).filter(r => r.year === YEAR && r.code !== 'N/A');
+    const codes = [...new Set(src.map(r => r.code))].sort();
+    const keyOf = r => byPaycheck ? `${r.check.y}-${String(r.check.m).padStart(2,'0')}-${String(r.check.d).padStart(2,'0')}` : r.month;
+    const keys = [...new Set(src.map(keyOf))].sort();
+    const g = {}; keys.forEach(k => { g[k] = {}; codes.forEach(c => g[k][c] = { base: 0, ot: 0 }); });
+    src.forEach(r => { const k = keyOf(r); g[k][r.code].base += r.base; g[k][r.code].ot += r.ot; });
+    csv = (byPaycheck ? 'Payroll' : 'Month') + ',' + codes.map(c => `"${c} Base","${c} OT"`).join(',') + '\n';
+    keys.forEach(k => { const lbl = byPaycheck ? k : MN[k]; csv += lbl + ',' + codes.map(c => g[k][c].base.toFixed(2) + ',' + g[k][c].ot.toFixed(2)).join(',') + '\n'; });
+    name = `wc_wages_${YEAR}${byPaycheck ? '_payroll' : ''}.csv`;
   } else {
+    const taxByQ = {}; TAX.forEach(r => taxByQ[r.q] = r);
     csv = 'Quarter,CoveredWages,TaxableWages,Male,Female,LastCheck\n';
-    TDI.filter(r => r.year === YEAR).sort((a, b) => a.q - b.q).forEach(r => {
-      const d = r.last ? `${r.last.y}-${String(r.last.m).padStart(2, '0')}-${String(r.last.d).padStart(2, '0')}` : '';
-      csv += `Q${r.q},${r.gross.toFixed(2)},${r.taxable.toFixed(2)},${r.male},${r.female},${d}\n`;
+    [...new Set(TAX.map(r => r.q))].sort().forEach(q => {
+      const t = taxByQ[q], hc = TDIQ.find(r => r.year === YEAR && r.q === q) || { male: 0, female: 0, last: null };
+      const d = hc.last ? `${hc.last.y}-${String(hc.last.m).padStart(2, '0')}-${String(hc.last.d).padStart(2, '0')}` : '';
+      csv += `Q${q},${t.gross.toFixed(2)},${t.taxable.toFixed(2)},${hc.male},${hc.female},${d}\n`;
     });
     name = `tdi_wages_${YEAR}.csv`;
   }
@@ -179,12 +230,32 @@ function exportCSV() {
   a.download = name; a.click();
 }
 
-function render() { if (VIEW === 'wc') renderWC(); else renderTDI(); }
+function saveDefault() {
+  const json = JSON.stringify({ _comment: 'Defaults for the WC / TDI page. The TDI cap is editable on the page; commit this file to change the default everyone loads.', tdi: { quarterly_emp_cap: CAP, note: 'Per-employee TDI taxable wage cap, per quarter.' } }, null, 2);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  a.download = 'params.json'; a.click();
+  if (navigator.clipboard) navigator.clipboard.writeText(json).catch(() => {});
+}
 
+let capTimer = null;
+$('capInput').oninput = () => {
+  const v = parseFloat($('capInput').value);
+  if (isNaN(v) || v <= 0) return;
+  CAP = v;
+  clearTimeout(capTimer);
+  capTimer = setTimeout(async () => { await recomputeTax(); if (VIEW === 'tdi') renderTDI(); }, 350);
+};
+$('saveCap').onclick = saveDefault;
 $('viewSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
   VIEW = b.dataset.v;
   $('viewSeg').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
   render();
+});
+$('grainSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
+  WCGRAIN = b.dataset.g;
+  $('grainSeg').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+  renderWC();
 });
 $('exportBtn').onclick = exportCSV;
 load();
