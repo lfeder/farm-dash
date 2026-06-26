@@ -136,13 +136,14 @@ function render() {
 
 // Row key per paycheck: "y-m", except the renewal month splits at ROLL.day.
 function wcKey(r) {
-  if (r.month === ROLL.month && r.check) return r.year + (r.check.d < ROLL.day ? '-R1' : '-R2');
+  // <= ROLL.day -> prior policy term (R1); > ROLL.day -> new term (R2).
+  if (r.month === ROLL.month && r.check) return r.year + (r.check.d <= ROLL.day ? '-R1' : '-R2');
   return r.year + '-' + r.month;
 }
 function wcKeyLabel(k) {
   const [y, t] = k.split('-');
-  if (t === 'R1') return `${MN[ROLL.month]} ${yy(y)} (thru ${ROLL.month}/${ROLL.day - 1})`;
-  if (t === 'R2') return `${MN[ROLL.month]} ${yy(y)} (${ROLL.month}/${ROLL.day}+)`;
+  if (t === 'R1') return `${MN[ROLL.month]} ${yy(y)} (≤${ROLL.month}/${ROLL.day}, prior term)`;
+  if (t === 'R2') return `${MN[ROLL.month]} ${yy(y)} (>${ROLL.month}/${ROLL.day}, new term)`;
   return `${MN[+t]} ${yy(y)}`;
 }
 function wcOrderedKeys() {
@@ -213,7 +214,7 @@ function renderRules() {
   $('rulesNote').innerHTML =
     `<b>How these are computed</b> (rules live in the prod views; cap is editable above):<br>` +
     `• <b>WC</b> shows the <b>trailing 12 months</b> (rolls automatically). <b>TDI</b> shows the current year's <b>calendar quarters</b> (ending 3/31 · 6/30 · 9/30 · 12/31).<br>` +
-    `• <b>WC, by class code</b> — <b>Base wages</b> = gross − full overtime − per diem − auto allowance; <b>OT (full)</b> = total overtime pay (1.5×). The carrier applies its own overtime credit. The WC policy renews <b>${ROLL.month}/${ROLL.day}</b>, so that month splits into two rows — wages paid before ${ROLL.month}/${ROLL.day} (old term) vs on/after (new term). N/A (board) class hidden.<br>` +
+    `• <b>WC, by class code</b> — <b>Base wages</b> = gross − full overtime − per diem − auto allowance; <b>OT (full)</b> = total overtime pay (1.5×). The carrier applies its own overtime credit. The WC policy renews <b>${ROLL.month}/${ROLL.day}</b>, so that month splits into two rows — wages paid on/before ${ROLL.month}/${ROLL.day} (prior term) vs after ${ROLL.month}/${ROLL.day} (new term). N/A (board) class hidden.<br>` +
     `• <b>TDI, quarterly</b> — <b>Covered wages</b> = gross − per diem − auto allowance; <b>Taxable</b> caps each employee's quarterly wages at the editable per-employee cap (default ${fmt(CAP_DEFAULT)} = $1,500.21/wk × 13). <b>Male/Female</b> = headcount from the quarter's last paycheck, excluding HF and board.<br>` +
     `• Edit the cap to recompute live; <b>Save default</b> downloads <code>params.json</code> to commit as the shared default.`;
 }
