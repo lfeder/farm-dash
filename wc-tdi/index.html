@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WC / TDI Wage Basis</title>
-<script src="../lib/data-source.js?v=20260626c"></script>
+<script src="../lib/data-source.js?v=20260626e"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 16px 20px 60px; font-size: 0.85rem; }
@@ -14,7 +14,6 @@
   .seg { display: inline-flex; border: 1px solid #0f3460; border-radius: 6px; overflow: hidden; }
   .seg button { background: #16213e; color: #aab; border: none; padding: 6px 14px; cursor: pointer; font-size: 0.8rem; }
   .seg button.active { background: #4ecca3; color: #06281f; font-weight: 600; }
-  .seg.sm button { padding: 5px 10px; font-size: 0.74rem; }
   button.btn { background: #16213e; color: #cde; border: 1px solid #0f3460; border-radius: 5px; padding: 6px 12px; cursor: pointer; font-size: 0.78rem; }
   button.btn:hover { background: #1d2b50; }
   .capfld { display: inline-flex; align-items: center; gap: 6px; font-size: 0.74rem; color: #9ab; }
@@ -25,6 +24,7 @@
   th.grp { color: #4ecca3; border-bottom: 1px solid #4ecca3; }
   td.lbl, th.lbl { text-align: left; color: #cde; }
   tr.tot td { background: #142042; font-weight: 700; color: #fff; border-top: 2px solid #4ecca3; }
+  tr.roll td { background: #1b2547; }
   td.tot, th.tot { background: #142042; font-weight: 600; }
   td.sep, th.sep { border-left: 2px solid #2f3f6e; }
   .muted { color: #889; font-size: 0.7rem; }
@@ -40,16 +40,12 @@
 </head>
 <body>
 <h1>Workers' Comp &amp; TDI — Insurer Reporting</h1>
-<div class="sub" id="sub">Source: prod payroll (HRB) · aggregate figures to report to your carrier</div>
+<div class="sub" id="sub">Source: prod payroll (HRB) · trailing 12 months</div>
 
 <div class="bar">
   <div class="seg" id="viewSeg">
     <button data-v="wc" class="active">Workers' Comp · monthly</button>
     <button data-v="tdi">TDI · quarterly</button>
-  </div>
-  <div class="seg sm" id="grainSeg">
-    <button data-g="month" class="active">By month</button>
-    <button data-g="paycheck">By payroll</button>
   </div>
   <span class="capfld" id="capWrap">Per-employee quarterly cap $
     <input type="number" step="0.01" id="capInput">
@@ -70,10 +66,13 @@ const num = (v) => { const n = (typeof v === 'number') ? v : parseFloat(v); retu
 const fmt = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('en-US');
 const MN = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const CLASS_LABEL = { '0008': 'Farm / Market Gardening', '8742': 'Outside Sales', '8810': 'Clerical Office', 'Unclassified': 'Unclassified' };
+const ROLL = { month: 6, day: 22 };   // WC policy renews 6/22; renewal month splits into two rows (not editable).
+const QEND = { 1: '3/31', 2: '6/30', 3: '9/30', 4: '12/31' };   // TDI calendar-quarter end dates.
 
-let VIEW = 'wc', WCGRAIN = 'month', YEAR = null;
-let WC = [], WCPC = [], TDIQ = [], TAX = [];
-let CAP = null, CAP_DEFAULT = null;
+let VIEW = 'wc';
+let WCPC = [], TDIQ = [], TAX = [];
+let CAP = null, CAP_DEFAULT = null, PARAMS = {};
+let MWIN = [], QWIN = [];   // trailing windows: 12 {y,m} months, 4 {y,q} quarters
 
 function parseDateV(v) {
   if (!v) return null;
@@ -86,68 +85,84 @@ function parseTable(t) {
   const labels = (t.cols || []).map(c => c.label);
   return (t.rows || []).map(r => { const o = {}; labels.forEach((l, i) => { const c = r.c && r.c[i]; o[l] = c ? c.v : null; }); return o; });
 }
+const yy = (y) => "'" + String(y).slice(2);
 
 async function load() {
-  let params;
-  try { params = await fetch('params.json?v=' + Date.now()).then(r => r.json()); }
-  catch (_) { params = { tdi: { quarterly_emp_cap: 19502.73 } }; }
-  CAP_DEFAULT = num(params.tdi && params.tdi.quarterly_emp_cap) || 19502.73;
+  try { PARAMS = await fetch('params.json?v=' + Date.now()).then(r => r.json()); } catch (_) { PARAMS = {}; }
+  CAP_DEFAULT = num(PARAMS.tdi && PARAMS.tdi.quarterly_emp_cap) || 19502.73;
   CAP = CAP_DEFAULT;
 
-  let wcT, pcT, tdiT;
+  let pcT, tdiT;
   try {
-    [wcT, pcT, tdiT] = await Promise.all([
-      DataSource.fetchTable('wc_basis_monthly', { mode: 'prod' }),
+    [pcT, tdiT] = await Promise.all([
       DataSource.fetchTable('wc_basis_paycheck', { mode: 'prod' }),
       DataSource.fetchTable('tdi_quarterly', { mode: 'prod' }),
     ]);
   } catch (e) { $('status').innerHTML = '<span style="color:#f5a">Load failed: ' + e + '</span>'; return; }
 
-  WC = parseTable(wcT).map(r => ({ year: num(r.Year), month: num(r.Month), code: r.Code, base: num(r.Base), ot: num(r.OT) }));
   WCPC = parseTable(pcT).map(r => ({ year: num(r.Year), month: num(r.Month), check: parseDateV(r.Check), code: r.Code, base: num(r.Base), ot: num(r.OT) }));
   TDIQ = parseTable(tdiT).map(r => ({ year: num(r.Year), q: num(r.Quarter), last: parseDateV(r.LastCheck), male: num(r.Male), female: num(r.Female) }));
 
-  const years = [...new Set([...WC.map(r => r.year), ...TDIQ.map(r => r.year)])];
-  YEAR = years.length ? Math.max(...years) : 2026;
+  // Trailing 12 months ending at the latest month with payroll data.
+  const anchor = WCPC.reduce((a, r) => (r.year * 12 + r.month > a ? r.year * 12 + r.month : a), 0);
+  MWIN = [];
+  for (let i = 0, k = anchor; i < 12; i++, k--) MWIN.unshift({ y: Math.floor((k - 1) / 12), m: ((k - 1) % 12) + 1 });
+  // TDI = calendar quarters (end 3/31, 6/30, 9/30, 12/31) of the latest year with data.
+  const tyear = TDIQ.reduce((a, r) => Math.max(a, r.year), MWIN[11].y);
+  QWIN = [...new Set(TDIQ.filter(r => r.year === tyear).map(r => r.q))].sort((a, b) => a - b).map(q => ({ y: tyear, q }));
+
   $('capInput').value = CAP.toFixed(2);
   $('status').style.display = 'none';
-  $('sub').textContent = `Source: prod payroll (HRB; HF & board excluded) · FY ${YEAR}`;
+  const a = MWIN[0], b = MWIN[11];
+  $('sub').textContent = `Source: prod payroll (HRB; HF & board excluded) · WC trailing 12 mo (${MN[a.m]} ${a.y} – ${MN[b.m]} ${b.y}) · TDI calendar quarters ${QWIN.length ? QWIN[0].y : ''} · WC policy renews ${ROLL.month}/${ROLL.day}`;
   renderRules();
   await recomputeTax();
   render();
 }
 
-// Recompute TDI taxable for the current cap via the aggregates-only RPC.
 async function recomputeTax() {
   try {
     const client = await DataSource.getClient('prod');
-    const { data, error } = await client.rpc('tdi_quarterly_taxable', { p_year: YEAR, p_cap: CAP });
+    const { data, error } = await client.rpc('tdi_quarterly_taxable', { p_cap: CAP });
     if (error) throw error;
-    TAX = (data || []).map(r => ({ q: num(r.quarter), gross: num(r.gross_wages), taxable: num(r.taxable_wages) }));
+    TAX = (data || []).map(r => ({ year: num(r.year), q: num(r.quarter), gross: num(r.gross_wages), taxable: num(r.taxable_wages) }));
   } catch (e) { TAX = []; }
 }
 
 function render() {
-  $('grainSeg').style.display = VIEW === 'wc' ? '' : 'none';
   $('capWrap').style.display = VIEW === 'tdi' ? '' : 'none';
   if (VIEW === 'wc') renderWC(); else renderTDI();
 }
 
+// Row key per paycheck: "y-m", except the renewal month splits at ROLL.day.
+function wcKey(r) {
+  if (r.month === ROLL.month && r.check) return r.year + (r.check.d < ROLL.day ? '-R1' : '-R2');
+  return r.year + '-' + r.month;
+}
+function wcKeyLabel(k) {
+  const [y, t] = k.split('-');
+  if (t === 'R1') return `${MN[ROLL.month]} ${yy(y)} (thru ${ROLL.month}/${ROLL.day - 1})`;
+  if (t === 'R2') return `${MN[ROLL.month]} ${yy(y)} (${ROLL.month}/${ROLL.day}+)`;
+  return `${MN[+t]} ${yy(y)}`;
+}
+function wcOrderedKeys() {
+  const keys = [];
+  MWIN.forEach(({ y, m }) => {
+    if (m === ROLL.month) { keys.push(y + '-R1'); keys.push(y + '-R2'); }
+    else keys.push(y + '-' + m);
+  });
+  return keys;
+}
+
 function renderWC() {
-  const byPaycheck = WCGRAIN === 'paycheck';
-  const src = byPaycheck
-    ? WCPC.filter(r => r.year === YEAR && r.code !== 'N/A')
-    : WC.filter(r => r.year === YEAR && r.code !== 'N/A');
+  const inWin = new Set(MWIN.map(w => w.y + '-' + w.m));
+  const src = WCPC.filter(r => r.code !== 'N/A' && inWin.has(r.year + '-' + r.month));
   const codes = [...new Set(src.map(r => r.code))].sort();
-
-  // group key: month number, or check-date string
-  const keyOf = r => byPaycheck ? (r.check ? `${r.check.y}-${String(r.check.m).padStart(2,'0')}-${String(r.check.d).padStart(2,'0')}` : '?') : r.month;
-  const labelOf = byPaycheck ? (k => { const d = k.split('-'); return `${+d[1]}/${+d[2]}`; }) : (k => MN[k]);
-  const keys = [...new Set(src.map(keyOf))].sort();
+  const keys = wcOrderedKeys();
   const g = {}; keys.forEach(k => { g[k] = {}; codes.forEach(c => g[k][c] = { base: 0, ot: 0 }); });
-  src.forEach(r => { const k = keyOf(r); g[k][r.code].base += r.base; g[k][r.code].ot += r.ot; });
+  src.forEach(r => { const k = wcKey(r); if (g[k]) { g[k][r.code].base += r.base; g[k][r.code].ot += r.ot; } });
 
-  let h = `<table><thead><tr><th class="lbl" rowspan="2">${byPaycheck ? 'Payroll' : 'Month'}</th>`;
+  let h = '<table><thead><tr><th class="lbl" rowspan="2">Month</th>';
   codes.forEach(c => h += `<th class="grp sep" colspan="2">${c}${CLASS_LABEL[c] ? ' · ' + CLASS_LABEL[c] : ''}</th>`);
   h += '<th class="grp sep tot" colspan="2">Total</th></tr><tr>';
   codes.forEach(() => h += '<th class="sep">Base</th><th>OT (full)</th>');
@@ -156,7 +171,8 @@ function renderWC() {
   const colT = {}; codes.forEach(c => colT[c] = { base: 0, ot: 0 }); let gB = 0, gO = 0;
   keys.forEach(k => {
     let rB = 0, rO = 0;
-    h += `<tr><td class="lbl">${labelOf(k)}</td>`;
+    const cls = k.endsWith('-R1') || k.endsWith('-R2') ? ' class="roll"' : '';
+    h += `<tr${cls}><td class="lbl">${wcKeyLabel(k)}</td>`;
     codes.forEach(c => {
       const v = g[k][c]; colT[c].base += v.base; colT[c].ot += v.ot; rB += v.base; rO += v.ot;
       h += `<td class="sep">${v.base ? fmt(v.base) : '<span class="muted">–</span>'}</td><td>${v.ot ? fmt(v.ot) : '<span class="muted">–</span>'}</td>`;
@@ -164,29 +180,28 @@ function renderWC() {
     gB += rB; gO += rO;
     h += `<td class="sep tot">${fmt(rB)}</td><td class="tot">${fmt(rO)}</td></tr>`;
   });
-  h += `<tr class="tot"><td class="lbl">Total ${YEAR}</td>`;
+  h += `<tr class="tot"><td class="lbl">Trailing 12 mo</td>`;
   codes.forEach(c => h += `<td class="sep">${fmt(colT[c].base)}</td><td>${fmt(colT[c].ot)}</td>`);
   h += `<td class="sep">${fmt(gB)}</td><td>${fmt(gO)}</td></tr></tbody></table>`;
   $('main').innerHTML = h;
-  pills([['Total base ' + YEAR, fmt(gB)], ['Total OT (full)', fmt(gO)], [byPaycheck ? 'Payrolls' : 'Months', String(keys.length)]]);
+  pills([['Total base (12 mo)', fmt(gB)], ['Total OT (full)', fmt(gO)], ['Classes', String(codes.length)]]);
 }
 
 function renderTDI() {
-  const taxByQ = {}; TAX.forEach(r => taxByQ[r.q] = r);
-  const quarters = [...new Set([...TDIQ.filter(r => r.year === YEAR).map(r => r.q), ...TAX.map(r => r.q)])].sort();
-  let h = '<table><thead><tr><th class="lbl">Quarter</th><th>Covered wages</th><th>Taxable wages</th><th class="sep">Male</th><th>Female</th><th>Total emp.</th><th class="lbl">Headcount as of</th></tr></thead><tbody>';
+  const taxBy = {}; TAX.forEach(r => taxBy[r.year + '-' + r.q] = r);
+  let h = '<table><thead><tr><th class="lbl">Quarter ending</th><th>Covered wages</th><th>Taxable wages</th><th class="sep">Male</th><th>Female</th><th>Total emp.</th><th class="lbl">Headcount as of</th></tr></thead><tbody>';
   let tG = 0, tT = 0;
-  quarters.forEach(q => {
-    const t = taxByQ[q] || { gross: 0, taxable: 0 };
-    const hc = TDIQ.find(r => r.year === YEAR && r.q === q) || { male: 0, female: 0, last: null };
+  QWIN.forEach(({ y, q }) => {
+    const t = taxBy[y + '-' + q] || { gross: 0, taxable: 0 };
+    const hc = TDIQ.find(r => r.year === y && r.q === q) || { male: 0, female: 0, last: null };
     tG += t.gross; tT += t.taxable;
     const d = hc.last ? `${hc.last.m}/${hc.last.d}/${hc.last.y}` : '—';
-    h += `<tr><td class="lbl">Q${q}</td><td>${fmt(t.gross)}</td><td>${fmt(t.taxable)}</td><td class="sep">${hc.male}</td><td>${hc.female}</td><td>${hc.male + hc.female}</td><td class="lbl muted">${d}</td></tr>`;
+    h += `<tr><td class="lbl">Q${q} · ${QEND[q]}/${yy(y)}</td><td>${fmt(t.gross)}</td><td>${fmt(t.taxable)}</td><td class="sep">${hc.male}</td><td>${hc.female}</td><td>${hc.male + hc.female}</td><td class="lbl muted">${d}</td></tr>`;
   });
-  h += `<tr class="tot"><td class="lbl">Year ${YEAR}</td><td>${fmt(tG)}</td><td>${fmt(tT)}</td><td class="sep muted">—</td><td class="muted">—</td><td class="muted">—</td><td></td></tr>`;
+  h += `<tr class="tot"><td class="lbl">${QWIN.length ? QWIN[0].y : ''} total</td><td>${fmt(tG)}</td><td>${fmt(tT)}</td><td class="sep muted">—</td><td class="muted">—</td><td class="muted">—</td><td></td></tr>`;
   h += '</tbody></table>';
   $('main').innerHTML = h;
-  pills([['Year taxable', fmt(tT)], ['Year covered', fmt(tG)], ['Cap / emp / qtr', fmt(CAP)]]);
+  pills([['Taxable (4 qtrs)', fmt(tT)], ['Covered (4 qtrs)', fmt(tG)], ['Cap / emp / qtr', fmt(CAP)]]);
 }
 
 function pills(items) {
@@ -197,7 +212,8 @@ function pills(items) {
 function renderRules() {
   $('rulesNote').innerHTML =
     `<b>How these are computed</b> (rules live in the prod views; cap is editable above):<br>` +
-    `• <b>WC, by class code</b> — <b>Base wages</b> = gross − full overtime − per diem − auto allowance; <b>OT (full)</b> = total overtime pay (1.5×). The carrier applies its own overtime credit. Toggle <b>By month / By payroll</b>. N/A (board) class hidden.<br>` +
+    `• <b>WC</b> shows the <b>trailing 12 months</b> (rolls automatically). <b>TDI</b> shows the current year's <b>calendar quarters</b> (ending 3/31 · 6/30 · 9/30 · 12/31).<br>` +
+    `• <b>WC, by class code</b> — <b>Base wages</b> = gross − full overtime − per diem − auto allowance; <b>OT (full)</b> = total overtime pay (1.5×). The carrier applies its own overtime credit. The WC policy renews <b>${ROLL.month}/${ROLL.day}</b>, so that month splits into two rows — wages paid before ${ROLL.month}/${ROLL.day} (old term) vs on/after (new term). N/A (board) class hidden.<br>` +
     `• <b>TDI, quarterly</b> — <b>Covered wages</b> = gross − per diem − auto allowance; <b>Taxable</b> caps each employee's quarterly wages at the editable per-employee cap (default ${fmt(CAP_DEFAULT)} = $1,500.21/wk × 13). <b>Male/Female</b> = headcount from the quarter's last paycheck, excluding HF and board.<br>` +
     `• Edit the cap to recompute live; <b>Save default</b> downloads <code>params.json</code> to commit as the shared default.`;
 }
@@ -205,25 +221,25 @@ function renderRules() {
 function exportCSV() {
   let csv = '', name = '';
   if (VIEW === 'wc') {
-    const byPaycheck = WCGRAIN === 'paycheck';
-    const src = (byPaycheck ? WCPC : WC).filter(r => r.year === YEAR && r.code !== 'N/A');
+    const inWin = new Set(MWIN.map(w => w.y + '-' + w.m));
+    const src = WCPC.filter(r => r.code !== 'N/A' && inWin.has(r.year + '-' + r.month));
     const codes = [...new Set(src.map(r => r.code))].sort();
-    const keyOf = r => byPaycheck ? `${r.check.y}-${String(r.check.m).padStart(2,'0')}-${String(r.check.d).padStart(2,'0')}` : r.month;
-    const keys = [...new Set(src.map(keyOf))].sort();
+    const keys = wcOrderedKeys();
     const g = {}; keys.forEach(k => { g[k] = {}; codes.forEach(c => g[k][c] = { base: 0, ot: 0 }); });
-    src.forEach(r => { const k = keyOf(r); g[k][r.code].base += r.base; g[k][r.code].ot += r.ot; });
-    csv = (byPaycheck ? 'Payroll' : 'Month') + ',' + codes.map(c => `"${c} Base","${c} OT"`).join(',') + '\n';
-    keys.forEach(k => { const lbl = byPaycheck ? k : MN[k]; csv += lbl + ',' + codes.map(c => g[k][c].base.toFixed(2) + ',' + g[k][c].ot.toFixed(2)).join(',') + '\n'; });
-    name = `wc_wages_${YEAR}${byPaycheck ? '_payroll' : ''}.csv`;
+    src.forEach(r => { const k = wcKey(r); if (g[k]) { g[k][r.code].base += r.base; g[k][r.code].ot += r.ot; } });
+    csv = 'Period,' + codes.map(c => `"${c} Base","${c} OT"`).join(',') + '\n';
+    keys.forEach(k => { csv += `"${wcKeyLabel(k)}",` + codes.map(c => g[k][c].base.toFixed(2) + ',' + g[k][c].ot.toFixed(2)).join(',') + '\n'; });
+    name = 'wc_wages_trailing12.csv';
   } else {
-    const taxByQ = {}; TAX.forEach(r => taxByQ[r.q] = r);
-    csv = 'Quarter,CoveredWages,TaxableWages,Male,Female,LastCheck\n';
-    [...new Set(TAX.map(r => r.q))].sort().forEach(q => {
-      const t = taxByQ[q], hc = TDIQ.find(r => r.year === YEAR && r.q === q) || { male: 0, female: 0, last: null };
+    const taxBy = {}; TAX.forEach(r => taxBy[r.year + '-' + r.q] = r);
+    csv = 'QuarterEnding,CoveredWages,TaxableWages,Male,Female,LastCheck\n';
+    QWIN.forEach(({ y, q }) => {
+      const t = taxBy[y + '-' + q] || { gross: 0, taxable: 0 };
+      const hc = TDIQ.find(r => r.year === y && r.q === q) || { male: 0, female: 0, last: null };
       const d = hc.last ? `${hc.last.y}-${String(hc.last.m).padStart(2, '0')}-${String(hc.last.d).padStart(2, '0')}` : '';
-      csv += `Q${q},${t.gross.toFixed(2)},${t.taxable.toFixed(2)},${hc.male},${hc.female},${d}\n`;
+      csv += `${QEND[q]}/${y},${t.gross.toFixed(2)},${t.taxable.toFixed(2)},${hc.male},${hc.female},${d}\n`;
     });
-    name = `tdi_wages_${YEAR}.csv`;
+    name = `tdi_wages_${QWIN.length ? QWIN[0].y : ''}.csv`;
   }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -231,7 +247,8 @@ function exportCSV() {
 }
 
 function saveDefault() {
-  const json = JSON.stringify({ _comment: 'Defaults for the WC / TDI page. The TDI cap is editable on the page; commit this file to change the default everyone loads.', tdi: { quarterly_emp_cap: CAP, note: 'Per-employee TDI taxable wage cap, per quarter.' } }, null, 2);
+  PARAMS.tdi = PARAMS.tdi || {}; PARAMS.tdi.quarterly_emp_cap = CAP;
+  const json = JSON.stringify(PARAMS, null, 2);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
   a.download = 'params.json'; a.click();
@@ -251,11 +268,6 @@ $('viewSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
   VIEW = b.dataset.v;
   $('viewSeg').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
   render();
-});
-$('grainSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
-  WCGRAIN = b.dataset.g;
-  $('grainSeg').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
-  renderWC();
 });
 $('exportBtn').onclick = exportCSV;
 load();
