@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WC / TDI Wage Basis</title>
+<script src="../lib/data-source.js?v=20260626"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 16px 20px 60px; font-size: 0.85rem; }
+  h1 { font-size: 1.15rem; color: #4ecca3; margin-bottom: 2px; }
+  .sub { color: #8aa; font-size: 0.72rem; margin-bottom: 14px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .seg { display: inline-flex; border: 1px solid #0f3460; border-radius: 6px; overflow: hidden; }
+  .seg button { background: #16213e; color: #aab; border: none; padding: 6px 14px; cursor: pointer; font-size: 0.8rem; }
+  .seg button.active { background: #4ecca3; color: #06281f; font-weight: 600; }
+  select, input[type=number] { background: #111; color: #ddd; border: 1px solid #333; border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; }
+  label.fld { display: inline-flex; flex-direction: column; gap: 2px; font-size: 0.68rem; color: #9ab; }
+  label.fld input, label.fld select { margin-top: 1px; }
+  button.btn { background: #16213e; color: #cde; border: 1px solid #0f3460; border-radius: 5px; padding: 6px 12px; cursor: pointer; font-size: 0.78rem; }
+  button.btn:hover { background: #1d2b50; }
+  table { border-collapse: collapse; width: 100%; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  th, td { border: 1px solid #25325a; padding: 5px 9px; text-align: right; white-space: nowrap; }
+  th { background: #16213e; color: #9fc; font-weight: 600; font-size: 0.74rem; position: sticky; top: 0; }
+  td.lbl, th.lbl { text-align: left; color: #cde; }
+  tr.tot td { background: #142042; font-weight: 700; color: #fff; border-top: 2px solid #4ecca3; }
+  td.tot, th.tot { background: #142042; font-weight: 600; }
+  td.cell { cursor: pointer; }
+  td.cell:hover { background: #21346a; }
+  td.cell.sel { outline: 2px solid #4ecca3; outline-offset: -2px; }
+  .panel { background: #11182e; border: 1px solid #0f3460; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+  .panel h3 { font-size: 0.82rem; color: #4ecca3; margin-bottom: 8px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+  .muted { color: #889; font-size: 0.7rem; }
+  .pills { display: flex; gap: 14px; flex-wrap: wrap; margin: 4px 0 12px; }
+  .pill { background: #11182e; border: 1px solid #0f3460; border-radius: 8px; padding: 8px 14px; }
+  .pill .n { font-size: 1.15rem; font-weight: 700; color: #4ecca3; }
+  .pill .k { font-size: 0.66rem; color: #9ab; text-transform: uppercase; letter-spacing: .4px; }
+  .warn { color: #f5a; }
+  #status { color: #8aa; padding: 30px 0; }
+  details summary { cursor: pointer; color: #9fc; font-size: 0.74rem; }
+  code { background:#0c1226; padding:1px 4px; border-radius:3px; color:#9fd; }
+</style>
+</head>
+<body>
+<h1>Workers' Comp &amp; TDI — Wage Basis</h1>
+<div class="sub" id="sub">Source: prod payroll (HRB) · figures to enter at your insurance provider</div>
+
+<div class="bar">
+  <div class="seg" id="viewSeg">
+    <button data-v="wc" class="active">Workers' Comp · monthly</button>
+    <button data-v="tdi">TDI · quarterly</button>
+  </div>
+  <label class="fld">Year
+    <select id="yearSel"></select>
+  </label>
+  <label class="fld" id="wcGroupWrap">Month basis
+    <select id="wcGroup">
+      <option value="check">Check date</option>
+      <option value="period">Pay-period end</option>
+    </select>
+  </label>
+  <button class="btn" id="exportBtn">Export CSV</button>
+  <span class="muted" id="reconNote"></span>
+</div>
+
+<details class="panel" id="paramsPanel">
+  <summary>Parameters &amp; exclusion rules <span class="muted">(edit, then Export to save to GitHub)</span></summary>
+  <div class="grid" style="margin-top:10px">
+    <label class="fld">Effective year<input type="number" id="p_year" style="width:90px"></label>
+    <label class="fld">TDI weekly wage-base cap ($)<input type="number" step="0.01" id="p_cap" style="width:120px"></label>
+    <label class="fld">TDI employee rate (%)<input type="number" step="0.01" id="p_rate" style="width:90px"></label>
+    <label class="fld">Weeks per check (fallback)<input type="number" id="p_weeks" style="width:90px"></label>
+  </div>
+  <div class="grid" style="margin-top:10px">
+    <label class="fld" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="p_ot"> Exclude OT premium (WC)</label>
+    <label class="fld" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="p_pd"> Exclude per diem</label>
+    <label class="fld" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="p_auto"> Exclude auto allowance</label>
+    <button class="btn" id="applyParams">Apply</button>
+    <button class="btn" id="saveParams">Export params.json</button>
+  </div>
+  <div class="muted" id="paramsNote" style="margin-top:10px"></div>
+</details>
+
+<div id="status">Loading payroll from prod…</div>
+<div id="pills" class="pills" style="display:none"></div>
+<div id="main"></div>
+<div id="detail" style="margin-top:16px"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const num = (v) => { const n = (typeof v === 'number') ? v : parseFloat(v); return isNaN(n) ? 0 : n; };
+const fmt = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('en-US');
+const QTR = (m) => Math.floor((m - 1) / 3) + 1;
+
+let PARAMS = null, ROWS = [], VIEW = 'wc', YEAR = null, SEL = null;
+
+function parseDateV(v) {
+  if (!v) return null;
+  const m = String(v).match(/Date\((\d+),(\d+),(\d+)/);
+  if (!m) { // ISO fallback
+    const i = String(v).match(/(\d{4})-(\d{2})-(\d{2})/);
+    return i ? { y: +i[1], m: +i[2], d: +i[3] } : null;
+  }
+  return { y: +m[1], m: +m[2] + 1, d: +m[3] }; // gviz month is 0-indexed
+}
+
+function parseTable(t) {
+  const labels = (t.cols || []).map(c => c.label);
+  return (t.rows || []).map(r => {
+    const o = {};
+    labels.forEach((lab, i) => { const c = r.c && r.c[i]; o[lab] = c ? c.v : null; });
+    return o;
+  });
+}
+
+function weeksInPeriod(row) {
+  const s = parseDateV(row.PeriodStart), e = parseDateV(row.PeriodEnd);
+  if (s && e) {
+    const days = Math.round((Date.UTC(e.y, e.m - 1, e.d) - Date.UTC(s.y, s.m - 1, s.d)) / 86400000) + 1;
+    const w = Math.round(days / 7);
+    if (w >= 1) return w;
+  }
+  return PARAMS.tdi.weeks_per_period_default || 2;
+}
+
+// Per-row derived figures, honoring the current exclusion params.
+function derive(row) {
+  const gross = num(row.GrossWage);
+  const otPay = num(row.OtPay), otHrs = num(row.OtHours), rate = num(row.HourlyRate);
+  const otPremium = (otHrs > 0 && rate > 0) ? Math.max(otPay - otHrs * rate, 0) : otPay / 3;
+  const perDiem = num(row.PerDiem), auto = num(row.AutoAllow);
+  const exPd = PARAMS.wc.exclude_per_diem ? perDiem : 0;
+  const exAuto = PARAMS.wc.exclude_auto_allowance ? auto : 0;
+  const exOt = PARAMS.wc.exclude_overtime_premium ? otPremium : 0;
+  const wcBasis = gross - exOt - exPd - exAuto;
+  const tdiEligible = gross - exPd - exAuto;          // TDI keeps OT premium
+  const weeks = weeksInPeriod(row);
+  const cap = (PARAMS.tdi.weekly_wage_base_cap || 0) * weeks;
+  const tdiTaxable = Math.min(tdiEligible, cap);
+  const cd = parseDateV(row.CheckDate), pe = parseDateV(row.PeriodEnd);
+  return { gross, otPremium, perDiem, auto, wcBasis, tdiEligible, tdiTaxable, weeks, capped: tdiEligible > cap,
+           checkD: cd, periodE: pe,
+           cls: classOf(row.WC), emp: row.EmpName || row.EmpId || '(unknown)' };
+}
+
+function classOf(wc) {
+  const s = (wc == null ? '' : String(wc)).trim();
+  return s === '' ? 'Unclassified' : s;
+}
+function classLabel(cls) {
+  const lab = PARAMS.wc.class_labels && PARAMS.wc.class_labels[cls];
+  return lab ? cls + ' · ' + lab : cls;
+}
+
+// ----- load -----
+async function load() {
+  PARAMS = await fetch('params.json?v=' + Date.now()).then(r => r.json());
+  fillParamsPanel();
+  let table;
+  try {
+    table = await DataSource.fetchTable('hr_payroll', { mode: 'prod' });
+  } catch (e) {
+    $('status').innerHTML = '<span class="warn">Failed to load payroll: ' + e + '</span>';
+    return;
+  }
+  const exclProc = new Set(PARAMS.exclude_payroll_processors || []);
+  ROWS = parseTable(table).filter(r =>
+    !r.IsDeleted && !exclProc.has(r.Processor) && parseDateV(r.CheckDate));
+  const years = [...new Set(ROWS.map(r => parseDateV(r.CheckDate).y))].sort((a, b) => b - a);
+  $('yearSel').innerHTML = years.map(y => `<option>${y}</option>`).join('');
+  YEAR = years.includes(2026) ? 2026 : years[0];
+  $('yearSel').value = YEAR;
+  $('status').style.display = 'none';
+  $('sub').textContent = `Source: prod payroll (HRB; HF excluded) · ${ROWS.length.toLocaleString()} checks · per-employee, biweekly · TDI cap ${fmt(PARAMS.tdi.weekly_wage_base_cap)}/wk`;
+  render();
+}
+
+// ----- WC monthly -----
+function renderWC() {
+  const useCheck = $('wcGroup').value === 'check';
+  const rows = ROWS.map(derive).filter(d => (useCheck ? d.checkD : d.periodE) && (useCheck ? d.checkD.y : d.periodE.y) === YEAR);
+  const classes = [...new Set(rows.map(d => d.cls))].sort();
+  const grid = {}; // month -> class -> sum
+  for (let m = 1; m <= 12; m++) { grid[m] = {}; classes.forEach(c => grid[m][c] = 0); }
+  rows.forEach(d => { const m = (useCheck ? d.checkD : d.periodE).m; grid[m][d.cls] += d.wcBasis; });
+
+  const MN = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  let h = '<table><thead><tr><th class="lbl">Month</th>' +
+    classes.map(c => `<th>${classLabel(c)}</th>`).join('') + '<th class="tot">Total</th></tr></thead><tbody>';
+  const colTot = {}; classes.forEach(c => colTot[c] = 0); let grand = 0;
+  for (let m = 1; m <= 12; m++) {
+    let rowTot = 0;
+    const cells = classes.map(c => {
+      const v = grid[m][c]; colTot[c] += v; rowTot += v;
+      const sel = (SEL && SEL.m === m && SEL.c === c) ? ' sel' : '';
+      return `<td class="cell${sel}" data-m="${m}" data-c="${c}">${v ? fmt(v) : '<span class="muted">–</span>'}</td>`;
+    }).join('');
+    grand += rowTot;
+    h += `<tr><td class="lbl">${MN[m]}</td>${cells}<td class="tot">${rowTot ? fmt(rowTot) : ''}</td></tr>`;
+  }
+  h += `<tr class="tot"><td class="lbl">Total ${YEAR}</td>` +
+    classes.map(c => `<td>${fmt(colTot[c])}</td>`).join('') + `<td>${fmt(grand)}</td></tr>`;
+  h += '</tbody></table>';
+  h += '<div class="muted" style="margin-top:8px">WC payroll basis by class = gross wage − overtime premium − per diem − auto allowance. Click any cell to audit the underlying checks. Enter these monthly totals (per class code) at your carrier.</div>';
+  $('main').innerHTML = h;
+  $('main').querySelectorAll('td.cell').forEach(td => td.onclick = () => {
+    SEL = { m: +td.dataset.m, c: td.dataset.c }; renderWC(); renderWCDetail();
+  });
+
+  // pills
+  pills([['Total WC basis ' + YEAR, fmt(grand)], ['Classes', String(classes.length)], ['Checks', rows.length.toLocaleString()]]);
+  if (SEL) renderWCDetail(); else $('detail').innerHTML = '';
+  $('reconNote').textContent = '';
+}
+
+function renderWCDetail() {
+  const useCheck = $('wcGroup').value === 'check';
+  const det = ROWS.map(derive).filter(d => {
+    const dt = useCheck ? d.checkD : d.periodE;
+    return dt && dt.y === YEAR && dt.m === SEL.m && d.cls === SEL.c;
+  }).sort((a, b) => b.wcBasis - a.wcBasis);
+  const MN = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  let h = `<h3 style="color:#4ecca3;font-size:0.85rem;margin-bottom:6px">${MN[SEL.m]} ${YEAR} · ${classLabel(SEL.c)} — ${det.length} checks</h3>`;
+  h += '<table><thead><tr><th class="lbl">Employee</th><th>Check</th><th>Gross</th><th>OT premium</th><th>Per diem</th><th>Auto</th><th class="tot">WC basis</th></tr></thead><tbody>';
+  let t = { g: 0, ot: 0, pd: 0, au: 0, b: 0 };
+  det.forEach(d => {
+    t.g += d.gross; t.ot += d.otPremium; t.pd += d.perDiem; t.au += d.auto; t.b += d.wcBasis;
+    h += `<tr><td class="lbl">${d.emp}</td><td>${d.checkD.m}/${d.checkD.d}</td><td>${fmt(d.gross)}</td><td>${fmt(d.otPremium)}</td><td>${fmt(d.perDiem)}</td><td>${fmt(d.auto)}</td><td class="tot">${fmt(d.wcBasis)}</td></tr>`;
+  });
+  h += `<tr class="tot"><td class="lbl">Total</td><td></td><td>${fmt(t.g)}</td><td>${fmt(t.ot)}</td><td>${fmt(t.pd)}</td><td>${fmt(t.au)}</td><td>${fmt(t.b)}</td></tr>`;
+  h += '</tbody></table>';
+  $('detail').innerHTML = h;
+}
+
+// ----- TDI quarterly -----
+function renderTDI() {
+  const rows = ROWS.map(derive).filter(d => d.checkD && d.checkD.y === YEAR);
+  const byEmp = {}; // emp -> [q1..q4]
+  const qTot = [0, 0, 0, 0], qElig = [0, 0, 0, 0]; let capCount = 0;
+  rows.forEach(d => {
+    const q = QTR(d.checkD.m) - 1;
+    if (!byEmp[d.emp]) byEmp[d.emp] = [0, 0, 0, 0];
+    byEmp[d.emp][q] += d.tdiTaxable;
+    qTot[q] += d.tdiTaxable; qElig[q] += d.tdiEligible;
+    if (d.capped) capCount++;
+  });
+  const emps = Object.keys(byEmp).sort();
+  let h = '<table><thead><tr><th class="lbl">Employee</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th><th class="tot">Year</th></tr></thead><tbody>';
+  emps.forEach(e => {
+    const q = byEmp[e]; const tot = q[0] + q[1] + q[2] + q[3];
+    h += `<tr><td class="lbl">${e}</td>` + q.map(v => `<td>${v ? fmt(v) : '<span class="muted">–</span>'}</td>`).join('') + `<td class="tot">${fmt(tot)}</td></tr>`;
+  });
+  const grand = qTot.reduce((a, b) => a + b, 0);
+  h += `<tr class="tot"><td class="lbl">Total taxable ${YEAR}</td>` + qTot.map(v => `<td>${fmt(v)}</td>`).join('') + `<td>${fmt(grand)}</td></tr>`;
+  h += `<tr><td class="lbl muted">Uncapped eligible</td>` + qElig.map(v => `<td class="muted">${fmt(v)}</td>`).join('') + `<td class="muted">${fmt(qElig.reduce((a, b) => a + b, 0))}</td></tr>`;
+  h += '</tbody></table>';
+  h += `<div class="muted" style="margin-top:8px">TDI taxable wage = gross − per diem − auto, capped at ${fmt(PARAMS.tdi.weekly_wage_base_cap)}/week × weeks-in-check. Enter each <b>quarter's total taxable</b> at your TDI provider. ${capCount} checks hit the cap this year.</div>`;
+  $('main').innerHTML = h;
+  $('detail').innerHTML = '';
+
+  pills([
+    ['Q1', fmt(qTot[0])], ['Q2', fmt(qTot[1])], ['Q3', fmt(qTot[2])], ['Q4', fmt(qTot[3])],
+    ['Year taxable', fmt(grand)], ['Checks capped', String(capCount)],
+  ]);
+  $('reconNote').textContent = '';
+}
+
+function pills(items) {
+  $('pills').style.display = 'flex';
+  $('pills').innerHTML = items.map(([k, n]) => `<div class="pill"><div class="n">${n}</div><div class="k">${k}</div></div>`).join('');
+}
+
+// ----- params panel -----
+function fillParamsPanel() {
+  $('p_year').value = PARAMS.effective_year;
+  $('p_cap').value = PARAMS.tdi.weekly_wage_base_cap;
+  $('p_rate').value = PARAMS.tdi.employee_rate_pct;
+  $('p_weeks').value = PARAMS.tdi.weeks_per_period_default;
+  $('p_ot').checked = !!PARAMS.wc.exclude_overtime_premium;
+  $('p_pd').checked = !!PARAMS.wc.exclude_per_diem;
+  $('p_auto').checked = !!PARAMS.wc.exclude_auto_allowance;
+  $('paramsNote').innerHTML = (PARAMS.tdi.note || '') + '<br>' + (PARAMS.wc.note || '') +
+    '<br>To save for everyone: edit, click <b>Export params.json</b>, then commit the downloaded file (or hand it to Claude) to <code>wc-tdi/params.json</code>.';
+}
+function readParamsPanel() {
+  PARAMS.effective_year = +$('p_year').value;
+  PARAMS.tdi.weekly_wage_base_cap = +$('p_cap').value;
+  PARAMS.tdi.employee_rate_pct = +$('p_rate').value;
+  PARAMS.tdi.weeks_per_period_default = +$('p_weeks').value;
+  PARAMS.wc.exclude_overtime_premium = $('p_ot').checked;
+  PARAMS.wc.exclude_per_diem = $('p_pd').checked;
+  PARAMS.wc.exclude_auto_allowance = $('p_auto').checked;
+}
+
+// ----- CSV export -----
+function exportCSV() {
+  let csv = '', name = '';
+  if (VIEW === 'wc') {
+    const useCheck = $('wcGroup').value === 'check';
+    const rows = ROWS.map(derive).filter(d => { const dt = useCheck ? d.checkD : d.periodE; return dt && dt.y === YEAR; });
+    const classes = [...new Set(rows.map(d => d.cls))].sort();
+    const grid = {}; for (let m = 1; m <= 12; m++) { grid[m] = {}; classes.forEach(c => grid[m][c] = 0); }
+    rows.forEach(d => { grid[(useCheck ? d.checkD : d.periodE).m][d.cls] += d.wcBasis; });
+    csv = 'Month,' + classes.map(c => '"' + classLabel(c) + '"').join(',') + ',Total\n';
+    for (let m = 1; m <= 12; m++) {
+      let t = 0; const cells = classes.map(c => { t += grid[m][c]; return Math.round(grid[m][c]); });
+      csv += m + ',' + cells.join(',') + ',' + Math.round(t) + '\n';
+    }
+    name = `wc_basis_${YEAR}.csv`;
+  } else {
+    const rows = ROWS.map(derive).filter(d => d.checkD && d.checkD.y === YEAR);
+    const byEmp = {};
+    rows.forEach(d => { const q = QTR(d.checkD.m) - 1; (byEmp[d.emp] = byEmp[d.emp] || [0, 0, 0, 0])[q] += d.tdiTaxable; });
+    csv = 'Employee,Q1,Q2,Q3,Q4,Year\n';
+    Object.keys(byEmp).sort().forEach(e => {
+      const q = byEmp[e]; csv += '"' + e + '",' + q.map(v => Math.round(v)).join(',') + ',' + Math.round(q[0] + q[1] + q[2] + q[3]) + '\n';
+    });
+    name = `tdi_taxable_${YEAR}.csv`;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = name; a.click();
+}
+
+function exportParams() {
+  readParamsPanel();
+  const json = JSON.stringify(PARAMS, null, 2);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  a.download = 'params.json'; a.click();
+  if (navigator.clipboard) navigator.clipboard.writeText(json).catch(() => {});
+}
+
+function render() {
+  $('wcGroupWrap').style.display = VIEW === 'wc' ? '' : 'none';
+  if (VIEW === 'wc') renderWC(); else renderTDI();
+}
+
+// ----- wire up -----
+$('viewSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
+  VIEW = b.dataset.v; SEL = null;
+  $('viewSeg').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+  render();
+});
+$('yearSel').onchange = () => { YEAR = +$('yearSel').value; SEL = null; render(); };
+$('wcGroup').onchange = () => { SEL = null; render(); };
+$('exportBtn').onclick = exportCSV;
+$('applyParams').onclick = () => { readParamsPanel(); render(); };
+$('saveParams').onclick = exportParams;
+
+load();
+</script>
+</body>
+</html>
