@@ -51,13 +51,6 @@
     <button data-v="wc" class="active">Workers' Comp · monthly</button>
     <button data-v="tdi">TDI · quarterly</button>
   </div>
-  <span class="fld" style="font-size:0.95rem;color:#4ecca3;font-weight:600">FY <span id="yearLabel">–</span></span>
-  <label class="fld" id="wcGroupWrap" title="Which month a paycheck counts toward. Check date = month it was paid (what carriers usually want). Pay-period end = month the work was done.">Count month by
-    <select id="wcGroup">
-      <option value="check">Check date (paid)</option>
-      <option value="period">Pay-period end (worked)</option>
-    </select>
-  </label>
   <button class="btn" id="exportBtn">Export CSV</button>
   <span class="muted" id="reconNote"></span>
 </div>
@@ -170,7 +163,6 @@ async function load() {
   });
   const years = [...new Set(ROWS.map(r => parseDateV(r.CheckDate).y))];
   YEAR = years.length ? Math.max(...years) : 2026;
-  $('yearLabel').textContent = YEAR;
   $('status').style.display = 'none';
   $('sub').textContent = `Source: prod payroll (HRB; HF excluded) · ${ROWS.length.toLocaleString()} checks · per-employee, biweekly · TDI cap ${fmt(PARAMS.tdi.weekly_wage_base_cap)}/wk`;
   render();
@@ -178,7 +170,7 @@ async function load() {
 
 // ----- WC monthly -----
 function renderWC() {
-  const useCheck = $('wcGroup').value === 'check';
+  const useCheck = true; // month = check date (paid)
   const rows = ROWS.map(derive).filter(d => (useCheck ? d.checkD : d.periodE) && (useCheck ? d.checkD.y : d.periodE.y) === YEAR);
   const classes = [...new Set(rows.map(d => d.cls))].sort();
   const grid = {}; // month -> class -> sum
@@ -215,7 +207,7 @@ function renderWC() {
 }
 
 function renderWCDetail() {
-  const useCheck = $('wcGroup').value === 'check';
+  const useCheck = true;
   const det = ROWS.map(derive).filter(d => {
     const dt = useCheck ? d.checkD : d.periodE;
     return dt && dt.y === YEAR && dt.m === SEL.m && d.cls === SEL.c;
@@ -297,7 +289,7 @@ function readParamsPanel() {
 function exportCSV() {
   let csv = '', name = '';
   if (VIEW === 'wc') {
-    const useCheck = $('wcGroup').value === 'check';
+    const useCheck = true;
     const rows = ROWS.map(derive).filter(d => { const dt = useCheck ? d.checkD : d.periodE; return dt && dt.y === YEAR; });
     const classes = [...new Set(rows.map(d => d.cls))].sort();
     const grid = {}; for (let m = 1; m <= 12; m++) { grid[m] = {}; classes.forEach(c => grid[m][c] = 0); }
@@ -333,7 +325,6 @@ function exportParams() {
 }
 
 function render() {
-  $('wcGroupWrap').style.display = VIEW === 'wc' ? '' : 'none';
   if (VIEW === 'wc') renderWC(); else renderTDI();
 }
 
@@ -343,7 +334,6 @@ $('viewSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
   $('viewSeg').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
   render();
 });
-$('wcGroup').onchange = () => { SEL = null; render(); };
 $('exportBtn').onclick = exportCSV;
 $('applyParams').onclick = () => { readParamsPanel(); render(); };
 $('saveParams').onclick = exportParams;
