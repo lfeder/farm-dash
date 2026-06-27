@@ -1,7 +1,7 @@
 # Dashboard → Supabase Migration Plan
 
 Status: **in progress.**
-Supabase projects: dev `kfwqtaazdankxmdlqdak`, prod `zdvpqygiqavwpxljpvqw`.
+Supabase project: prod `zdvpqygiqavwpxljpvqw`.
 Canonical schema + migration scripts live in [`aloha-data-migrations`](https://github.com/Hawaii-Farming/aloha-data-migrations).
 
 ---
@@ -9,19 +9,19 @@ Canonical schema + migration scripts live in [`aloha-data-migrations`](https://g
 ## Goal
 
 Migrate the dashboards under `C:\lf\farm\dash\` from Google Sheets (gviz JSONP)
-to Supabase. During debugging, support a 3-way runtime toggle:
-`sheets | dev | prod`. After debugging, flip default to `dev`.
+to Supabase. Support a 2-way runtime toggle: `sheets | prod`. Default stays
+`sheets` until each dashboard passes side-by-side verification.
 
 ## Progress snapshot (2026-04-18)
 
 | Piece | Status |
 |---|---|
-| Plant-map schema in Supabase | ✅ dev (5 tables: `org_site_gh`, `_block`, `_row`, `grow_cuke_seed_batch`, `grow_cuke_gh_row_planting`) |
+| Plant-map schema in Supabase | ✅ prod (5 tables: `org_site_gh`, `_block`, `_row`, `grow_cuke_seed_batch`, `grow_cuke_gh_row_planting`) |
 | Historical cuke seed batches migrated | ✅ 660 rows to `grow_cuke_seed_batch` |
 | Forward cuke seeding plan (52 weeks) | ✅ 159 rows inserted, status `planned` |
 | Invoice + expense tables | ✅ `sales_invoice` (21,579 rows), `fin_expense` (17,624 rows) — nightly-synced from sheet |
 | Views for dashboards | ✅ `sales_invoice_v`, `fin_expense_v` (derived year/month/iso_*) |
-| Shared data-source abstraction | ✅ `dash/lib/data-source.js` (sheets\|dev\|prod toggle) |
+| Shared data-source abstraction | ✅ `dash/lib/data-source.js` (sheets\|prod toggle) |
 | Dashboard migrations | In progress — see rollout below |
 | Prod deploy of everything above | Not started |
 
@@ -43,13 +43,13 @@ code only calls `DataSource.fetchTable(logicalName)`.
 
 ## Toggle UI
 
-- 3-way selector rendered by `DataSource.attachToggleAfter(versionStampEl)`
+- 2-way selector rendered by `DataSource.attachToggleAfter(versionStampEl)`
   next to each dashboard's version stamp
 - Persists via `localStorage('dashSource')` and `?src=` URL param
 - Parent `index.html` can call `DataSource.propagateToIframes(mode)` to
   cascade the choice to children
 - Default stays `sheets` until each dashboard passes side-by-side
-  verification, then flip default to `dev`
+  verification
 
 ## Shared data-source abstraction
 
@@ -128,7 +128,7 @@ the sheet middleman. Dashboards are insulated because they read from
 
 One dashboard at a time, side-by-side verify before moving on.
 
-1. **`sales/index.html`** — canary, simplest gviz swap. ✅ migrated; flips to `dev`/`prod` via the toggle
+1. **`sales/index.html`** — canary, simplest gviz swap. ✅ migrated; flips to `prod` via the toggle
 2. `logistics/index.html` — same `sales_invoice_v` source
 3. `daily/index.html` — date aggregation stress test; adds grow views
 4. `chem/index.html` — adds chem-related tables (need new logical tables in config)
@@ -140,7 +140,7 @@ One dashboard at a time, side-by-side verify before moving on.
 
 ### Per-dashboard verification
 
-Side-by-side: load `?src=sheets` and `?src=dev` in two tabs, compare headline
+Side-by-side: load `?src=sheets` and `?src=prod` in two tabs, compare headline
 numbers (totals, latest week, top customers). Only move on when they match.
 
 ## Open items
@@ -151,12 +151,12 @@ numbers (totals, latest week, top customers). Only move on when they match.
 - **Plant-map write path** — edge function design (auth, allowed columns,
   validation) so non-service-role browsers can edit
   `grow_cuke_gh_row_planting`.
-- **Prod deploy** — dev is fully populated and verified; prod is untouched.
-  Same SQL + Python sequence once you're ready.
+- **Prod deploy** — prod is the only live Supabase project. Same SQL + Python
+  sequence keeps it populated.
 
 ## Session resume instructions
 
 1. Read this file.
-2. Check dev populated via `sales_invoice`, `fin_expense`, `grow_cuke_seed_batch` counts.
+2. Check prod populated via `sales_invoice`, `fin_expense`, `grow_cuke_seed_batch` counts.
 3. Next: pick the next dashboard in the rollout order and migrate its fetch
    to `DataSource.fetchTable(...)` + add the toggle.

@@ -755,7 +755,7 @@ function init() {
         `<div style="text-align:center;padding:80px 20px;color:var(--text-secondary);font-size:1.2rem;">Loading plant map from ${mode === 'sheets' ? 'Google Sheets' : 'Supabase (' + mode + ')'}\u2026</div>`;
 
     if (mode === 'sheets') {
-        // In sheets mode, fetch bag_changes tab via JSONP (dev/prod pulls it
+        // In sheets mode, fetch bag_changes tab via JSONP (prod pulls it
         // from grow_cuke_seed_batch inside loadFromSupabase).
         const script2 = document.createElement('script');
         script2.src = BAG_CHANGES_URL;

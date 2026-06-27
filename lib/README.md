@@ -1,12 +1,11 @@
 # `dash/lib/data-source.js`
 
 Shared data-source abstraction for the farm dashboards. Lets each dashboard
-switch at runtime between three backends:
+switch at runtime between two backends:
 
 | Mode | Backend |
 |---|---|
 | `sheets` | existing gviz JSONP calls against Google Sheets (current default) |
-| `dev` | Supabase dev project `kfwqtaazdankxmdlqdak` |
 | `prod` | Supabase prod project `zdvpqygiqavwpxljpvqw` |
 
 ## Usage in a dashboard
@@ -22,7 +21,7 @@ switch at runtime between three backends:
     // ...
   }
 
-  // Render the sheets|dev|prod toggle next to the version stamp
+  // Render the sheets|prod toggle next to the version stamp
   document.addEventListener('DOMContentLoaded', () => {
     DataSource.attachToggleAfter('versionStamp');
     loadData();
@@ -34,7 +33,7 @@ switch at runtime between three backends:
 
 `getMode()` checks in order:
 
-1. `?src=sheets|dev|prod` URL parameter
+1. `?src=sheets|prod` URL parameter
 2. `localStorage.getItem('dashSource')`
 3. Defaults to `sheets`
 
@@ -82,7 +81,7 @@ the first time a non-sheets mode is used. Anon keys are hardcoded in this file
 To compare two modes on the same dashboard, open two tabs:
 
 - `?src=sheets`
-- `?src=dev`
+- `?src=prod`
 
 Sanity-check that headline numbers (totals, latest week, top customers) match
 before flipping the default away from `sheets`.
@@ -92,7 +91,7 @@ before flipping the default away from `sheets`.
 1. Add an entry to `CONFIG` with both `sheets` and `supabase` mappings
 2. In the dashboard that needs it, replace the existing gviz fetch with
    `DataSource.fetchTable('your_name')`
-3. Side-by-side verify that sheets-mode and dev-mode produce identical
+3. Side-by-side verify that sheets-mode and prod-mode produce identical
    headline numbers
 
 ## Parent `index.html` toggle propagation
