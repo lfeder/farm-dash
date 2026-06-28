@@ -94,6 +94,17 @@ input[type=time]:focus { outline:none; border-color:#4ecca3; }
 .sto-col { color:#5090c0; }
 .ph-col  { color:#3aaa85; }
 .no-data { color:#444; font-size:0.76rem; padding:8px 0; }
+
+/* Seeding schedule (only shown on seeding days) — copy of the Lettuce
+   Schedule counts table + the seed name being seeded and its density. */
+.seed-hdr { font-size:0.8rem; color:#4ecca3; font-weight:600; margin-bottom:8px; }
+.seed-tbl { width:100%; border-collapse:collapse; font-size:0.8rem; table-layout:fixed; }
+.seed-tbl th { color:#555; font-weight:500; padding:2px 6px 5px; border-bottom:1px solid #0f3460; text-align:right; white-space:nowrap; }
+.seed-tbl td { padding:3px 6px; text-align:right; font-variant-numeric:tabular-nums; color:#aaa; }
+.seed-tbl th.h-lbl, .seed-tbl .seed-lbl { text-align:left; color:#bbb; font-weight:600; }
+.seed-tbl th.h-name, .seed-tbl .seed-name { text-align:left; color:#6ab4f5; }
+.seed-tbl .seed-c.z { color:#3a3a52; }
+.seed-tbl .total-row td { border-top:1px solid #0f3460; padding-top:4px; font-weight:600; color:#e0e0e0; }
 </style>
 </head>
 <body>
@@ -177,6 +188,28 @@ input[type=time]:focus { outline:none; border-color:#4ecca3; }
         <td colspan="2" id="d2-pct-needed" class="plan-val">—</td>
       </tr>
     </tbody>
+  </table>
+</div>
+
+<!-- Seeding schedule — only rendered on days that have seeding -->
+<div class="card" id="seed-card" style="display:none">
+  <div class="seed-hdr">Seeding — <span id="seed-date-lbl"></span></div>
+  <table class="seed-tbl">
+    <colgroup>
+      <col style="width:11%"><col style="width:11%"><col style="width:11%">
+      <col style="width:17%"><col style="width:34%"><col style="width:16%">
+    </colgroup>
+    <thead>
+      <tr>
+        <th title="Boards harvesting this day">Harv</th>
+        <th title="Boards going on pond this day">Pond</th>
+        <th title="Boards seeding this day">Seed</th>
+        <th class="h-lbl">Pond·Side</th>
+        <th class="h-name">Seeding</th>
+        <th title="Seeds per board">Density</th>
+      </tr>
+    </thead>
+    <tbody id="seed-body"></tbody>
   </table>
 </div>
 
@@ -277,11 +310,12 @@ const POND_FANS  = new Set(['P7']);
 
 let d1Weather = 'avg', d2Weather = 'avg';
 let packDataMode = localStorage.getItem('packPlanDataMode') || 'sheets';
-let d1Date = '', d2Date = '';
+let d1Date = '', d2Date = '', packDate = '';
 
 function $id(id) { return document.getElementById(id); }
 function numVal(id) { return parseFloat($id(id).value) || 0; }
 function fmt(n) { return Math.round(n).toLocaleString(); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 function isoToday() {
@@ -358,7 +392,7 @@ function recPlan(orderLb, harvestLb, rows, weather, tomorrow, storageLb) {
 }
 
 // ── Grow data ─────────────────────────────────────────────────────────────────
-let cachedOrders=null, cachedHarvest=null, cachedGrow=null;
+let cachedOrders=null, cachedHarvest=null, cachedGrow=null, cachedSchedule=null;
 let cachedActualLb = {};
 
 function gvizToISO(cell) {
@@ -508,6 +542,81 @@ function renderSchedule(day, ponds, p1by, p2by, dateISO) {
   </table>`;
 }
 
+// ── Seeding schedule ──────────────────────────────────────────────────────────
+// Parse the lettuce_schedule feed (same source as the Lettuce Schedule page) into
+// one record per cycle. Kept independent of the harvest/grow tables above.
+function parseSchedule(table) {
+  if (!table || !table.cols) return [];
+  const {cols, rows} = table;
+  const pi   = colIdx(cols,'Pond'),     sIdx = colIdx(cols,'Side');
+  const snIdx= colIdx(cols,'SeedName'), spbIdx= colIdx(cols,'SeedsPerBoard');
+  const bIdx = colIdx(cols,'Boards');
+  const seedIdx= colIdx(cols,'SeedingDate'), pondIdx= colIdx(cols,'PondDate');
+  const expIdx = colIdx(cols,'ExpHarvestDate'), harvIdx= colIdx(cols,'HarvestDate');
+  if (pi<0) return [];
+  const out=[];
+  rows.forEach(r => {
+    const pond=(r.c[pi]?.v||'').toString().trim(); if(!pond) return;
+    const seedISO = gvizToISO(r.c[seedIdx]);
+    const endISO  = gvizToISO(r.c[harvIdx]) || gvizToISO(r.c[expIdx]);
+    if (!seedISO || !endISO || endISO <= seedISO) return;   // same filter as schedule page
+    out.push({
+      pond,
+      side:    (sIdx>=0 ? (r.c[sIdx]?.v||'') : '').toString().trim(),
+      seedName:(snIdx>=0 ? (r.c[snIdx]?.v||'') : '').toString().trim(),
+      density: spbIdx>=0 ? (parseFloat(r.c[spbIdx]?.v)||0) : 0,
+      boards:  parseFloat(r.c[bIdx]?.v)||0,
+      seedISO,
+      pondISO: pondIdx>=0 ? gvizToISO(r.c[pondIdx]) : null,
+      endISO,
+    });
+  });
+  return out;
+}
+
+// Copy of the schedule's Harv/Pond/Seed counts table for the selected date, with
+// Seeding (seed name) + Density columns added. Only shown when the selected date
+// is a seeding day (some cycle seeds that day); rows are every pond/side still
+// active (harvest on/after the date), matching the schedule page's row set.
+function renderSeedTable(dateISO) {
+  const card = $id('seed-card');
+  if (!cachedSchedule || !cachedSchedule.length || !dateISO) { card.style.display='none'; return; }
+  if (!cachedSchedule.some(c => c.seedISO === dateISO))      { card.style.display='none'; return; }
+
+  const keys = [...new Set(cachedSchedule.filter(c => c.endISO >= dateISO)
+    .map(c => c.pond + '|' + c.side))]
+    .sort((a,b) => { const [pa,sa]=a.split('|'), [pb,sb]=b.split('|');
+      return pa===pb ? sa.localeCompare(sb) : pa.localeCompare(pb); });
+
+  let tH=0, tP=0, tS=0, body='';
+  keys.forEach(k => {
+    const [pond,side] = k.split('|');
+    const all = cachedSchedule.filter(c => c.pond===pond && c.side===side);
+    const nH = Math.round(all.filter(c => c.endISO ===dateISO).reduce((s,c)=>s+c.boards,0));
+    const nP = Math.round(all.filter(c => c.pondISO===dateISO).reduce((s,c)=>s+c.boards,0));
+    const seedCycles = all.filter(c => c.seedISO===dateISO);
+    const nS = Math.round(seedCycles.reduce((s,c)=>s+c.boards,0));
+    tH+=nH; tP+=nP; tS+=nS;
+    const names = [...new Set(seedCycles.map(c=>c.seedName).filter(Boolean))].join(', ');
+    const dens  = [...new Set(seedCycles.map(c=>c.density).filter(Boolean))].join(', ');
+    const z = v => v ? '' : ' z';
+    body += `<tr>
+      <td class="seed-c${z(nH)}">${nH}</td>
+      <td class="seed-c${z(nP)}">${nP}</td>
+      <td class="seed-c${z(nS)}">${nS}</td>
+      <td class="seed-lbl">${esc(pond+side)}</td>
+      <td class="seed-name">${names ? esc(names) : '—'}</td>
+      <td class="seed-c${dens?'':' z'}">${dens || '—'}</td>
+    </tr>`;
+  });
+  body += `<tr class="total-row">
+    <td>${tH}</td><td>${tP}</td><td>${tS}</td>
+    <td class="seed-lbl">Total</td><td></td><td></td></tr>`;
+  $id('seed-body').innerHTML = body;
+  $id('seed-date-lbl').textContent = shortDate(dateISO);
+  card.style.display = 'block';
+}
+
 // ── Main update ───────────────────────────────────────────────────────────────
 function update() {
   // Orders table
@@ -579,14 +688,16 @@ function setStatus(msg,cls) { const e=$id('data-status'); e.textContent=msg; e.c
 async function loadData() {
   setStatus('loading…','loading');
   const mode = packDataMode==='db' ? DataSource.getMode() : 'sheets';
-  const [oR,hR,gR] = await Promise.allSettled([
+  const [oR,hR,gR,sR] = await Promise.allSettled([
     DataSource.fetchTable('lettuce_pack_orders', {mode}),
     DataSource.fetchTable('lettuce_harvest',     {mode}),
     DataSource.fetchTable('lettuce_grow_plan',   {mode}),
+    DataSource.fetchTable('lettuce_schedule', {mode:'sheets'}), // sheets-only; seeding table
   ]);
   if (oR.status==='fulfilled') cachedOrders  = oR.value;
   if (hR.status==='fulfilled') cachedHarvest = hR.value;
   if (gR.status==='fulfilled') cachedGrow    = gR.value;
+  if (sR.status==='fulfilled') cachedSchedule = parseSchedule(sR.value);
   const all=[oR,hR,gR], nok=all.every(r=>r.status==='rejected');
   setStatus(nok?'error':all.every(r=>r.status==='fulfilled')?'loaded':'partial', nok?'error':'loaded');
   applyDates();
@@ -596,6 +707,7 @@ async function loadData() {
 function applyDates() {
   if (d1Date) { populateGrow('d1',d1Date); populateDay('d1',d1Date); }
   if (d2Date) { populateGrow('d2',d2Date); populateDay('d2',d2Date); }
+  renderSeedTable(packDate);
   update();
 }
 
@@ -668,7 +780,8 @@ $id('d1-hstart').addEventListener('change', () => {
 
 // ── Date picker ───────────────────────────────────────────────────────────────
 function onDateChange(iso) {
-  const c = packCycleDates(iso||isoToday());
+  packDate = iso || isoToday();
+  const c = packCycleDates(packDate);
   d1Date=c.d1; d2Date=c.d2;
   $id('d1-plan-hdr').textContent = shortDate(d1Date);
   $id('d2-plan-hdr').textContent = shortDate(d2Date);
