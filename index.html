@@ -51,10 +51,14 @@ const iframes = {};
 // Chem has no Supabase tables yet, so pin it to sheets regardless of global mode.
 const FORCE_SHEETS = { chem: true };
 
+// Bump on deploy to bust the browser's cache of the iframe sub-pages (they have
+// no other cache-busting, so otherwise a stale copy lingers after a push).
+const BUILD_VER = '20260628a';
+
 function srcWithMode(dash) {
   const mode = FORCE_SHEETS[dash.id] ? 'sheets' : DataSource.getMode();
   const sep = dash.src.includes('?') ? '&' : '?';
-  return dash.src + sep + 'src=' + mode;
+  return dash.src + sep + 'src=' + mode + '&v=' + BUILD_VER;
 }
 
 function navigate(id) {
