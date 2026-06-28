@@ -191,26 +191,10 @@ input[type=time]:focus { outline:none; border-color:#4ecca3; }
   </table>
 </div>
 
-<!-- Seeding schedule — only rendered on days that have seeding -->
+<!-- Schedule counts — shown every day; Variety/Density columns added on seed days -->
 <div class="card" id="seed-card" style="display:none">
-  <div class="seed-hdr">Seeding — <span id="seed-date-lbl"></span></div>
-  <table class="seed-tbl">
-    <colgroup>
-      <col style="width:11%"><col style="width:11%"><col style="width:11%">
-      <col style="width:17%"><col style="width:34%"><col style="width:16%">
-    </colgroup>
-    <thead>
-      <tr>
-        <th title="Boards harvesting this day">Harv</th>
-        <th title="Boards going on pond this day">Pond</th>
-        <th title="Boards seeding this day">Seed</th>
-        <th class="h-lbl">Pond·Side</th>
-        <th class="h-name">Seeding</th>
-        <th title="Seeds per board">Density</th>
-      </tr>
-    </thead>
-    <tbody id="seed-body"></tbody>
-  </table>
+  <div class="seed-hdr">Schedule — <span id="seed-date-lbl"></span></div>
+  <div id="seed-tbl-wrap"></div>
 </div>
 
 <!-- Orders -->
@@ -574,20 +558,23 @@ function parseSchedule(table) {
   return out;
 }
 
-// Copy of the schedule's Harv/Pond/Seed counts table for the selected date, with
-// Seeding (seed name) + Density columns added. Only shown when the selected date
-// is a seeding day (some cycle seeds that day); rows are every pond/side still
-// active (harvest on/after the date), matching the schedule page's row set.
+// Copy of the schedule's per-pond counts for the selected date: Pond·Side, Harv,
+// On Pond, Seed — shown every day. On seed days (some cycle seeds that day) two
+// extra columns appear: Variety (seed name) and Density (seeds/board), filled only
+// on the rows being seeded. Rows are every pond/side still active (harvest on/after
+// the date), matching the schedule page's row set.
 function renderSeedTable(dateISO) {
   const card = $id('seed-card');
   if (!cachedSchedule || !cachedSchedule.length || !dateISO) { card.style.display='none'; return; }
-  if (!cachedSchedule.some(c => c.seedISO === dateISO))      { card.style.display='none'; return; }
 
   const keys = [...new Set(cachedSchedule.filter(c => c.endISO >= dateISO)
     .map(c => c.pond + '|' + c.side))]
     .sort((a,b) => { const [pa,sa]=a.split('|'), [pb,sb]=b.split('|');
       return pa===pb ? sa.localeCompare(sb) : pa.localeCompare(pb); });
+  if (!keys.length) { card.style.display='none'; return; }
 
+  const isSeedDay = cachedSchedule.some(c => c.seedISO === dateISO);
+  const z = v => v ? '' : ' z';
   let tH=0, tP=0, tS=0, body='';
   keys.forEach(k => {
     const [pond,side] = k.split('|');
@@ -597,22 +584,34 @@ function renderSeedTable(dateISO) {
     const seedCycles = all.filter(c => c.seedISO===dateISO);
     const nS = Math.round(seedCycles.reduce((s,c)=>s+c.boards,0));
     tH+=nH; tP+=nP; tS+=nS;
-    const names = [...new Set(seedCycles.map(c=>c.seedName).filter(Boolean))].join(', ');
-    const dens  = [...new Set(seedCycles.map(c=>c.density).filter(Boolean))].join(', ');
-    const z = v => v ? '' : ' z';
-    body += `<tr>
-      <td class="seed-c${z(nH)}">${nH}</td>
-      <td class="seed-c${z(nP)}">${nP}</td>
-      <td class="seed-c${z(nS)}">${nS}</td>
-      <td class="seed-lbl">${esc(pond+side)}</td>
-      <td class="seed-name">${names ? esc(names) : '—'}</td>
-      <td class="seed-c${dens?'':' z'}">${dens || '—'}</td>
-    </tr>`;
+    let row = `<td class="seed-lbl">${esc(pond+side)}</td>`
+      + `<td class="seed-c${z(nH)}">${nH}</td>`
+      + `<td class="seed-c${z(nP)}">${nP}</td>`
+      + `<td class="seed-c${z(nS)}">${nS}</td>`;
+    if (isSeedDay) {
+      const names = [...new Set(seedCycles.map(c=>c.seedName).filter(Boolean))].join(', ');
+      const dens  = [...new Set(seedCycles.map(c=>c.density).filter(Boolean))].join(', ');
+      row += `<td class="seed-name">${names ? esc(names) : '—'}</td>`
+        + `<td class="seed-c${dens?'':' z'}">${dens || '—'}</td>`;
+    }
+    body += `<tr>${row}</tr>`;
   });
-  body += `<tr class="total-row">
-    <td>${tH}</td><td>${tP}</td><td>${tS}</td>
-    <td class="seed-lbl">Total</td><td></td><td></td></tr>`;
-  $id('seed-body').innerHTML = body;
+  let totRow = `<td class="seed-lbl">Total</td><td>${tH}</td><td>${tP}</td><td>${tS}</td>`;
+  if (isSeedDay) totRow += `<td></td><td></td>`;
+  body += `<tr class="total-row">${totRow}</tr>`;
+
+  const head = `<th class="h-lbl">Pond·Side</th>`
+    + `<th title="Boards harvesting this day">Harv</th>`
+    + `<th title="Boards going on pond this day">On Pond</th>`
+    + `<th title="Boards seeding this day">Seed</th>`
+    + (isSeedDay ? `<th class="h-name">Variety</th><th title="Seeds per board">Density</th>` : '');
+  const cols = isSeedDay
+    ? `<col style="width:16%"><col style="width:11%"><col style="width:12%"><col style="width:11%"><col style="width:34%"><col style="width:16%">`
+    : `<col style="width:28%"><col style="width:24%"><col style="width:24%"><col style="width:24%">`;
+
+  $id('seed-tbl-wrap').innerHTML =
+    `<table class="seed-tbl"><colgroup>${cols}</colgroup>`
+    + `<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
   $id('seed-date-lbl').textContent = shortDate(dateISO);
   card.style.display = 'block';
 }
