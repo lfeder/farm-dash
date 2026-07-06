@@ -298,7 +298,7 @@ function renderGantt(today) {
 
     let firstInPond = true;
     rows.forEach(({ side, w, list, h: rowH }) => {
-      let x = 0, blocks = '', totalRows = 0, prevDays = null;
+      let x = 0, blocks = '', totalRows = 0, prevDays = null, cumRows = 0, capPos = null;
       list.forEach(c => {
         const r = c.boards / w;
         const notOnPond = !c.ponded || c.ponded > today; // no pond date yet, or future → fade
@@ -313,10 +313,14 @@ function renderGantt(today) {
         if (pondDays > 28) dayStyle = ' style="color:#ff5252;text-shadow:none"';
         else if (prevDays != null && Math.abs(pondDays - prevDays) > 2) dayStyle = ' style="color:#333;text-shadow:none"';
         prevDays = pondDays;
+        // Cap line goes where cumulative rows cross the cap, in tiled pixel
+        // coords (blocks carry 1px gaps + 4px minimums, so rows*ROW_PX drifts).
+        if (capPos === null && cumRows + r >= capR - 0.01) capPos = x + ((capR - cumRows) / r) * bw;
+        cumRows += r;
         blocks += `<div class="g-block${faded}" style="left:${x}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days"${dayStyle}>${pondDays}</span></div>`;
         x += bw + 1;
       });
-      blocks += `<div class="g-cap" style="left:${capX}px"></div>`;
+      blocks += `<div class="g-cap" style="left:${Math.round(capPos ?? capX)}px"></div>`;
       const rr = Math.round(totalRows);
       const lc = rr === capR ? '#2f7d4f' : '#b3402f'; // green only if exactly full, else red
       const row = document.createElement('div'); row.className = 'g-row';
