@@ -97,7 +97,7 @@
       <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button>
     </span>
   </div>
-  <span id="versionStamp">07-06 12:43</span>
+  <span id="versionStamp">07-06 12:57</span>
 </div>
 
 <div id="content">
@@ -283,7 +283,13 @@ function renderGantt(today) {
       // End-of-day semantics: a cycle actually harvested on/before the as-of date is
       // off the pond; un-harvested cycles stay visible even past expected harvest.
       const list = cycles.filter(c => c.pond === pond && c.side === side && !(c.harv && c.harv <= today))
-        .sort((a, b) => a.end - b.end); // soonest harvest first (leftmost)
+        // On-pond (solid) blocks always left of not-yet-ponded (faded) ones,
+        // each group sorted soonest-harvest-first, regardless of sheet order.
+        .sort((a, b) => {
+          const ap = a.ponded && a.ponded <= today ? 0 : 1;
+          const bp = b.ponded && b.ponded <= today ? 0 : 1;
+          return ap - bp || a.end - b.end;
+        });
       return list.length ? { side, w, list } : null; // drop empty sides (e.g. P1B)
     }).filter(Boolean);
     if (!rows.length) return;
