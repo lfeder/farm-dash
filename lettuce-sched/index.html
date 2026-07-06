@@ -198,6 +198,7 @@ async function load() {
       seedsPerBoard: +r.SeedsPerBoard || 0,
       boards: +r.Boards || 0,
       seed, ponded, end,
+      harv: parseUsDate(r.HarvestDate),
       exp: parseUsDate(r.ExpHarvestDate),
       status: (r.Status || '').trim(),
     };
@@ -279,7 +280,9 @@ function renderGantt(today) {
     // Gather only sides that actually have cycles, then allocate heights.
     const rows = sides.map(side => {
       const w = sideWidth(pond, side);
-      const list = cycles.filter(c => c.pond === pond && c.side === side && c.end >= today)
+      // End-of-day semantics: a cycle actually harvested on/before the as-of date is
+      // off the pond; un-harvested cycles stay visible even past expected harvest.
+      const list = cycles.filter(c => c.pond === pond && c.side === side && !(c.harv && c.harv <= today))
         .sort((a, b) => a.end - b.end); // soonest harvest first (leftmost)
       return list.length ? { side, w, list } : null; // drop empty sides (e.g. P1B)
     }).filter(Boolean);
@@ -298,7 +301,7 @@ function renderGantt(today) {
       let x = 0, blocks = '', totalRows = 0, prevDays = null;
       list.forEach(c => {
         const r = c.boards / w;
-        const notOnPond = (c.ponded || c.seed) > today; // not yet on pond → fade
+        const notOnPond = !c.ponded || c.ponded > today; // no pond date yet, or future → fade
         const faded = notOnPond ? ' planned' : '';
         if (!notOnPond) totalRows += r;                // fill readout = on-pond only
         const bw = Math.max(4, r * ROW_PX);
