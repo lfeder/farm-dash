@@ -283,13 +283,9 @@ function renderGantt(today) {
       // End-of-day semantics: a cycle actually harvested on/before the as-of date is
       // off the pond; un-harvested cycles stay visible even past expected harvest.
       const list = cycles.filter(c => c.pond === pond && c.side === side && !(c.harv && c.harv <= today))
-        // Soonest harvest first (leftmost); on same-day harvests, solid
-        // on-pond blocks before faded planned ones (not sheet order).
-        .sort((a, b) => {
-          const ap = a.ponded && a.ponded <= today ? 0 : 1;
-          const bp = b.ponded && b.ponded <= today ? 0 : 1;
-          return a.end - b.end || ap - bp;
-        });
+        // Soonest harvest first (leftmost); same-day harvests sort by pond
+        // date (earliest ponded first), so sheet row order never matters.
+        .sort((a, b) => a.end - b.end || (a.ponded || a.seed) - (b.ponded || b.seed));
       return list.length ? { side, w, list } : null; // drop empty sides (e.g. P1B)
     }).filter(Boolean);
     if (!rows.length) return;
