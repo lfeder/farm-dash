@@ -239,13 +239,13 @@ function renderGantt(today) {
   const ROW_PX = 6;                                    // px per row
   const capRows = p => (p === 'P1' ? 83 : 110);        // rows that fill a side
   // Each side runs the full length of rows, at its own board-width.
-  // P2-7: A=10, B=9, C=1 (sum 20); AB (P5-7)=20. P1 is one 10-wide side.
+  // A=10; B=9 on P2-3, 10 elsewhere; C=1; AB (P5-7)=20. P1 is one 10-wide side.
   const sideWidth = (pond, side) => {
     if (pond === 'P1') return 10;
     const s = (side || '').trim().toUpperCase();
     if (s === 'AB') return 20;
     if (s[0] === 'A') return 10;
-    if (s[0] === 'B') return 9;
+    if (s[0] === 'B') return (pond === 'P2' || pond === 'P3') ? 9 : 10;
     if (s[0] === 'C') return 1;
     return 20;
   };
