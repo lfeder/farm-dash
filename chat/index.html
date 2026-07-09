@@ -136,7 +136,7 @@ Question: ${question}`;
       'anthropic-dangerous-direct-browser-access': 'true'
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-8',
+      model: 'claude-haiku-4-5',
       max_tokens: 2048,
       messages: [{ role: 'user', content: prompt }]
     })
@@ -150,7 +150,7 @@ Question: ${question}`;
   const json = await resp.json();
   const inputTokens = json.usage.input_tokens;
   const outputTokens = json.usage.output_tokens;
-  const cost = (inputTokens * 5 / 1e6) + (outputTokens * 25 / 1e6);
+  const cost = (inputTokens * 1 / 1e6) + (outputTokens * 5 / 1e6);
 
   let sql = json.content[0].text.trim();
   sql = sql.replace(/^```(?:sql|postgres|postgresql)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
