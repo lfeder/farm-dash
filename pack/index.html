@@ -705,7 +705,7 @@ async function loadData() {
   setStatus('loading…','loading');
   const mode = packDataMode==='db' ? DataSource.getMode() : 'sheets';
   const [oR,hR,gR,sR] = await Promise.allSettled([
-    DataSource.fetchTable('lettuce_pack_orders', {mode}),
+    DataSource.fetchTable('lettuce_pack_orders', {mode:'prod'}), // POs always from prod (sales_po_detail_v)
     DataSource.fetchTable('lettuce_harvest',     {mode}),
     DataSource.fetchTable('lettuce_grow_plan',   {mode}),
     DataSource.fetchTable('lettuce_schedule', {mode:'sheets'}), // sheets-only; seeding table
