@@ -715,7 +715,7 @@ async function loadData() {
     DataSource.fetchTable('lettuce_harvest'),
     swallow(DataSource.fetchTable('fsafe_emp'), 'fsafe_emp'),
     swallow(DataSource.fetchTable('fsafe_ca'), 'fsafe_ca'),
-    swallow(DataSource.fetchTable('lettuce_pack_orders'), 'lettuce_pack_orders'),
+    swallow(DataSource.fetchTable('lettuce_pack_orders', { mode: 'prod' }), 'lettuce_pack_orders'),
     swallow(DataSource.fetchTable('data_check_rule', { mode: 'prod' }), 'data_check_rule'),
     swallow(DataSource.fetchTable('fsafe_cuke_preop'), 'fsafe_cuke_preop'),
     swallow(DataSource.fetchTable('fsafe_lettuce_preop'), 'fsafe_lettuce_preop'),
