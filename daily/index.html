@@ -49,6 +49,12 @@
   .ca-item .ca-act { color: #4a8c5c; }
   .ca-item .ca-meta { color: #999; font-size: 0.72rem; margin-bottom: 2px; }
   .ca-none { color: #888; font-size: 0.85rem; padding: 6px 4px; }
+  /* Lettuce shelf-life photo grid */
+  .photo-note { color: #888; font-size: 0.78rem; margin: -4px 0 8px; }
+  .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 24px; }
+  .photo-tile { background: #fff; border: 1px solid #ddd; border-radius: 6px; overflow: hidden; display: block; text-decoration: none; }
+  .photo-tile img { width: 100%; height: 120px; object-fit: cover; display: block; background: #eee; }
+  .photo-tile .pt-label { font-size: 0.72rem; color: #555; padding: 4px 6px; }
 </style>
 </head>
 <body>
@@ -57,7 +63,7 @@
   <h1>Daily</h1>
   <span style="display:flex;align-items:center;gap:6px;">
     <button class="gear-btn" id="srcGear" title="Data sources">&#9881;</button>
-    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">06-21 12:00</span>
+    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-16 10:30</span>
   </span>
 </div>
 
@@ -99,6 +105,10 @@
   <table id="po-table"><thead><tr>
     <th>Pack Date</th><th class="num">lb</th><th class="num">Cases</th><th class="num">LW</th><th class="num">LF</th><th class="num">LR</th><th class="num">WR</th>
   </tr></thead><tbody id="po-tbody"></tbody></table>
+
+  <div class="section-title" id="photos-title">Lettuce Crop Photos</div>
+  <div class="photo-note" id="photo-note" style="display:none;"></div>
+  <div class="photo-grid" id="photo-grid"></div>
 
   <div class="section-title" id="ca-title">Corrective Actions</div>
   <div class="ca-list" id="ca-list"></div>
@@ -241,8 +251,78 @@ function render() {
   renderCukeTable();
   renderLettuceTable();
   renderPoTable();
+  renderLettucePhotos();
   renderCaSection();
   renderDataChecks();
+}
+
+// ── Lettuce shelf-life crop photos (prod Supabase) ──
+// pack_shelf_life_photo_v joins the photo rows to their trial (SKU, trial #).
+// Photos are taken near-daily; if the selected day has none we fall back to
+// the most recent observation day on/before it. Image files sync to storage
+// on a lag, so tiles whose file hasn't landed yet are dropped via onerror.
+const STORAGE_BASE = DataSource.SUPABASE_PROJECTS.prod.url + '/storage/v1/';
+let _photoReq = 0;
+
+async function renderLettucePhotos() {
+  const rd = refDate;
+  const seq = ++_photoReq;
+  const grid = document.getElementById('photo-grid');
+  const note = document.getElementById('photo-note');
+  const title = document.getElementById('photos-title');
+  try {
+    const client = await DataSource.getClient('prod');
+    const key = fmtDateInput(rd);
+    const { data: last, error: e1 } = await client.from('pack_shelf_life_photo_v')
+      .select('observation_date').lte('observation_date', key)
+      .order('observation_date', { ascending: false }).limit(1);
+    if (e1) throw e1;
+    if (seq !== _photoReq) return; // a newer date was selected meanwhile
+    if (!last || !last.length) {
+      title.textContent = 'Lettuce Crop Photos';
+      note.style.display = 'none';
+      grid.innerHTML = '<div class="ca-none">No photos available.</div>';
+      return;
+    }
+    const day = last[0].observation_date;
+    const { data: photos, error: e2 } = await client.from('pack_shelf_life_photo_v')
+      .select('photo_url,side,shelf_life_day,sales_product_id,trial_number')
+      .eq('observation_date', day)
+      .order('sales_product_id').order('shelf_life_day').order('trial_number').order('side');
+    if (e2) throw e2;
+    if (seq !== _photoReq) return;
+
+    const [dy, dm, dd] = day.split('-').map(Number);
+    const dayDate = new Date(Date.UTC(dy, dm - 1, dd));
+    const dateStr = dayDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+    title.textContent = `Lettuce Crop Photos — ${dateStr}`;
+    const isFallback = day !== key;
+    note.textContent = isFallback ? 'No photos on the selected day — showing the most recent shelf-life check.' : '';
+    note.style.display = isFallback ? 'block' : 'none';
+
+    grid.innerHTML = '';
+    photos.forEach(p => {
+      const a = document.createElement('a');
+      a.className = 'photo-tile';
+      a.href = STORAGE_BASE + 'object/public/' + p.photo_url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.src = STORAGE_BASE + 'render/image/public/' + p.photo_url + '?width=256&quality=75';
+      img.alt = `${p.sales_product_id} day ${p.shelf_life_day} ${p.side}`;
+      img.onerror = () => a.remove(); // file not synced to storage yet
+      const label = document.createElement('div');
+      label.className = 'pt-label';
+      label.textContent = `${p.sales_product_id} · day ${p.shelf_life_day} · ${p.side}`;
+      a.appendChild(img);
+      a.appendChild(label);
+      grid.appendChild(a);
+    });
+    if (!photos.length) grid.innerHTML = '<div class="ca-none">No photos available.</div>';
+  } catch (err) {
+    console.error('lettuce photos load error:', err);
+  }
 }
 
 // ── Data-quality checks (rules from prod; pre-op presence => harvest expected) ──
