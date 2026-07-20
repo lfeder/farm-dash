@@ -57,7 +57,7 @@
   <h1>Daily</h1>
   <span style="display:flex;align-items:center;gap:6px;">
     <button class="gear-btn" id="srcGear" title="Data sources">&#9881;</button>
-    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-20 09:15</span>
+    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-20 10:30</span>
   </span>
 </div>
 
@@ -92,7 +92,7 @@
 
   <div class="section-title">Lettuce Pounds</div>
   <table id="lettuce-table"><thead><tr>
-    <th>Pond</th><th>Side</th><th>Variety</th><th class="num">Boards</th><th class="num">Lb/Board</th><th class="num">Total</th>
+    <th>Pond</th><th>Side</th><th>Variety</th><th class="num">GH Boards</th><th class="num">GH Lb/Board</th><th class="num">GH Total</th>
     <th class="num">PH Boards</th><th class="num">PH Lb/Board</th><th class="num">PH Total</th>
   </tr></thead><tbody id="lettuce-tbody"></tbody></table>
 
@@ -673,29 +673,32 @@ function renderLettuceTable() {
   tbody.innerHTML = '';
   let totBoards = 0, totLbs = 0;
 
-  // PH (packhouse) weight is grain pond/side; GH grid rows are pond/side/variety.
-  // Key both on pond+side so the join is exact. Normalize pond ("LETTUCE_GH_P2"
-  // | "P2 " -> "P2") and side (upper/trim).
+  // PH (packhouse) weight is grain pond/variety (side isn't meaningful there);
+  // GH grid rows are pond/side/variety. So key both on pond+variety, summing GH
+  // across sides — e.g. P3 side B + side C of the same variety compare as one
+  // total against PH. Normalize pond ("LETTUCE_GH_P2" | "P2 " -> "P2") and
+  // variety (upper/trim).
   const normPond = s => (String(s).toUpperCase().match(/P\s*\d+/) || [''])[0].replace(/\s+/g, '');
-  const normSide = s => String(s || '').trim().toUpperCase();
-  const key = (pond, side) => normPond(pond) + '|' + normSide(side);
+  const normVar = s => String(s || '').trim().toUpperCase();
+  const key = (pond, variety) => normPond(pond) + '|' + normVar(variety);
 
-  const phByKey = {};   // pond|side -> { boards, net }
+  const phByKey = {};   // pond|variety -> { boards, net }
   lettucePhRows
     .filter(r => r._y === rd.getUTCFullYear() && r._m === (rd.getUTCMonth() + 1) && r._d === rd.getUTCDate())
     // Skip zero-net placeholder/duplicate rows (e.g. a second P7 "AB" row with
     // boards populated but net_weight 0) — they'd inflate boards and skew lb/board.
     .filter(r => (r.NetWeight || 0) > 0)
     .forEach(r => {
-      const k = key(r.Pond, r.Side);
+      const k = key(r.Pond, r.SeedName);
       (phByKey[k] || (phByKey[k] = { boards: 0, net: 0 }));
       phByKey[k].boards += Math.round(r.Boards) || 0;
       phByKey[k].net += r.NetWeight || 0;
     });
-  // GH total per pond+side, to compare against PH for the >25% mismatch flag.
+  // GH total per pond+variety (summed across sides) — the basis for the >25%
+  // mismatch flag against PH.
   const ghByKey = {};
   dayRows.forEach(r => {
-    const k = key(r.Pond, r.Side);
+    const k = key(r.Pond, r.SeedName);
     ghByKey[k] = (ghByKey[k] || 0) + (r.GreenhouseNetWeight || 0);
   });
 
@@ -709,10 +712,10 @@ function renderLettuceTable() {
     totBoards += boards;
     totLbs += total;
 
-    // PH is pond+side grain. A pond+side can hold several GH variety rows, so
-    // show the PH figures once per pond+side (first row) and blank on the rest,
-    // to avoid implying the PH weight is per-variety.
-    const k = key(r.Pond, r.Side);
+    // PH is pond+variety grain. A pond+variety may span several GH side rows, so
+    // show the PH figures once per pond+variety (first row) and blank on the
+    // rest, to avoid implying the PH weight is per-side.
+    const k = key(r.Pond, r.SeedName);
     const ph = phByKey[k];
     const firstOfKey = ph && !phSeen.has(k);
     if (firstOfKey) { phSeen.add(k); totPhBoards += ph.boards; totPhNet += ph.net; }
@@ -720,7 +723,8 @@ function renderLettuceTable() {
     const phLbCell = firstOfKey && ph.boards ? (ph.net / ph.boards).toFixed(1) : '';
     const phTotCell = firstOfKey ? Math.round(ph.net).toLocaleString() : '';
 
-    // Flag when this pond+side's GH vs PH total differ by >25% (both required).
+    // Flag when this pond+variety's GH total (summed across sides) vs PH differ
+    // by >25% (both required). Applied to every side row of the pond+variety.
     const ghP = ghByKey[k] || 0;
     const phP = ph ? ph.net : 0;
     const mismatch = ghP > 0 && phP > 0 && Math.abs(phP - ghP) / ghP > 0.25;
