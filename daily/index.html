@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Daily Report</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260622c"></script>
+<script src="../lib/data-source.js?v=20260720a"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
@@ -57,7 +57,7 @@
   <h1>Daily</h1>
   <span style="display:flex;align-items:center;gap:6px;">
     <button class="gear-btn" id="srcGear" title="Data sources">&#9881;</button>
-    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-20 08:30</span>
+    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-20 09:15</span>
   </span>
 </div>
 
@@ -92,7 +92,7 @@
 
   <div class="section-title">Lettuce Pounds</div>
   <table id="lettuce-table"><thead><tr>
-    <th>Pond</th><th>Variety</th><th class="num">Boards</th><th class="num">Lb/Board</th><th class="num">Total</th>
+    <th>Pond</th><th>Side</th><th>Variety</th><th class="num">Boards</th><th class="num">Lb/Board</th><th class="num">Total</th>
     <th class="num">PH Boards</th><th class="num">PH Lb/Board</th><th class="num">PH Total</th>
   </tr></thead><tbody id="lettuce-tbody"></tbody></table>
 
@@ -673,28 +673,30 @@ function renderLettuceTable() {
   tbody.innerHTML = '';
   let totBoards = 0, totLbs = 0;
 
-  // Packhouse (PH) weight is grain pond/side; GH grid rows are per pond/variety.
-  // Normalize pond keys ("LETTUCE_GH_P2" | "P2 " -> "P2") and sum PH sides to a
-  // single pond-level figure, then attach it once per pond.
+  // PH (packhouse) weight is grain pond/side; GH grid rows are pond/side/variety.
+  // Key both on pond+side so the join is exact. Normalize pond ("LETTUCE_GH_P2"
+  // | "P2 " -> "P2") and side (upper/trim).
   const normPond = s => (String(s).toUpperCase().match(/P\s*\d+/) || [''])[0].replace(/\s+/g, '');
-  const phByPond = {};   // pond -> { boards, net }
+  const normSide = s => String(s || '').trim().toUpperCase();
+  const key = (pond, side) => normPond(pond) + '|' + normSide(side);
+
+  const phByKey = {};   // pond|side -> { boards, net }
   lettucePhRows
     .filter(r => r._y === rd.getUTCFullYear() && r._m === (rd.getUTCMonth() + 1) && r._d === rd.getUTCDate())
     // Skip zero-net placeholder/duplicate rows (e.g. a second P7 "AB" row with
     // boards populated but net_weight 0) — they'd inflate boards and skew lb/board.
     .filter(r => (r.NetWeight || 0) > 0)
     .forEach(r => {
-      const k = normPond(r.Pond);
-      if (!k) return;
-      (phByPond[k] || (phByPond[k] = { boards: 0, net: 0 }));
-      phByPond[k].boards += Math.round(r.Boards) || 0;
-      phByPond[k].net += r.NetWeight || 0;
+      const k = key(r.Pond, r.Side);
+      (phByKey[k] || (phByKey[k] = { boards: 0, net: 0 }));
+      phByKey[k].boards += Math.round(r.Boards) || 0;
+      phByKey[k].net += r.NetWeight || 0;
     });
-  // GH total per pond, to compare against PH for the >25% mismatch flag.
-  const ghByPond = {};
+  // GH total per pond+side, to compare against PH for the >25% mismatch flag.
+  const ghByKey = {};
   dayRows.forEach(r => {
-    const k = normPond(r.Pond);
-    ghByPond[k] = (ghByPond[k] || 0) + (r.GreenhouseNetWeight || 0);
+    const k = key(r.Pond, r.Side);
+    ghByKey[k] = (ghByKey[k] || 0) + (r.GreenhouseNetWeight || 0);
   });
 
   const phSeen = new Set();
@@ -707,20 +709,19 @@ function renderLettuceTable() {
     totBoards += boards;
     totLbs += total;
 
-    // PH figures are pond-level: show them once per pond (on its first row) and
-    // leave them blank on the pond's remaining variety rows to avoid implying
-    // the PH weight is per-variety.
-    const k = normPond(r.Pond);
-    const ph = phByPond[k];
-    const firstOfPond = ph && !phSeen.has(k);
-    if (firstOfPond) { phSeen.add(k); totPhBoards += ph.boards; totPhNet += ph.net; }
-    const phBoardsCell = firstOfPond ? ph.boards.toLocaleString() : '';
-    const phLbCell = firstOfPond && ph.boards ? (ph.net / ph.boards).toFixed(1) : '';
-    const phTotCell = firstOfPond ? Math.round(ph.net).toLocaleString() : '';
+    // PH is pond+side grain. A pond+side can hold several GH variety rows, so
+    // show the PH figures once per pond+side (first row) and blank on the rest,
+    // to avoid implying the PH weight is per-variety.
+    const k = key(r.Pond, r.Side);
+    const ph = phByKey[k];
+    const firstOfKey = ph && !phSeen.has(k);
+    if (firstOfKey) { phSeen.add(k); totPhBoards += ph.boards; totPhNet += ph.net; }
+    const phBoardsCell = firstOfKey ? ph.boards.toLocaleString() : '';
+    const phLbCell = firstOfKey && ph.boards ? (ph.net / ph.boards).toFixed(1) : '';
+    const phTotCell = firstOfKey ? Math.round(ph.net).toLocaleString() : '';
 
-    // Row is flagged when this pond's GH vs PH total differ by >25% (needs both
-    // sides present). Applied to every row of the pond so the whole pond reads.
-    const ghP = ghByPond[k] || 0;
+    // Flag when this pond+side's GH vs PH total differ by >25% (both required).
+    const ghP = ghByKey[k] || 0;
     const phP = ph ? ph.net : 0;
     const mismatch = ghP > 0 && phP > 0 && Math.abs(phP - ghP) / ghP > 0.25;
 
@@ -728,6 +729,7 @@ function renderLettuceTable() {
     if (mismatch) tr.style.background = 'rgba(200,40,40,0.28)';
     tr.innerHTML = `
       <td style="color:#4a8c5c;font-weight:600;">${r.Pond}</td>
+      <td>${r.Side}</td>
       <td>${r.SeedName}</td>
       <td class="num">${boards.toLocaleString()}</td>
       <td class="num">${lbBoard ? lbBoard.toFixed(1) : ''}</td>
@@ -745,6 +747,7 @@ function renderLettuceTable() {
   tr.className = 'total-row';
   tr.innerHTML = `
     <td style="font-weight:600;">Total</td>
+    <td></td>
     <td></td>
     <td class="num">${totBoards.toLocaleString()}</td>
     <td class="num">${avgLbBoard ? avgLbBoard.toFixed(1) : ''}</td>
@@ -801,6 +804,7 @@ async function loadData() {
   lettuceGrowRows = parseGvizTable(lettTable).filter(r => r._y === 2026);
   lettuceGrowRows.forEach(r => {
     r.Pond = r.Pond || '';
+    r.Side = r.Side || '';
     r.SeedName = r.SeedName || '';
     r.BoardsPerPond = r.BoardsPerPond || 0;
     r.PoundsPerBoard = r.PoundsPerBoard || 0;
