@@ -44,7 +44,7 @@
 
   <div class="cols">
     <div class="col">
-      <div class="section-title">Pond Plan</div>
+      <div class="section-title">Pond Plan — neediest first</div>
       <table id="plan-table"><thead><tr>
         <th>Pond</th><th class="num">cm below top</th><th class="num">Days to Fix</th><th>Watering Days</th>
       </tr></thead><tbody id="plan-tbody"></tbody></table>
@@ -158,9 +158,11 @@ function schedule(ponds, start) {
 function renderPlan(ponds) {
   const tb = document.getElementById('plan-tbody');
   tb.innerHTML = '';
-  // Display order: by pond number (scheduling priority is handled separately by
-  // neediness inside schedule()).
-  const ordered = [...ponds].sort((a, b) => a.pond.localeCompare(b.pond, undefined, { numeric: true }));
+  // Display order: neediest first (highest cm below top), then ponds at target
+  // by pond number.
+  const need = ponds.filter(p => p.fix > 0).sort((a, b) => b.level - a.level);
+  const ok   = ponds.filter(p => p.fix === 0).sort((a, b) => a.pond.localeCompare(b.pond, undefined, { numeric: true }));
+  const ordered = [...need, ...ok];
   ordered.forEach(p => {
     const tr = document.createElement('tr');
     if (p.fix > 0) tr.className = 'need';
