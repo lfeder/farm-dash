@@ -125,9 +125,9 @@ function upcomingWaterDates(start) {
 function daysToFix(level) {
   const deficit = level - TARGET_CM;
   if (deficit <= 0) return 0;
-  // Any pond below target needs at least one fill (it only gets worse), even if
-  // the deficit rounds down to 0 fills (e.g. 6cm = 1cm low -> still fill once).
-  return Math.max(1, Math.round(deficit / FILL_CM));
+  // Round up: any pond below target needs a whole fill day, and a partial
+  // deficit still costs a full watering day (e.g. 8cm = 3cm low -> ceil(1.2)=2).
+  return Math.ceil(deficit / FILL_CM);
 }
 
 // Greedy scheduler: neediest pond first, assign each its fills to the earliest
