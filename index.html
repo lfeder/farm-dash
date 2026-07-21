@@ -53,7 +53,7 @@ const FORCE_SHEETS = { chem: true };
 
 // Bump on deploy to bust the browser's cache of the iframe sub-pages (they have
 // no other cache-busting, so otherwise a stale copy lingers after a push).
-const BUILD_VER = '20260721g';
+const BUILD_VER = '20260721h';
 
 function srcWithMode(dash) {
   const mode = FORCE_SHEETS[dash.id] ? 'sheets' : DataSource.getMode();

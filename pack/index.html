@@ -658,20 +658,27 @@ function renderSeedTable(dateISO) {
       row += `<td class="seed-name">${names ? esc(names) : '—'}</td>`
         + `<td class="seed-c${dens?'':' z'}">${dens || '—'}</td>`;
     }
+    // Water column: X if this pond is scheduled to water on dateISO. The watering
+    // plan is per-pond, so mark only the representative side row (A or AB).
+    const wOn = (side==='A' || side==='AB') && window.wtrDatesByPond
+      && window.wtrDatesByPond[pond] && window.wtrDatesByPond[pond].has(dateISO);
+    row += `<td class="seed-c${wOn?'':' z'}"${wOn?' style="color:#4ecca3;font-weight:700"':''}>${wOn?'X':''}</td>`;
     body += `<tr>${row}</tr>`;
   });
   let totRow = `<td class="seed-lbl">Total</td><td>${tH}</td><td>${tP}</td><td>${tS}</td>`;
   if (isSeedDay) totRow += `<td></td><td></td>`;
+  totRow += `<td></td>`;
   body += `<tr class="total-row">${totRow}</tr>`;
 
   const head = `<th class="h-lbl">Pond·Side</th>`
     + `<th title="Boards harvesting this day">Harv</th>`
     + `<th title="Boards going on pond this day">On Pond</th>`
     + `<th title="Boards seeding this day">Seed</th>`
-    + (isSeedDay ? `<th class="h-name">Variety</th><th title="Seeds per board">Density</th>` : '');
+    + (isSeedDay ? `<th class="h-name">Variety</th><th title="Seeds per board">Density</th>` : '')
+    + `<th title="Watering this pond this day">Water</th>`;
   const cols = isSeedDay
-    ? `<col style="width:16%"><col style="width:11%"><col style="width:12%"><col style="width:11%"><col style="width:34%"><col style="width:16%">`
-    : `<col style="width:28%"><col style="width:24%"><col style="width:24%"><col style="width:24%">`;
+    ? `<col style="width:15%"><col style="width:10%"><col style="width:11%"><col style="width:10%"><col style="width:30%"><col style="width:14%"><col style="width:10%">`
+    : `<col style="width:24%"><col style="width:19%"><col style="width:20%"><col style="width:19%"><col style="width:18%">`;
 
   $id('seed-tbl-wrap').innerHTML =
     `<table class="seed-tbl"><colgroup>${cols}</colgroup>`
@@ -1045,6 +1052,11 @@ fetch('',{method:'HEAD'}).then(r=>{
     const ponds=rows.filter(r=>r.Pond&&r.CmBelowTop!=null).map(r=>({pond:r.Pond,level:+r.CmBelowTop,fix:daysToFix(+r.CmBelowTop)}));
     schedule(ponds,hstToday());
     renderPlan(ponds);
+    // Expose per-pond watering dates so the Schedule table's Water column can
+    // mark ponds watered on its selected date, then re-render it.
+    window.wtrDatesByPond={};
+    ponds.forEach(p=>{ window.wtrDatesByPond[p.pond]=new Set((p.days||[]).map(d=>d.toISOString().slice(0,10))); });
+    try { if (typeof renderSeedTable==='function' && packDate) renderSeedTable(packDate); } catch(_){}
     const dates=rows.map(r=>r.ReadingDate).filter(Boolean);
     el('w-asof').textContent=`Water levels as of latest reading${dates.length?' ('+String(dates[0])+')':''}. Plan starts today.`;
   }
