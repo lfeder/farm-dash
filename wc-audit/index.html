@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WC Annual Audit Summary</title>
+<script src="../lib/data-source.js?v=20260720a"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 16px 20px 60px; font-size: 0.85rem; }
+  h1 { font-size: 1.15rem; color: #4ecca3; margin-bottom: 2px; }
+  .sub { color: #8aa; font-size: 0.72rem; margin-bottom: 14px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+  label.fld { display: inline-flex; align-items: center; gap: 6px; font-size: 0.74rem; color: #9ab; }
+  select { background: #111; color: #ddd; border: 1px solid #335; border-radius: 4px; padding: 5px 8px; font-size: 0.82rem; }
+  button.btn { background: #16213e; color: #cde; border: 1px solid #0f3460; border-radius: 5px; padding: 6px 12px; cursor: pointer; font-size: 0.78rem; }
+  button.btn:hover { background: #1d2b50; }
+  table { border-collapse: collapse; margin: 10px 0 4px; font-variant-numeric: tabular-nums; }
+  th, td { border: 1px solid #25325a; padding: 5px 12px; text-align: right; white-space: nowrap; }
+  th { background: #16213e; color: #9fc; font-weight: 600; font-size: 0.74rem; }
+  td.lbl, th.lbl { text-align: left; color: #cde; }
+  tr.tot td { background: #142042; font-weight: 700; color: #fff; border-top: 2px solid #4ecca3; }
+  tr.roll td { background: #1b2547; }
+  .muted { color: #889; font-size: 0.7rem; }
+  h2 { font-size: 0.9rem; color: #9fc; margin: 18px 0 2px; }
+  .pills { display: flex; gap: 14px; flex-wrap: wrap; margin: 4px 0 12px; }
+  .pill { background: #11182e; border: 1px solid #0f3460; border-radius: 8px; padding: 8px 14px; }
+  .pill .n { font-size: 1.1rem; font-weight: 700; color: #4ecca3; }
+  .pill .k { font-size: 0.64rem; color: #9ab; text-transform: uppercase; letter-spacing: .4px; }
+  #status { color: #8aa; padding: 30px 0; }
+  .note { background:#11182e; border:1px solid #0f3460; border-radius:8px; padding:10px 14px; margin-top:18px; max-width:820px; color:#9ab; font-size:0.72rem; line-height:1.5; }
+  .note b { color:#cde; }
+</style>
+</head>
+<body>
+<h1>Workers' Comp — Annual Audit Summary</h1>
+<div class="sub" id="sub">Source: prod payroll · subject wages · policy year 6/22–6/21</div>
+
+<div class="bar">
+  <label class="fld">Policy year
+    <select id="yearSel"></select>
+  </label>
+  <button class="btn" id="exportBtn">Export CSV</button>
+</div>
+
+<div id="status">Loading from prod…</div>
+<div id="pills" class="pills" style="display:none"></div>
+<div id="main"></div>
+<div class="note" id="rulesNote"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const num = (v) => { const n = (typeof v === 'number') ? v : parseFloat(v); return isNaN(n) ? 0 : n; };
+const fmt = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('en-US');
+const MN = ['', 'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const CLASS_LABEL = { '0008': 'Farm / Market Gardening', '8742': 'Outside Sales', '8810': 'Clerical Office' };
+const ROLL = { month: 6, day: 22 };
+const QLABEL = ['Q1 · Jul–Sep', 'Q2 · Oct–Dec', 'Q3 · Jan–Mar', 'Q4 · Apr–Jun'];
+
+let PC = [], HC = [], YEAR = null, YEARS = [];
+
+function parseDateV(v) {
+  if (!v) return null;
+  const m = String(v).match(/Date\((\d+),(\d+),(\d+)/);
+  if (m) return { y: +m[1], m: +m[2] + 1, d: +m[3] };
+  const i = String(v).match(/(\d{4})-(\d{2})-(\d{2})/);
+  return i ? { y: +i[1], m: +i[2], d: +i[3] } : null;
+}
+function parseTable(t) {
+  const labels = (t.cols || []).map(c => c.label);
+  return (t.rows || []).map(r => { const o = {}; labels.forEach((l, i) => { const c = r.c && r.c[i]; o[l] = c ? c.v : null; }); return o; });
+}
+const iso = (d) => `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+// policy year that a check date belongs to (starts 6/22)
+function policyYearOf(d) {
+  if (d.m > ROLL.month || (d.m === ROLL.month && d.d >= ROLL.day)) return d.y;
+  return d.y - 1;
+}
+// the 12 policy-month [start,end] ISO ranges for policy year N
+function monthRanges(N) {
+  return [
+    [`${N}-06-22`, `${N}-07-31`], [`${N}-08-01`, `${N}-08-31`], [`${N}-09-01`, `${N}-09-30`],
+    [`${N}-10-01`, `${N}-10-31`], [`${N}-11-01`, `${N}-11-30`], [`${N}-12-01`, `${N}-12-31`],
+    [`${N+1}-01-01`, `${N+1}-01-31`], [`${N+1}-02-01`, `${N+1}-02-28`], [`${N+1}-03-01`, `${N+1}-03-31`],
+    [`${N+1}-04-01`, `${N+1}-04-30`], [`${N+1}-05-01`, `${N+1}-05-31`], [`${N+1}-06-01`, `${N+1}-06-21`],
+  ];
+}
+function monthLabel(N, i) {
+  if (i === 0) return `Jul '${String(N).slice(2)} (incl. 6/22+)`;
+  if (i === 11) return `Jun '${String(N+1).slice(2)} (≤6/21)`;
+  const rng = monthRanges(N)[i]; const y = +rng[0].slice(0,4); const m = +rng[0].slice(5,7);
+  return `${MN[m]} '${String(y).slice(2)}`;
+}
+
+async function load() {
+  let pcT, hcT;
+  try {
+    [pcT, hcT] = await Promise.all([
+      DataSource.fetchTable('wc_audit_paycheck', { mode: 'prod' }),
+      DataSource.fetchTable('wc_audit_headcount', { mode: 'prod' }),
+    ]);
+  } catch (e) { $('status').innerHTML = '<span style="color:#f5a">Load failed: ' + e + '</span>'; return; }
+
+  PC = parseTable(pcT).map(r => { const c = parseDateV(r.Check); return { check: c, code: r.Code, gross: num(r.Gross), ot: num(r.OT), subject: num(r.Subject), py: c ? policyYearOf(c) : null }; }).filter(r => r.check);
+  HC = parseTable(hcT).map(r => ({ year: num(r.Year), month: num(r.Month), emp: num(r.Emp) }));
+
+  // Available policy years; default = latest COMPLETE (its 6/21 end <= latest check date).
+  const maxCheck = PC.reduce((a, r) => iso(r.check) > a ? iso(r.check) : a, '0000-00-00');
+  YEARS = [...new Set(PC.map(r => r.py))].sort((a, b) => b - a);
+  YEAR = YEARS.find(N => `${N+1}-06-21` <= maxCheck);
+  if (YEAR == null) YEAR = YEARS[YEARS.length - 1];
+
+  $('yearSel').innerHTML = YEARS.map(N => `<option value="${N}"${N===YEAR?' selected':''}>${N}–${N+1}</option>`).join('');
+  $('yearSel').onchange = () => { YEAR = +$('yearSel').value; render(); };
+  $('status').style.display = 'none';
+  render();
+}
+
+// Aggregate the selected policy year into months, quarters, classes, totals.
+function aggregate(N) {
+  const R = monthRanges(N);
+  const mi = (d) => R.findIndex(([a, b]) => iso(d) >= a && iso(d) <= b);
+  const months = R.map(() => ({ gross: 0, ot: 0, subject: 0 }));
+  const quarters = [0, 1, 2, 3].map(() => ({ subject: 0 }));
+  const classes = {};
+  let T = { gross: 0, ot: 0, subject: 0 };
+  PC.filter(r => r.py === N).forEach(r => {
+    const i = mi(r.check); if (i < 0) return;
+    months[i].gross += r.gross; months[i].ot += r.ot; months[i].subject += r.subject;
+    quarters[Math.floor(i / 3)].subject += r.subject;
+    (classes[r.code] = classes[r.code] || { subject: 0, ot: 0 });
+    classes[r.code].subject += r.subject; classes[r.code].ot += r.ot;
+    T.gross += r.gross; T.ot += r.ot; T.subject += r.subject;
+  });
+  // headcount: mean of the 12 calendar-month distinct counts spanning the year
+  const calMonths = R.map((_, i) => { const rng = R[i]; return { y: +rng[1].slice(0,4), m: +rng[1].slice(5,7) }; });
+  const counts = calMonths.map(cm => { const h = HC.find(x => x.year === cm.y && x.month === cm.m); return h ? h.emp : 0; });
+  const avgEmp = counts.reduce((a, b) => a + b, 0) / 12;
+  return { months, quarters, classes, T, avgEmp };
+}
+
+function pills(items) {
+  $('pills').style.display = 'flex';
+  $('pills').innerHTML = items.map(([k, n]) => `<div class="pill"><div class="n">${n}</div><div class="k">${k}</div></div>`).join('');
+}
+
+function render() {
+  const N = YEAR; const A = aggregate(N);
+  const otPrem = A.T.ot / 3; const excluded = A.T.gross - A.T.subject; const otherExcl = excluded - otPrem;
+  $('sub').textContent = `Source: prod payroll · subject wages (gross − OT premium − bonus − per-diem − auto) · policy year 6/22/${N} – 6/21/${N+1} · all classes 0008/8742/8810`;
+  pills([
+    ['Gross wages', fmt(A.T.gross)], ['Subject wages', fmt(A.T.subject)],
+    ['Overtime (1.5×)', fmt(A.T.ot)], ['Double time', '$0'], ['Avg # employees', A.avgEmp.toFixed(1)],
+  ]);
+
+  let h = '';
+  // Reconciliation strip
+  h += `<h2>Reconciliation</h2><table><tbody>`;
+  h += `<tr><td class="lbl">Total Gross Wages</td><td>${fmt(A.T.gross)}</td></tr>`;
+  h += `<tr><td class="lbl">Less: Overtime premium (⅓ of 1.5× OT)</td><td>${fmt(-otPrem)}</td></tr>`;
+  h += `<tr><td class="lbl">Less: Bonuses + Per-Diem + Auto allowance</td><td>${fmt(-otherExcl)}</td></tr>`;
+  h += `<tr class="tot"><td class="lbl">= Total Subject Wages</td><td>${fmt(A.T.subject)}</td></tr></tbody></table>`;
+
+  // Quarterly
+  h += `<h2>Quarterly subject wages</h2><table><thead><tr><th class="lbl">Quarter</th><th>Subject wages</th></tr></thead><tbody>`;
+  A.quarters.forEach((q, i) => h += `<tr><td class="lbl">${QLABEL[i]}</td><td>${fmt(q.subject)}</td></tr>`);
+  h += `<tr class="tot"><td class="lbl">Total</td><td>${fmt(A.T.subject)}</td></tr></tbody></table>`;
+
+  // Monthly (newest first)
+  h += `<h2>Monthly breakdown</h2><table><thead><tr><th class="lbl">Month</th><th>Gross</th><th>Excluded</th><th>Subject wages</th><th>OT (1.5×)</th></tr></thead><tbody>`;
+  for (let i = A.months.length - 1; i >= 0; i--) {
+    const m = A.months[i]; const cls = (i === 0 || i === 11) ? ' class="roll"' : '';
+    h += `<tr${cls}><td class="lbl">${monthLabel(N, i)}</td><td>${fmt(m.gross)}</td><td>${fmt(m.gross - m.subject)}</td><td>${fmt(m.subject)}</td><td>${fmt(m.ot)}</td></tr>`;
+  }
+  h += `<tr class="tot"><td class="lbl">Total</td><td>${fmt(A.T.gross)}</td><td>${fmt(A.T.gross - A.T.subject)}</td><td>${fmt(A.T.subject)}</td><td>${fmt(A.T.ot)}</td></tr></tbody></table>`;
+
+  // By class
+  const codes = Object.keys(A.classes).sort();
+  h += `<h2>By WC class code</h2><table><thead><tr><th class="lbl">Class</th><th>Subject wages</th><th>OT (1.5×)</th></tr></thead><tbody>`;
+  codes.forEach(c => h += `<tr><td class="lbl">${c}${CLASS_LABEL[c] ? ' · ' + CLASS_LABEL[c] : ''}</td><td>${fmt(A.classes[c].subject)}</td><td>${fmt(A.classes[c].ot)}</td></tr>`);
+  h += `<tr class="tot"><td class="lbl">Total</td><td>${fmt(A.T.subject)}</td><td>${fmt(A.T.ot)}</td></tr></tbody></table>`;
+
+  $('main').innerHTML = h;
+  renderRules();
+}
+
+function renderRules() {
+  $('rulesNote').innerHTML =
+    `<b>How these are computed</b> (aggregate only — per-employee detail is in the audit Excel, not on this public page):<br>` +
+    `• <b>Subject Wages</b> = gross − overtime premium (⅓ of 1.5× OT) − bonuses − per diem − auto allowance. <b>Double time</b> is not separately tracked ($0).<br>` +
+    `• <b>Policy year</b> runs 6/22 → 6/21 (WC renewal). The opening July bucket includes checks paid on/after 6/22; the closing June bucket is checks paid on/before 6/21.<br>` +
+    `• Classes 0008 (Farm), 8742 (Outside Sales), 8810 (Clerical); all payroll processors. <b>Average # employees</b> = mean of the 12 monthly distinct-employee counts.`;
+}
+
+function exportCSV() {
+  const N = YEAR; const A = aggregate(N);
+  let csv = 'Month,Gross,Excluded,Subject,OT\n';
+  A.months.forEach((m, i) => { csv += `"${monthLabel(N, i)}",${m.gross.toFixed(2)},${(m.gross - m.subject).toFixed(2)},${m.subject.toFixed(2)},${m.ot.toFixed(2)}\n`; });
+  csv += `Total,${A.T.gross.toFixed(2)},${(A.T.gross - A.T.subject).toFixed(2)},${A.T.subject.toFixed(2)},${A.T.ot.toFixed(2)}\n`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `wc_audit_${N}_${N+1}.csv`; a.click();
+}
+$('exportBtn').onclick = exportCSV;
+load();
+</script>
+</body>
+</html>
