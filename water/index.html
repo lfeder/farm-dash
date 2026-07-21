@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Watering Schedule</title>
+<script src="../lib/data-source.js?v=20260721a"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
+  #header { background: #4a8c5c; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+  #header h1 { font-size: 1.5rem; color: #fff; font-weight: 700; }
+  #content { max-width: 1000px; margin: 0 auto; padding: 20px 24px; }
+  .section-title { font-size: 1.1rem; font-weight: 600; color: #333; margin: 24px 0 8px; }
+  table { border-collapse: collapse; font-size: 0.85rem; margin-bottom: 20px; }
+  th { text-align: left; padding: 6px 12px; color: #4a8c5c; font-weight: 600; }
+  td { padding: 6px 12px; }
+  /* Weekly window grid */
+  #grid-table th, #grid-table td { text-align: center; border: 1px solid #ddd; }
+  #grid-table td.day { text-align: left; font-weight: 600; color: #333; border: none; padding-right: 16px; }
+  .can { background: #1a1acc; color: #fff; font-weight: 700; }
+  .cant { background: #f0d0cc; color: #333; }
+  /* Pond plan */
+  #plan-table th.num, #plan-table td.num { text-align: right; }
+  #plan-table td { border-bottom: 1px solid #e6ded6; }
+  #plan-table tr.need td { background: #f4dcd7; }
+  #plan-table td.pond { color: #4a8c5c; font-weight: 600; }
+  .rules { margin-top: 12px; font-size: 0.82rem; color: #555; line-height: 1.7; }
+  .rules b { color: #333; }
+  .asof { font-size: 0.75rem; color: #888; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Watering Schedule</h1>
+  <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-21 12:00</span>
+</div>
+
+<div id="content">
+  <div class="asof" id="asof"></div>
+
+  <table id="grid-table"><thead><tr>
+    <th></th><th>7:00–13:00</th><th>13:00–19:00</th>
+  </tr></thead><tbody id="grid-tbody"></tbody></table>
+
+  <div class="section-title">Pond Plan — neediest first</div>
+  <table id="plan-table"><thead><tr>
+    <th>Pond</th><th class="num">cm below top</th><th class="num">Days to Fix</th><th>Watering Days</th>
+  </tr></thead><tbody id="plan-tbody"></tbody></table>
+
+  <div class="rules">
+    <b>Rules</b><br>
+    Target is <b>5&nbsp;cm</b> below the top &nbsp;·&nbsp; add 2.5&nbsp;cm every 3&nbsp;hours &nbsp;·&nbsp;
+    no more than 2.5&nbsp;cm every 2&nbsp;days per pond &nbsp;·&nbsp; can fill <b>2 ponds per day</b>.
+  </div>
+  <div class="rules" id="err" style="color:#b03030;"></div>
+</div>
+
+<script>
+// ── Watering plan ───────────────────────────────────────────────────────────
+// Reads current water level (cm below top, E/W averaged) per pond from
+// grow_lettuce_water_level_v, then builds a greedy fill schedule against the
+// fixed weekly can-water windows. Rules confirmed with the grower:
+//   target = 5cm below top; each fill = 2.5cm; >=2 days between fills per pond;
+//   max 2 ponds watered per day; days-to-fix = round((level-5)/2.5).
+const TARGET_CM   = 5;
+const FILL_CM     = 2.5;
+const MIN_GAP_DAYS = 2;   // no more than 2.5cm every 2 days per pond
+const PONDS_PER_DAY = 2;
+const HORIZON_DAYS = 28;  // how far ahead to schedule
+
+// Fixed weekly windows. Index 0=Sun .. 6=Sat. Each day has an AM (7-13) and
+// PM (13-19) window: { on: canWater, why: reason-when-off }.
+const WEEK = [
+  { day: 'Sunday',    am: { on: true },                        pm: { on: false, why: 'cleaning' } },
+  { day: 'Monday',    am: { on: false, why: 'seeding/harvesting' }, pm: { on: false, why: 'cleaning' } },
+  { day: 'Tuesday',   am: { on: false, why: 'seeding' },       pm: { on: true } },
+  { day: 'Wednesday', am: { on: true },                        pm: { on: false, why: 'cleaning' } },
+  { day: 'Thursday',  am: { on: true },                        pm: { on: false, why: 'cleaning' } },
+  { day: 'Friday',    am: { on: false, why: 'seeding' },       pm: { on: true } },
+  { day: 'Saturday',  am: { on: false, why: 'seeding' },       pm: { on: true } },
+];
+// Short weekday letters for the "Watering Days" column (Sun..Sat).
+const DOW_LETTER = ['Su', 'M', 'T', 'W', 'R', 'F', 'Sa'];
+
+// A weekday can be watered if either window is on.
+const canWaterDow = dow => WEEK[dow].am.on || WEEK[dow].pm.on;
+
+function hstNow() { return new Date(new Date().getTime() - 10 * 3600000); }
+function hstToday() { const h = hstNow(); return new Date(Date.UTC(h.getUTCFullYear(), h.getUTCMonth(), h.getUTCDate())); }
+
+function renderGrid() {
+  const tb = document.getElementById('grid-tbody');
+  tb.innerHTML = '';
+  WEEK.forEach(d => {
+    const cell = w => w.on
+      ? '<td class="can">can water</td>'
+      : `<td class="cant">can't water${w.why ? ' – ' + w.why : ''}</td>`;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="day">${d.day}</td>${cell(d.am)}${cell(d.pm)}`;
+    tb.appendChild(tr);
+  });
+}
+
+// Build the ordered list of upcoming can-water dates from `start` (inclusive).
+function upcomingWaterDates(start) {
+  const out = [];
+  for (let i = 0; i < HORIZON_DAYS; i++) {
+    const d = new Date(start.getTime() + i * 86400000);
+    if (canWaterDow(d.getUTCDay())) out.push(d);
+  }
+  return out;
+}
+
+function daysToFix(level) {
+  const deficit = level - TARGET_CM;
+  if (deficit <= 0) return 0;
+  return Math.round(deficit / FILL_CM);
+}
+
+// Greedy scheduler: neediest pond first, assign each its fills to the earliest
+// eligible water-dates (day has spare capacity, >= MIN_GAP_DAYS since this
+// pond's previous fill).
+function schedule(ponds, start) {
+  const dates = upcomingWaterDates(start);
+  const load = new Map();   // date-ms -> ponds already assigned that day
+  const order = [...ponds].filter(p => p.fix > 0).sort((a, b) => b.level - a.level);
+  order.forEach(p => {
+    p.days = [];
+    let lastMs = -Infinity;
+    for (const d of dates) {
+      if (p.days.length >= p.fix) break;
+      const ms = d.getTime();
+      if ((load.get(ms) || 0) >= PONDS_PER_DAY) continue;      // day full
+      if ((ms - lastMs) / 86400000 < MIN_GAP_DAYS) continue;   // too soon for this pond
+      load.set(ms, (load.get(ms) || 0) + 1);
+      p.days.push(d);
+      lastMs = ms;
+    }
+    p.short = p.days.map(d => DOW_LETTER[d.getUTCDay()]).join(', ');
+    p.underfilled = p.days.length < p.fix;
+  });
+  return ponds;
+}
+
+function renderPlan(ponds) {
+  const tb = document.getElementById('plan-tbody');
+  tb.innerHTML = '';
+  // Display order: neediest first (same as scheduling), then non-needy by pond.
+  const need = ponds.filter(p => p.fix > 0).sort((a, b) => b.level - a.level);
+  const ok   = ponds.filter(p => p.fix === 0).sort((a, b) => a.pond.localeCompare(b.pond, undefined, { numeric: true }));
+  [...need, ...ok].forEach(p => {
+    const tr = document.createElement('tr');
+    if (p.fix > 0) tr.className = 'need';
+    const daysCell = p.short + (p.underfilled ? ' <span style="color:#b03030">(needs more days)</span>' : '');
+    tr.innerHTML = `
+      <td class="pond">${p.pond}</td>
+      <td class="num">${p.level}</td>
+      <td class="num">${p.fix}</td>
+      <td>${daysCell}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+async function load() {
+  renderGrid();
+  let rows;
+  try {
+    const t = await DataSource.fetchTable('lettuce_water_level',
+      { mode: 'prod', filters: { org_id: 'hawaii_farming' } });
+    rows = t.rows.map(r => {
+      const o = {};
+      t.cols.forEach((c, i) => { const cell = r.c[i]; o[c.label] = cell ? (cell.f != null ? cell.f : cell.v) : null; });
+      return o;
+    });
+  } catch (e) {
+    document.getElementById('err').textContent = 'Could not load water levels: ' + e.message;
+    return;
+  }
+
+  const ponds = rows
+    .filter(r => r.Pond && r.CmBelowTop != null)
+    .map(r => ({ pond: r.Pond, level: +r.CmBelowTop, fix: daysToFix(+r.CmBelowTop) }));
+
+  schedule(ponds, hstToday());
+  renderPlan(ponds);
+
+  const dates = rows.map(r => r.ReadingDate).filter(Boolean);
+  const asOf = dates.length ? String(dates[0]) : '';
+  document.getElementById('asof').textContent =
+    `Water levels as of latest reading${asOf ? ' (' + asOf + ')' : ''}. Plan starts today.`;
+}
+
+load().catch(e => { document.getElementById('err').textContent = 'Error: ' + e.message; });
+</script>
+</body>
+</html>
