@@ -125,9 +125,9 @@ function daysToFix(level) {
 function schedule(ponds, start) {
   const dates = upcomingWaterDates(start);
   const load = new Map();   // date-ms -> ponds already assigned that day
+  ponds.forEach(p => { p.days = []; p.short = ''; p.underfilled = false; });  // defaults (non-needy stay blank)
   const order = [...ponds].filter(p => p.fix > 0).sort((a, b) => b.level - a.level);
   order.forEach(p => {
-    p.days = [];
     let lastMs = -Infinity;
     for (const d of dates) {
       if (p.days.length >= p.fix) break;
