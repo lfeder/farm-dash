@@ -44,7 +44,7 @@
 
   <div class="cols">
     <div class="col">
-      <div class="section-title">Pond Plan — neediest first</div>
+      <div class="section-title">Pond Plan</div>
       <table id="plan-table"><thead><tr>
         <th>Pond</th><th class="num">cm below top</th><th class="num">Days to Fix</th><th>Watering Days</th>
       </tr></thead><tbody id="plan-tbody"></tbody></table>
@@ -125,7 +125,9 @@ function upcomingWaterDates(start) {
 function daysToFix(level) {
   const deficit = level - TARGET_CM;
   if (deficit <= 0) return 0;
-  return Math.round(deficit / FILL_CM);
+  // Any pond below target needs at least one fill (it only gets worse), even if
+  // the deficit rounds down to 0 fills (e.g. 6cm = 1cm low -> still fill once).
+  return Math.max(1, Math.round(deficit / FILL_CM));
 }
 
 // Greedy scheduler: neediest pond first, assign each its fills to the earliest
@@ -156,10 +158,10 @@ function schedule(ponds, start) {
 function renderPlan(ponds) {
   const tb = document.getElementById('plan-tbody');
   tb.innerHTML = '';
-  // Display order: neediest first (same as scheduling), then non-needy by pond.
-  const need = ponds.filter(p => p.fix > 0).sort((a, b) => b.level - a.level);
-  const ok   = ponds.filter(p => p.fix === 0).sort((a, b) => a.pond.localeCompare(b.pond, undefined, { numeric: true }));
-  [...need, ...ok].forEach(p => {
+  // Display order: by pond number (scheduling priority is handled separately by
+  // neediness inside schedule()).
+  const ordered = [...ponds].sort((a, b) => a.pond.localeCompare(b.pond, undefined, { numeric: true }));
+  ordered.forEach(p => {
     const tr = document.createElement('tr');
     if (p.fix > 0) tr.className = 'need';
     const daysCell = p.short + (p.underfilled ? ' <span style="color:#b03030">(needs more days)</span>' : '');
