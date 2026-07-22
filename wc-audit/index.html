@@ -158,7 +158,7 @@ function render() {
   h += `<h2>Reconciliation</h2><table><tbody>`;
   h += `<tr><td class="lbl">Total Gross Wages</td><td>${fmt(A.T.gross)}</td></tr>`;
   h += `<tr><td class="lbl">Less: Overtime premium (⅓ of 1.5× OT)</td><td>${fmt(-otPrem)}</td></tr>`;
-  h += `<tr><td class="lbl">Less: Bonuses + Per-Diem + Auto allowance</td><td>${fmt(-otherExcl)}</td></tr>`;
+  h += `<tr><td class="lbl">Less: Bonuses + Per-Diem + Auto + PTO</td><td>${fmt(-otherExcl)}</td></tr>`;
   h += `<tr class="tot"><td class="lbl">= Total Subject Wages</td><td>${fmt(A.T.subject)}</td></tr></tbody></table>`;
 
   // Quarterly
@@ -187,9 +187,10 @@ function render() {
 function renderRules() {
   $('rulesNote').innerHTML =
     `<b>How these are computed</b> (aggregate only — per-employee detail is in the audit Excel, not on this public page):<br>` +
-    `• <b>Subject Wages</b> = gross − overtime premium (⅓ of 1.5× OT) − bonuses − per diem − auto allowance. <b>Double time</b> is not separately tracked ($0).<br>` +
+    `• <b>Subject Wages</b> = gross − overtime premium (⅓ of 1.5× OT) − bonuses − per diem − auto allowance − PTO. <b>Double time</b> is not separately tracked ($0).<br>` +
     `• <b>Policy year</b> runs 6/22 → 6/21 (WC renewal). The opening July bucket includes checks paid on/after 6/22; the closing June bucket is checks paid on/before 6/21.<br>` +
-    `• Classes 0008 (Farm), 8742 (Outside Sales), 8810 (Clerical); all payroll processors. <b>Average # employees</b> = mean of the 12 monthly distinct-employee counts.`;
+    `• Classes 0008 (Farm), 8742 (Outside Sales), 8810 (Clerical); all payroll processors. <b>Average # employees</b> = mean of the 12 monthly distinct-employee counts.<br>` +
+    `• <b>Note:</b> figures are recomputed from current payroll data, so a completed policy year may differ slightly from the monthly amounts originally filed with the carrier (≈$2K for 2025–26) — payroll rows can be adjusted or re-imported after each monthly submission. Each year settles to a single figure once its payroll is final.`;
 }
 
 function exportCSV() {
