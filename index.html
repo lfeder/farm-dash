@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Farm Dashboard</title>
-<script src="lib/data-source.js?v=20260626e"></script>
+<script src="lib/data-source.js?v=20260721i"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
@@ -53,7 +53,7 @@ const FORCE_SHEETS = { chem: true };
 
 // Bump on deploy to bust the browser's cache of the iframe sub-pages (they have
 // no other cache-busting, so otherwise a stale copy lingers after a push).
-const BUILD_VER = '20260721h';
+const BUILD_VER = '20260721i';
 
 function srcWithMode(dash) {
   const mode = FORCE_SHEETS[dash.id] ? 'sheets' : DataSource.getMode();

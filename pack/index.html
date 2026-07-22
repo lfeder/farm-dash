@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pack Plan <!-- 06-03 15:24 --></title>
-<script src="../lib/data-source.js?v=20260622c"></script>
+<script src="../lib/data-source.js?v=20260721i"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -529,11 +529,13 @@ function populateGrow(day, dateISO) {
 function ordersByDate(dateISO) {
   if (!cachedOrders) return null;
   const {cols, rows} = cachedOrders;
-  const di=colIdx(cols,'PackDate'), si=colIdx(cols,'SKU'), ci=colIdx(cols,'Cases');
+  const di=colIdx(cols,'PackDate'), ii=colIdx(cols,'InvDate'), si=colIdx(cols,'SKU'), ci=colIdx(cols,'Cases');
   if (di<0||si<0||ci<0) return null;
   const result = {LW:0,LR:0,LF:0,WR:0};
   rows.forEach(r => {
-    if (gvizToISO(r.c[di]) !== dateISO) return;
+    // Bucket by expected pack date; fall back to invoice date only if it's blank.
+    const iso = gvizToISO(r.c[di]) || (ii>=0 ? gvizToISO(r.c[ii]) : null);
+    if (iso !== dateISO) return;
     const sku = r.c[si]?.v;
     if (Object.prototype.hasOwnProperty.call(result, sku))
       result[sku] += (r.c[ci]?.v)||0;
