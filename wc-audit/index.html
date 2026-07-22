@@ -30,6 +30,12 @@
   #status { color: #8aa; padding: 30px 0; }
   .note { background:#11182e; border:1px solid #0f3460; border-radius:8px; padding:10px 14px; margin-top:18px; max-width:820px; color:#9ab; font-size:0.72rem; line-height:1.5; }
   .note b { color:#cde; }
+  .tabs { display: flex; gap: 4px; margin: 6px 0; border-bottom: 1px solid #25325a; }
+  .tabs button { background: transparent; color: #9ab; border: none; border-bottom: 2px solid transparent; padding: 8px 14px; margin-bottom: -1px; cursor: pointer; font-size: 0.8rem; }
+  .tabs button:hover { color: #cde; }
+  .tabs button.active { color: #4ecca3; border-bottom-color: #4ecca3; font-weight: 600; }
+  .panel { display: none; }
+  .panel.active { display: block; }
 </style>
 </head>
 <body>
@@ -45,6 +51,11 @@
 
 <div id="status">Loading from prod…</div>
 <div id="pills" class="pills" style="display:none"></div>
+<div id="tabs" class="tabs" style="display:none">
+  <button data-t="class">By WC Class</button>
+  <button data-t="quarter">By Quarter</button>
+  <button data-t="monthly">Monthly Breakdown</button>
+</div>
 <div id="main"></div>
 <div class="note" id="rulesNote"></div>
 
@@ -52,12 +63,11 @@
 const $ = (id) => document.getElementById(id);
 const num = (v) => { const n = (typeof v === 'number') ? v : parseFloat(v); return isNaN(n) ? 0 : n; };
 const fmt = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString('en-US');
-const MN = ['', 'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const CLASS_LABEL = { '0008': 'Farm / Market Gardening', '8742': 'Outside Sales', '8810': 'Clerical Office' };
 const ROLL = { month: 6, day: 22 };
 const QLABEL = ['Q1 · Jul–Sep', 'Q2 · Oct–Dec', 'Q3 · Jan–Mar', 'Q4 · Apr–Jun'];
 
-let PC = [], HC = [], YEAR = null, YEARS = [];
+let PC = [], HC = [], YEAR = null, YEARS = [], TAB = 'monthly';
 
 function parseDateV(v) {
   if (!v) return null;
@@ -71,6 +81,7 @@ function parseTable(t) {
   return (t.rows || []).map(r => { const o = {}; labels.forEach((l, i) => { const c = r.c && r.c[i]; o[l] = c ? c.v : null; }); return o; });
 }
 const iso = (d) => `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+const mdy = (isoStr) => { const [y, m, d] = isoStr.split('-'); return `${+m}/${+d}/${y}`; };
 // policy year that a check date belongs to (starts 6/22)
 function policyYearOf(d) {
   if (d.m > ROLL.month || (d.m === ROLL.month && d.d >= ROLL.day)) return d.y;
@@ -84,12 +95,6 @@ function monthRanges(N) {
     [`${N+1}-01-01`, `${N+1}-01-31`], [`${N+1}-02-01`, `${N+1}-02-29`], [`${N+1}-03-01`, `${N+1}-03-31`],
     [`${N+1}-04-01`, `${N+1}-04-30`], [`${N+1}-05-01`, `${N+1}-05-31`], [`${N+1}-06-01`, `${N+1}-06-21`],
   ];
-}
-function monthLabel(N, i) {
-  if (i === 0) return `Jul '${String(N).slice(2)} (incl. 6/22+)`;
-  if (i === 11) return `Jun '${String(N+1).slice(2)} (≤6/21)`;
-  const rng = monthRanges(N)[i]; const y = +rng[0].slice(0,4); const m = +rng[0].slice(5,7);
-  return `${MN[m]} '${String(y).slice(2)}`;
 }
 
 async function load() {
@@ -113,6 +118,8 @@ async function load() {
   $('yearSel').innerHTML = YEARS.map(N => `<option value="${N}"${N===YEAR?' selected':''}>${N}–${N+1}</option>`).join('');
   $('yearSel').onchange = () => { YEAR = +$('yearSel').value; render(); };
   $('status').style.display = 'none';
+  $('tabs').style.display = 'flex';
+  document.querySelectorAll('#tabs button').forEach(b => { b.onclick = () => showTab(b.dataset.t); });
   render();
 }
 
@@ -120,21 +127,23 @@ async function load() {
 function aggregate(N) {
   const R = monthRanges(N);
   const mi = (d) => R.findIndex(([a, b]) => iso(d) >= a && iso(d) <= b);
-  const months = R.map(() => ({ gross: 0, ot: 0, subject: 0 }));
+  const months = R.map(([a, b]) => ({ gross: 0, ot: 0, subject: 0, emp: 0, start: a, end: b }));
   const quarters = [0, 1, 2, 3].map(() => ({ subject: 0 }));
   const classes = {};
   let T = { gross: 0, ot: 0, subject: 0 };
   PC.filter(r => r.py === N).forEach(r => {
     const i = mi(r.check); if (i < 0) return;
+    const q = Math.floor(i / 3);
     months[i].gross += r.gross; months[i].ot += r.ot; months[i].subject += r.subject;
-    quarters[Math.floor(i / 3)].subject += r.subject;
-    (classes[r.code] = classes[r.code] || { subject: 0, ot: 0 });
-    classes[r.code].subject += r.subject; classes[r.code].ot += r.ot;
+    quarters[q].subject += r.subject;
+    const cl = (classes[r.code] = classes[r.code] || { subject: 0, ot: 0, gross: 0, q: [0, 0, 0, 0] });
+    cl.subject += r.subject; cl.ot += r.ot; cl.gross += r.gross; cl.q[q] += r.subject;
     T.gross += r.gross; T.ot += r.ot; T.subject += r.subject;
   });
-  // headcount: mean of the 12 calendar-month distinct counts spanning the year
+  // headcount: distinct employees paid per calendar month spanning the year
   const calMonths = R.map((_, i) => { const rng = R[i]; return { y: +rng[1].slice(0,4), m: +rng[1].slice(5,7) }; });
   const counts = calMonths.map(cm => { const h = HC.find(x => x.year === cm.y && x.month === cm.m); return h ? h.emp : 0; });
+  counts.forEach((c, i) => { months[i].emp = c; });
   const avgEmp = counts.reduce((a, b) => a + b, 0) / 12;
   return { months, quarters, classes, T, avgEmp };
 }
@@ -146,42 +155,45 @@ function pills(items) {
 
 function render() {
   const N = YEAR; const A = aggregate(N);
-  const otPrem = A.T.ot / 3; const excluded = A.T.gross - A.T.subject; const otherExcl = excluded - otPrem;
   $('sub').textContent = `Source: prod payroll · subject wages (gross − OT premium − bonus − per-diem − auto) · policy year 6/22/${N} – 6/21/${N+1} · all classes 0008/8742/8810`;
   pills([
     ['Gross wages', fmt(A.T.gross)], ['Subject wages', fmt(A.T.subject)],
     ['Overtime (1.5×)', fmt(A.T.ot)], ['Double time', '$0'], ['Avg # employees', A.avgEmp.toFixed(1)],
   ]);
 
-  let h = '';
-  // Reconciliation strip
-  h += `<h2>Reconciliation</h2><table><tbody>`;
-  h += `<tr><td class="lbl">Total Gross Wages</td><td>${fmt(A.T.gross)}</td></tr>`;
-  h += `<tr><td class="lbl">Less: Overtime premium (⅓ of 1.5× OT)</td><td>${fmt(-otPrem)}</td></tr>`;
-  h += `<tr><td class="lbl">Less: Bonuses + Per-Diem + Auto + PTO</td><td>${fmt(-otherExcl)}</td></tr>`;
-  h += `<tr class="tot"><td class="lbl">= Total Subject Wages</td><td>${fmt(A.T.subject)}</td></tr></tbody></table>`;
-
-  // Quarterly
-  h += `<h2>Quarterly subject wages</h2><table><thead><tr><th class="lbl">Quarter</th><th>Subject wages</th></tr></thead><tbody>`;
-  A.quarters.forEach((q, i) => h += `<tr><td class="lbl">${QLABEL[i]}</td><td>${fmt(q.subject)}</td></tr>`);
-  h += `<tr class="tot"><td class="lbl">Total</td><td>${fmt(A.T.subject)}</td></tr></tbody></table>`;
-
-  // Monthly (newest first)
-  h += `<h2>Monthly breakdown</h2><table><thead><tr><th class="lbl">Month</th><th>Gross</th><th>Excluded</th><th>Subject wages</th><th>OT (1.5×)</th></tr></thead><tbody>`;
-  for (let i = A.months.length - 1; i >= 0; i--) {
-    const m = A.months[i]; const cls = (i === 0 || i === 11) ? ' class="roll"' : '';
-    h += `<tr${cls}><td class="lbl">${monthLabel(N, i)}</td><td>${fmt(m.gross)}</td><td>${fmt(m.gross - m.subject)}</td><td>${fmt(m.subject)}</td><td>${fmt(m.ot)}</td></tr>`;
-  }
-  h += `<tr class="tot"><td class="lbl">Total</td><td>${fmt(A.T.gross)}</td><td>${fmt(A.T.gross - A.T.subject)}</td><td>${fmt(A.T.subject)}</td><td>${fmt(A.T.ot)}</td></tr></tbody></table>`;
-
-  // By class
+  // By WC class — columns mirror the Excel 'By WC Class' sheet (per-class employee
+  // count is omitted: the public view is aggregate-only and carries no employee id).
   const codes = Object.keys(A.classes).sort();
-  h += `<h2>By WC class code</h2><table><thead><tr><th class="lbl">Class</th><th>Subject wages</th><th>OT (1.5×)</th></tr></thead><tbody>`;
-  codes.forEach(c => h += `<tr><td class="lbl">${c}${CLASS_LABEL[c] ? ' · ' + CLASS_LABEL[c] : ''}</td><td>${fmt(A.classes[c].subject)}</td><td>${fmt(A.classes[c].ot)}</td></tr>`);
-  h += `<tr class="tot"><td class="lbl">Total</td><td>${fmt(A.T.subject)}</td><td>${fmt(A.T.ot)}</td></tr></tbody></table>`;
+  let cls = `<table><thead><tr><th class="lbl">WC Class</th><th>Q1 Subject</th><th>Q2 Subject</th><th>Q3 Subject</th><th>Q4 Subject</th><th>Total Subject</th><th>Gross Wages</th><th>OT (1.5×)</th></tr></thead><tbody>`;
+  codes.forEach(c => { const k = A.classes[c]; cls += `<tr><td class="lbl">${c}</td><td>${fmt(k.q[0])}</td><td>${fmt(k.q[1])}</td><td>${fmt(k.q[2])}</td><td>${fmt(k.q[3])}</td><td>${fmt(k.subject)}</td><td>${fmt(k.gross)}</td><td>${fmt(k.ot)}</td></tr>`; });
+  cls += `<tr class="tot"><td class="lbl">Total</td><td>${fmt(A.quarters[0].subject)}</td><td>${fmt(A.quarters[1].subject)}</td><td>${fmt(A.quarters[2].subject)}</td><td>${fmt(A.quarters[3].subject)}</td><td>${fmt(A.T.subject)}</td><td>${fmt(A.T.gross)}</td><td>${fmt(A.T.ot)}</td></tr></tbody></table>`;
 
-  $('main').innerHTML = h;
+  // Quarterly — mirrors the Excel Summary quarterly block (distinct per-quarter
+  // employee count omitted: no per-quarter identity in the aggregate view).
+  let qtr = `<table><thead><tr><th class="lbl">Quarter</th><th>Subject wages</th></tr></thead><tbody>`;
+  A.quarters.forEach((q, i) => qtr += `<tr><td class="lbl">${QLABEL[i]}</td><td>${fmt(q.subject)}</td></tr>`);
+  qtr += `<tr class="tot"><td class="lbl">Total</td><td>${fmt(A.T.subject)}</td></tr></tbody></table>`;
+
+  // Monthly (newest first) — columns mirror the Excel 'Monthly Breakdown' sheet.
+  let mon = `<table><thead><tr><th class="lbl">Report Date</th><th class="lbl">Period Start</th><th class="lbl">Period End</th><th>Employees</th><th>Gross Wages</th><th>Excluded</th><th>Subject wages</th><th>OT (1.5×)</th></tr></thead><tbody>`;
+  for (let i = A.months.length - 1; i >= 0; i--) {
+    const m = A.months[i]; const rc = (i === 0 || i === 11) ? ' class="roll"' : '';
+    mon += `<tr${rc}><td class="lbl">${mdy(m.end)}</td><td class="lbl">${mdy(m.start)}</td><td class="lbl">${mdy(m.end)}</td><td>${m.emp}</td><td>${fmt(m.gross)}</td><td>${fmt(m.gross - m.subject)}</td><td>${fmt(m.subject)}</td><td>${fmt(m.ot)}</td></tr>`;
+  }
+  mon += `<tr class="tot"><td class="lbl">Total</td><td class="lbl"></td><td class="lbl"></td><td></td><td>${fmt(A.T.gross)}</td><td>${fmt(A.T.gross - A.T.subject)}</td><td>${fmt(A.T.subject)}</td><td>${fmt(A.T.ot)}</td></tr></tbody></table>`;
+
+  $('main').innerHTML =
+    `<div class="panel" data-panel="class">${cls}</div>` +
+    `<div class="panel" data-panel="quarter">${qtr}</div>` +
+    `<div class="panel" data-panel="monthly">${mon}</div>`;
+  showTab(TAB);
   renderRules();
+}
+
+function showTab(t) {
+  TAB = t;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.t === t));
+  document.querySelectorAll('#main .panel').forEach(p => p.classList.toggle('active', p.dataset.panel === t));
 }
 
 function renderRules() {
@@ -195,9 +207,9 @@ function renderRules() {
 
 function exportCSV() {
   const N = YEAR; const A = aggregate(N);
-  let csv = 'Month,Gross,Excluded,Subject,OT\n';
-  A.months.forEach((m, i) => { csv += `"${monthLabel(N, i)}",${m.gross.toFixed(2)},${(m.gross - m.subject).toFixed(2)},${m.subject.toFixed(2)},${m.ot.toFixed(2)}\n`; });
-  csv += `Total,${A.T.gross.toFixed(2)},${(A.T.gross - A.T.subject).toFixed(2)},${A.T.subject.toFixed(2)},${A.T.ot.toFixed(2)}\n`;
+  let csv = 'Report Date,Period Start,Period End,Employees,Gross,Excluded,Subject,OT\n';
+  A.months.forEach((m) => { csv += `${mdy(m.end)},${mdy(m.start)},${mdy(m.end)},${m.emp},${m.gross.toFixed(2)},${(m.gross - m.subject).toFixed(2)},${m.subject.toFixed(2)},${m.ot.toFixed(2)}\n`; });
+  csv += `Total,,,,${A.T.gross.toFixed(2)},${(A.T.gross - A.T.subject).toFixed(2)},${A.T.subject.toFixed(2)},${A.T.ot.toFixed(2)}\n`;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   a.download = `wc_audit_${N}_${N+1}.csv`; a.click();
