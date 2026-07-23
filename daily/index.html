@@ -666,8 +666,10 @@ function renderCukeTable() {
 function renderLettuceTable() {
   const rd = refDate;
   const dayRows = lettuceGrowRows.filter(r => r._y === rd.getUTCFullYear() && r._m === (rd.getUTCMonth() + 1) && r._d === rd.getUTCDate());
-  // Order by pond (P1 → P7), natural numeric sort.
-  dayRows.sort((a, b) => String(a.Pond).localeCompare(String(b.Pond), undefined, { numeric: true, sensitivity: 'base' }));
+  // Order by pond (P1 → P7), natural numeric sort; then by side (A, AB, B, C).
+  dayRows.sort((a, b) =>
+    String(a.Pond).localeCompare(String(b.Pond), undefined, { numeric: true, sensitivity: 'base' })
+    || String(a.Side).localeCompare(String(b.Side), undefined, { sensitivity: 'base' }));
 
   const tbody = document.getElementById('lettuce-tbody');
   tbody.innerHTML = '';
