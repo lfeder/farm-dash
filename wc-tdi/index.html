@@ -61,7 +61,7 @@
 <div class="note" id="rulesNote"></div>
 
 <h1 style="margin-top:34px">WC Wage Summary — by check date &amp; class</h1>
-<div class="sub">Base wages (same basis as the monthly table above) · last 6 months · unclassified &amp; N/A excluded</div>
+<div class="sub">Base wages (same basis as the monthly table above) · selected check date's month · last 6 months selectable · unclassified &amp; N/A excluded</div>
 <div id="sumStatus" style="color:#8aa;padding:16px 0">Loading…</div>
 <div class="bar" id="sumBar" style="display:none">
   <label class="capfld" for="sumDate">Check date
@@ -70,7 +70,6 @@
 </div>
 <div id="sumWrap" style="display:none; gap:24px; align-items:flex-start; flex-wrap:wrap">
   <div id="sumPivot" style="overflow:auto"></div>
-  <div id="sumByCode" style="overflow:auto"></div>
   <div id="sumByStruct" style="overflow:auto"></div>
 </div>
 
@@ -289,7 +288,7 @@ load();
 
 // ---- WC Wage Summary section (independent of the wc/tdi toggle) ----
 const SUM_NULL = '—';
-let SUM_ROWS = [], SUM_MONTHS = [], SUM_DATE = '';
+let SUM_ROWS = [], SUM_DATE = '';
 
 function sumMonthKey(r) { return r.check.y + '-' + String(r.check.m).padStart(2, '0'); }
 function sumMonthLabel(mk) { const [y, m] = mk.split('-'); return `${MN[+m]} ${yy(y)}`; }
@@ -313,7 +312,6 @@ async function loadSummary() {
   const months = [...new Set(rows.map(sumMonthKey))].sort((a, b) => b.localeCompare(a)).slice(0, 6);
   const keep = new Set(months);
   SUM_ROWS = rows.filter(r => keep.has(sumMonthKey(r)));
-  SUM_MONTHS = months; // desc
   const dates = [...new Set(SUM_ROWS.map(r => r.iso))].sort((a, b) => b.localeCompare(a));
   SUM_DATE = dates[0] || '';
 
@@ -322,35 +320,31 @@ async function loadSummary() {
   $('sumBar').style.display = 'flex';
   $('sumWrap').style.display = 'flex';
   $('sumDate').innerHTML = dates.map(d => `<option value="${d}"${d === SUM_DATE ? ' selected' : ''}>${sumDateLabel(d)}</option>`).join('');
-  $('sumDate').onchange = () => { SUM_DATE = $('sumDate').value; renderSummaryDetail(); };
+  $('sumDate').onchange = () => { SUM_DATE = $('sumDate').value; renderSummaryPivot(); renderSummaryDetail(); };
   renderSummaryPivot();
   renderSummaryDetail();
 }
 
 function renderSummaryPivot() {
+  const selMonth = SUM_DATE.slice(0, 7); // 'YYYY-MM' — the month of the selected check date
+  const inMonth = SUM_ROWS.filter(r => sumMonthKey(r) === selMonth);
+  const dates = [...new Set(inMonth.map(r => r.iso))].sort((a, b) => b.localeCompare(a));
   let h = '<table><thead><tr><th class="lbl">Period Month</th><th class="lbl">Check Date</th><th class="lbl">Class Code</th><th>Base</th><th>OT</th></tr></thead><tbody>';
-  let gB = 0, gO = 0;
-  SUM_MONTHS.forEach(mk => {
-    const inMonth = SUM_ROWS.filter(r => sumMonthKey(r) === mk);
-    const dates = [...new Set(inMonth.map(r => r.iso))].sort((a, b) => b.localeCompare(a));
-    let mB = 0, mO = 0, firstOfMonth = true;
-    dates.forEach(iso => {
-      const inDate = inMonth.filter(r => r.iso === iso);
-      const byCode = {}; inDate.forEach(r => { (byCode[r.code] = byCode[r.code] || { b: 0, o: 0 }); byCode[r.code].b += r.base; byCode[r.code].o += r.ot; });
-      const dCodes = Object.keys(byCode).sort();
-      let dB = 0, dO = 0, firstOfDate = true;
-      dCodes.forEach(c => {
-        const v = byCode[c]; dB += v.b; dO += v.o;
-        h += `<tr><td class="lbl">${firstOfMonth ? sumMonthLabel(mk) : ''}</td><td class="lbl">${firstOfDate ? sumDateLabel(iso) : ''}</td><td class="lbl">${c}</td><td>${fmt(v.b)}</td><td>${fmt(v.o)}</td></tr>`;
-        firstOfMonth = false; firstOfDate = false;
-      });
-      mB += dB; mO += dO;
-      h += `<tr class="roll"><td class="lbl"></td><td class="lbl">${sumDateLabel(iso)} total</td><td></td><td>${fmt(dB)}</td><td>${fmt(dO)}</td></tr>`;
+  let mB = 0, mO = 0, firstOfMonth = true;
+  dates.forEach(iso => {
+    const inDate = inMonth.filter(r => r.iso === iso);
+    const byCode = {}; inDate.forEach(r => { (byCode[r.code] = byCode[r.code] || { b: 0, o: 0 }); byCode[r.code].b += r.base; byCode[r.code].o += r.ot; });
+    const dCodes = Object.keys(byCode).sort();
+    let dB = 0, dO = 0, firstOfDate = true;
+    dCodes.forEach(c => {
+      const v = byCode[c]; dB += v.b; dO += v.o;
+      h += `<tr><td class="lbl">${firstOfMonth ? sumMonthLabel(selMonth) : ''}</td><td class="lbl">${firstOfDate ? sumDateLabel(iso) : ''}</td><td class="lbl">${c}</td><td>${fmt(v.b)}</td><td>${fmt(v.o)}</td></tr>`;
+      firstOfMonth = false; firstOfDate = false;
     });
-    gB += mB; gO += mO;
-    h += `<tr class="roll"><td class="lbl">${sumMonthLabel(mk)} total</td><td></td><td></td><td>${fmt(mB)}</td><td>${fmt(mO)}</td></tr>`;
+    mB += dB; mO += dO;
+    h += `<tr class="roll"><td class="lbl"></td><td class="lbl">${sumDateLabel(iso)} total</td><td></td><td>${fmt(dB)}</td><td>${fmt(dO)}</td></tr>`;
   });
-  h += `<tr class="tot"><td class="lbl">Last 6 months</td><td></td><td></td><td>${fmt(gB)}</td><td>${fmt(gO)}</td></tr></tbody></table>`;
+  h += `<tr class="tot"><td class="lbl">${sumMonthLabel(selMonth)} total</td><td></td><td></td><td>${fmt(mB)}</td><td>${fmt(mO)}</td></tr></tbody></table>`;
   $('sumPivot').innerHTML = h;
 }
 
@@ -375,7 +369,6 @@ function sumDetailTable(title, firstHeader, agg) {
 function renderSummaryDetail() {
   const rows = SUM_ROWS.filter(r => r.iso === SUM_DATE);
   const label = SUM_DATE ? sumDateLabel(SUM_DATE) : '—';
-  $('sumByCode').innerHTML = sumDetailTable(`By class code · ${label}`, 'Class Code', sumAggregate(rows, r => r.code));
   $('sumByStruct').innerHTML = sumDetailTable(`By structure · ${label}`, 'Structure', sumAggregate(rows, r => r.structure));
 }
 
