@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WC / TDI Wage Basis</title>
-<script src="../lib/data-source.js?v=20260626e"></script>
+<script src="../lib/data-source.js?v=20260724a"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 16px 20px 60px; font-size: 0.85rem; }
@@ -59,6 +59,20 @@
 <div id="main" style="overflow:auto"></div>
 
 <div class="note" id="rulesNote"></div>
+
+<h1 style="margin-top:34px">WC Wage Summary — by check date &amp; class</h1>
+<div class="sub">Base wages (same basis as the monthly table above) · last 6 months · unclassified &amp; N/A excluded</div>
+<div id="sumStatus" style="color:#8aa;padding:16px 0">Loading…</div>
+<div class="bar" id="sumBar" style="display:none">
+  <label class="capfld" for="sumDate">Check date
+    <select id="sumDate" style="width:auto;text-align:left"></select>
+  </label>
+</div>
+<div id="sumWrap" style="display:none; gap:24px; align-items:flex-start; flex-wrap:wrap">
+  <div id="sumPivot" style="overflow:auto"></div>
+  <div id="sumByCode" style="overflow:auto"></div>
+  <div id="sumByStruct" style="overflow:auto"></div>
+</div>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -272,6 +286,76 @@ $('viewSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
 });
 $('exportBtn').onclick = exportCSV;
 load();
+
+// ---- WC Wage Summary section (independent of the wc/tdi toggle) ----
+const SUM_NULL = '—';
+let SUM_ROWS = [], SUM_MONTHS = [], SUM_DATE = '';
+
+function sumMonthKey(r) { return r.check.y + '-' + String(r.check.m).padStart(2, '0'); }
+function sumMonthLabel(mk) { const [y, m] = mk.split('-'); return `${MN[+m]} ${yy(y)}`; }
+function sumDateLabel(iso) { const [y, m, d] = iso.split('-'); return `${+m}/${+d}/${y}`; }
+
+async function loadSummary() {
+  let t;
+  try { t = await DataSource.fetchTable('wc_summary', { mode: 'prod' }); }
+  catch (e) { $('sumStatus').innerHTML = '<span style="color:#f5a">Summary load failed: ' + e + '</span>'; return; }
+
+  const rows = parseTable(t).map(r => {
+    const chk = parseDateV(r.Check);
+    const iso = chk ? `${chk.y}-${String(chk.m).padStart(2, '0')}-${String(chk.d).padStart(2, '0')}` : '';
+    return { y: num(r.Year), m: num(r.Month), check: chk, iso, code: r.Code, structure: r.Structure, base: num(r.Base), ot: num(r.OT) };
+  }).filter(r => {
+    const c = (r.code || '').trim().toUpperCase();
+    return r.check && c !== '' && c !== 'N/A' && c !== 'UNCLASSIFIED';
+  });
+
+  // 6 most recent calendar months present.
+  const months = [...new Set(rows.map(sumMonthKey))].sort((a, b) => b.localeCompare(a)).slice(0, 6);
+  const keep = new Set(months);
+  SUM_ROWS = rows.filter(r => keep.has(sumMonthKey(r)));
+  SUM_MONTHS = months; // desc
+  const dates = [...new Set(SUM_ROWS.map(r => r.iso))].sort((a, b) => b.localeCompare(a));
+  SUM_DATE = dates[0] || '';
+
+  if (!SUM_ROWS.length) { $('sumStatus').textContent = 'No workers-comp wage rows in the last 6 months.'; return; }
+  $('sumStatus').style.display = 'none';
+  $('sumBar').style.display = 'flex';
+  $('sumWrap').style.display = 'flex';
+  $('sumDate').innerHTML = dates.map(d => `<option value="${d}"${d === SUM_DATE ? ' selected' : ''}>${sumDateLabel(d)}</option>`).join('');
+  $('sumDate').onchange = () => { SUM_DATE = $('sumDate').value; renderSummaryDetail(); };
+  renderSummaryPivot();
+  renderSummaryDetail();
+}
+
+function renderSummaryPivot() {
+  const codes = [...new Set(SUM_ROWS.map(r => r.code))].sort();
+  let h = '<table><thead><tr><th class="lbl">Period Month</th><th class="lbl">Check Date</th><th class="lbl">Class Code</th><th>Base</th><th>OT</th></tr></thead><tbody>';
+  let gB = 0, gO = 0;
+  SUM_MONTHS.forEach(mk => {
+    const inMonth = SUM_ROWS.filter(r => sumMonthKey(r) === mk);
+    const dates = [...new Set(inMonth.map(r => r.iso))].sort((a, b) => b.localeCompare(a));
+    let mB = 0, mO = 0, firstOfMonth = true;
+    dates.forEach(iso => {
+      const inDate = inMonth.filter(r => r.iso === iso);
+      const byCode = {}; inDate.forEach(r => { (byCode[r.code] = byCode[r.code] || { b: 0, o: 0 }); byCode[r.code].b += r.base; byCode[r.code].o += r.ot; });
+      const dCodes = Object.keys(byCode).sort();
+      let dB = 0, dO = 0, firstOfDate = true;
+      dCodes.forEach(c => {
+        const v = byCode[c]; dB += v.b; dO += v.o;
+        h += `<tr><td class="lbl">${firstOfMonth ? sumMonthLabel(mk) : ''}</td><td class="lbl">${firstOfDate ? sumDateLabel(iso) : ''}</td><td class="lbl">${c}</td><td>${fmt(v.b)}</td><td>${fmt(v.o)}</td></tr>`;
+        firstOfMonth = false; firstOfDate = false;
+      });
+      mB += dB; mO += dO;
+      h += `<tr class="roll"><td class="lbl"></td><td class="lbl">${sumDateLabel(iso)} total</td><td></td><td>${fmt(dB)}</td><td>${fmt(dO)}</td></tr>`;
+    });
+    gB += mB; gO += mO;
+    h += `<tr class="roll"><td class="lbl">${sumMonthLabel(mk)} total</td><td></td><td></td><td>${fmt(mB)}</td><td>${fmt(mO)}</td></tr>`;
+  });
+  h += `<tr class="tot"><td class="lbl">Last 6 months</td><td></td><td></td><td>${fmt(gB)}</td><td>${fmt(gO)}</td></tr></tbody></table>`;
+  $('sumPivot').innerHTML = h;
+}
+
+loadSummary();
 </script>
 </body>
 </html>
