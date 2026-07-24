@@ -355,6 +355,31 @@ function renderSummaryPivot() {
   $('sumPivot').innerHTML = h;
 }
 
+function sumAggregate(rows, keyOf) {
+  const m = {};
+  rows.forEach(r => { const k = keyOf(r) || SUM_NULL; (m[k] = m[k] || { b: 0, o: 0 }); m[k].b += r.base; m[k].o += r.ot; });
+  const lines = Object.keys(m).sort((a, b) => (a === SUM_NULL) - (b === SUM_NULL) || a.localeCompare(b))
+    .map(k => ({ label: k, b: m[k].b, o: m[k].o }));
+  const tot = lines.reduce((a, l) => ({ b: a.b + l.b, o: a.o + l.o }), { b: 0, o: 0 });
+  return { lines, tot };
+}
+
+function sumDetailTable(title, firstHeader, agg) {
+  let h = `<div class="muted" style="margin-bottom:4px">${title}</div>`;
+  h += `<table><thead><tr><th class="lbl">${firstHeader}</th><th>Base</th><th>OT</th></tr></thead><tbody>`;
+  agg.lines.forEach(l => { h += `<tr><td class="lbl">${l.label}</td><td>${fmt(l.b)}</td><td>${fmt(l.o)}</td></tr>`; });
+  h += `<tr class="tot"><td class="lbl">TOTAL</td><td>${fmt(agg.tot.b)}</td><td>${fmt(agg.tot.o)}</td></tr>`;
+  h += '</tbody></table>';
+  return h;
+}
+
+function renderSummaryDetail() {
+  const rows = SUM_ROWS.filter(r => r.iso === SUM_DATE);
+  const label = SUM_DATE ? sumDateLabel(SUM_DATE) : '—';
+  $('sumByCode').innerHTML = sumDetailTable(`By class code · ${label}`, 'Class Code', sumAggregate(rows, r => r.code));
+  $('sumByStruct').innerHTML = sumDetailTable(`By structure · ${label}`, 'Structure', sumAggregate(rows, r => r.structure));
+}
+
 loadSummary();
 </script>
 </body>
