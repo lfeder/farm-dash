@@ -328,7 +328,6 @@ async function loadSummary() {
 }
 
 function renderSummaryPivot() {
-  const codes = [...new Set(SUM_ROWS.map(r => r.code))].sort();
   let h = '<table><thead><tr><th class="lbl">Period Month</th><th class="lbl">Check Date</th><th class="lbl">Class Code</th><th>Base</th><th>OT</th></tr></thead><tbody>';
   let gB = 0, gO = 0;
   SUM_MONTHS.forEach(mk => {
