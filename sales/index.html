@@ -235,7 +235,7 @@ function parseGvizTable(table) {
 }
 
 async function loadData() {
-  const table = await DataSource.fetchTable('invoices');
+  const table = await DataSource.fetchTable('invoices_edi');
   allRows = parseGvizTable(table);
   // Create virtual group by duplicating rows (originals stay untouched)
   const virtualRows = [];

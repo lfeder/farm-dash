@@ -1,0 +1,124 @@
+chemical,crop,epa_registration,active_ingredients,frac_code,irac_code,phi_days,rei_hours,application_uom,maximum_quantity_per_acre,label_date,effective_date,expiration_date,dup_seq,dup_copies,is_redundant_copy,times_sprayed,last_sprayed,usage_bucket,compliance_id
+Afirm Wdg,Cuke,68173-3-1001,,,,0,4,OZ,6.2,2026-07-12,2026-07-12,,1,1,False,0,,never used,df52be33-ece3-4ec9-a586-213005b5ae0f
+Afirm Wdg (2),Lettuce,68173-3-1001,,,,0,4,OZ,15.5,2026-07-12,2026-07-12,,1,1,False,0,,never used,21c4b307-ce2a-4cb4-b98c-60799b94c1c6
+Avid Abamectin .15 EC,Cuke,100-896,,,,0,12,FLOZ,16.0,2011-12-20,2011-12-20,,1,2,False,0,,never used,4067f90c-e66b-4318-b599-0e9d0ba11a93
+Avid Abamectin .15 EC,Cuke,100-896,,,,0,12,FLOZ,16.0,2011-12-20,2011-12-20,,2,2,True,0,,never used,81f35446-4c14-4078-b489-11e9e8877ee5
+Avid Abamectin .15 EC,Lettuce,100-896,,,,0,12,FLOZ,40.0,2011-12-20,2011-12-20,,1,1,False,0,,never used,e4728ba7-5f83-4307-b09e-dd9b944f484d
+Avid Abamectin .15 EC (2),Lettuce,100-896,,,,0,12,FLOZ,40.0,2011-12-20,2011-12-20,,1,1,False,0,,never used,cec1a6db-3bb4-4d27-a166-8ff945033aac
+Azatin O,Cuke,70051-9-59807,,,,0,4,FLOZ,16.0,2013-06-27,2013-06-27,,1,2,False,201,2026-07-17,used last 12mo,f8e2e21d-728a-4b23-8fce-16594f4e4925
+Azatin O,Cuke,70051-9-59807,,,,0,4,FLOZ,16.0,2013-06-27,2013-06-27,,2,2,True,201,2026-07-17,used last 12mo,43be9775-4872-4151-964a-1a5cbf547828
+Azatin O,Lettuce,70051-9-59807,,,,0,4,FLOZ,16.0,2013-06-27,2013-06-27,,1,2,False,201,2026-07-17,used last 12mo,8db18250-d5db-4436-8788-703b37b91fc4
+Azatin O,Lettuce,70051-9-59807,,,,0,4,FLOZ,16.0,2013-06-27,2013-06-27,,2,2,True,201,2026-07-17,used last 12mo,aacc88cc-e5d1-424c-8f40-55d4ef6c3ad8
+Azatin O (Lettuce),Lettuce,70051-9-59807,,,,0,4,FLOZ,20.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,a68ac51f-c6a8-4892-9266-caf38474716a
+Azatin O (Lettuce),Lettuce,70051-9-59807,,,,0,4,FLOZ,20.0,,,,1,1,False,0,,never used,cd4bf70a-c72b-4428-9145-d22ff4b2090d
+Azatin O (Lettuce) (2),Cuke,70051-9-59807,,,,0,4,FLOZ,8.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,e185f2df-30c3-46a5-aad2-c5e553a4a12b
+Beleaf 50 SG,Cuke,71512-10-279,,,,0,12,OZ,2.8,2022-11-10,2022-11-10,,1,2,False,107,2026-07-17,used last 12mo,b00eb138-620d-4eb7-a14b-a1dff84a9a73
+Beleaf 50 SG,Cuke,71512-10-279,,,,0,12,OZ,2.8,2022-11-10,2022-11-10,,2,2,True,107,2026-07-17,used last 12mo,5c2f4dc4-968d-4654-8b2e-71e0ebafe395
+Beleaf 50 SG,Lettuce,71512-10-279,,,,0,12,OZ,5.7,2019-05-02,2019-05-02,,1,2,False,107,2026-07-17,used last 12mo,7e4f7cd5-5f5f-426e-a4da-1fa066346ae4
+Beleaf 50 SG,Lettuce,71512-10-279,,,,0,12,OZ,5.7,2019-05-02,2019-05-02,,2,2,True,107,2026-07-17,used last 12mo,eaf40c63-0609-448b-a8f8-19e3ff3b7910
+BotaniGard ES,Lettuce,82074-1,,,,0,4,FLOZ,3.0,2024-04-09,2024-04-09,,1,1,False,3,2025-12-20,used last 12mo,5de7f2e3-e2f8-4951-93c2-40a34f2ee1e8
+BotaniGard ES,Lettuce,82074-1,,,,0,4,QT,3.0,2024-04-09,2024-04-09,,1,1,False,3,2025-12-20,used last 12mo,100c21e5-7133-4c88-9de0-e701cbd61fa2
+Chlorine,Cuke,LEGACY_UNKNOWN,,,,0,0,FLOZ,-1,2026-07-12,2026-07-12,,1,1,False,0,,never used,4ede160c-bae1-49b0-947e-2d64f3046a8c
+Citric Acid,Cuke,LEGACY_UNKNOWN,,,,0,0,FLOZ,-1,2026-07-12,2026-07-12,,1,1,False,0,,never used,4bac6020-8398-4cf0-846b-2d7c45b48228
+Debug,Cuke,70310-5,,,,0,4,GAL,104.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,a57fbd89-6283-4673-b48c-b0fc36472d97
+Debug (2),Lettuce,70310-5,,,,0,4,GAL,260.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,81dc6d5d-7a69-4f8f-b6fc-03d29a879405
+Debug Turbo,Cuke,1021-2874,,,,0,4,FLOZ,-1,2023-05-05,2023-05-05,,1,1,False,0,,never used,a39f3890-52d3-4ae2-bcea-b78e253cffa2
+Debug Turbo,Cuke,1021-2874,,,,0,4,,,2023-05-05,2023-05-05,,1,1,False,0,,never used,f1717fad-98e5-4695-80f9-097b883d6c7a
+Dipel DF,Cuke,73049-39,,,,0,4,LB,2.0,2023-01-01,2023-01-01,,1,2,False,196,2026-07-16,used last 12mo,0962c3bf-c25c-42f4-a490-5d009237a09d
+Dipel DF,Cuke,73049-39,,,,0,4,LB,2.0,2023-01-01,2023-01-01,,2,2,True,196,2026-07-16,used last 12mo,9284f037-91ae-4a8f-9353-6dfad5926999
+Dipel DF,Lettuce,73049-39,,,,0,4,LB,5.0,2022-06-02,2022-06-02,,1,2,False,196,2026-07-16,used last 12mo,9c21872b-f2f1-4127-9778-19048956bf51
+Dipel DF,Lettuce,73049-39,,,,0,4,LB,5.0,2022-06-02,2022-06-02,,2,2,True,196,2026-07-16,used last 12mo,ac7af97a-f19a-4bdb-a2a6-fc4f4306418a
+Double Nickle 55,Cuke,70051-108,,,,0,4,LB,3.0,2015-10-27,2015-10-27,,1,2,False,70,2026-07-17,used last 12mo,e8f773ce-1627-41ce-bb19-0f906da1f909
+Double Nickle 55,Cuke,70051-108,,,,0,4,LB,3.0,2015-10-27,2015-10-27,,2,2,True,70,2026-07-17,used last 12mo,a319f417-7284-4f99-9257-5d97cc5e2327
+Double Nickle 55,Lettuce,70051-108,,,,0,4,LB,7.5,2015-10-27,2015-10-27,,1,1,False,70,2026-07-17,used last 12mo,fa7ca24e-fefb-48ad-956a-8cd2c4a6410c
+Double Nickle 55 (2),Lettuce,70051-108,,,,0,4,LB,7.5,2015-10-27,2015-10-27,,1,1,False,0,,never used,b53e9b6d-17fb-4bc2-9449-5f31c7a45b09
+Dupont Fontellis,Cuke,352-834,,,,1,12,OZ,16.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,5726ac3b-4f0b-4dd9-9997-c3947f86c5fb
+Dupont Fontellis (2),Lettuce,352-834,,,,1,12,OZ,40.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,658a883f-9155-4265-b4a7-f01b17f26205
+Endura,Cuke,7969-197,,,,0,12,OZ,6.5,2026-07-12,2026-07-12,,1,1,False,0,,never used,9faa7c08-98ef-4ebe-be19-db1709c10eb1
+Endura (2),Lettuce,7969-197,,,,0,12,OZ,16.25,2026-07-12,2026-07-12,,1,1,False,0,,never used,6ae4c743-40f2-4394-988c-81b04afc2c2d
+Flint,Cuke,264-777,,,,0,12,OZ,4.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,3c672fa5-9409-42eb-bff1-af49393ef0c5
+Flint (2),Lettuce,264-777,,,,0,12,OZ,10.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,dd1d2d28-447b-499f-860c-1172c1a33eca
+Floramite,Cuke,400-508-59807,,,,12,12,OZ,16.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,bbe7f263-4b90-41d2-b18c-b41832110f26
+Floramite (2),Lettuce,400-508-59807,,,,12,12,OZ,40.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,e41fb7fb-c4cc-4f33-9c92-1ad52d1a8ba5
+Hexygon,Cuke,10163-251,,,,1,12,FLOZ,-1,2026-07-12,2026-07-12,,1,1,False,0,,never used,9687e94c-f8c0-4ba3-bc32-0beb31a73f3a
+Hexygon (2),Lettuce,10163-251,,,,1,12,FLOZ,-1,2026-07-12,2026-07-12,,1,1,False,0,,never used,a1e615c4-7b02-4a5d-8114-63d02daed12f
+Hi-Wett,Cuke,LEGACY_UNKNOWN,,,,0,0,FLOZ,-1,2026-07-12,2026-07-12,,1,1,False,0,,never used,b706bbfc-8bb6-46b8-9c35-f1263aea390a
+Hydrogen Peroxide *,Cuke,LEGACY_UNKNOWN,,,,0,0,FLOZ,-1,2026-07-12,2026-07-12,,1,1,False,0,,never used,31b523ad-fbdc-40c6-9e69-3423e329cb27
+Induce Surfactant,Lettuce,N/A,,,,0,0,FLOZ,5.75,2015-01-01,2015-01-01,,1,2,False,26,2026-07-18,used last 12mo,a52ac574-ebf1-4083-8521-99be3892af55
+Induce Surfactant,Lettuce,N/A,,,,0,0,FLOZ,5.75,2015-01-01,2015-01-01,,2,2,True,26,2026-07-18,used last 12mo,e33c256a-ae4f-4329-9c7e-173da9c47476
+Kaligreen,Cuke,11581-2,,,,1,4,LB,2.5,2026-07-12,2026-07-12,,1,1,False,3,2024-04-16,dormant 12mo+,55a03c60-141e-4333-9b8e-754ba87a2459
+Kaligreen (2),Lettuce,11581-2,,,,1,4,LB,6.25,2026-07-12,2026-07-12,,1,1,False,0,,never used,8ba24274-eb8b-4ba1-80f8-5e51b99ddee9
+Kanemite 155C,Cuke,66330-38,,,,1,12,FLOZ,31.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,8098c258-ce01-4ee5-9c4c-95b5a0e09194
+Kanemite 155C (2),Lettuce,66330-38,,,,1,12,FLOZ,77.5,2026-07-12,2026-07-12,,1,1,False,0,,never used,c56e6023-6df3-4fcf-b171-e8b5c6fd58a2
+Kocid 3000-O,Cuke,91411-11-70051,,,,0,48,LB,1.25,2026-07-12,2026-07-12,,1,1,False,0,,never used,c8884213-03d6-4612-b20f-9a89335948f9
+Kocid 3000-O (2),Lettuce,91411-11-70051,,,,0,48,LB,3.125,2026-07-12,2026-07-12,,1,1,False,0,,never used,564b20ee-923f-46e9-b89c-851fd807de30
+LI 700,Cuke,34704-50035,,,,0,0,FLOZ,-1,2018-03-07,2018-03-07,,1,1,False,1,2026-05-12,used last 12mo,e63904f6-cf2f-4bd4-beca-a19e5643a28f
+LI 700,Cuke,34704-50035,,,,0,0,,,2018-03-07,2018-03-07,,1,1,False,1,2026-05-12,used last 12mo,f8deae2a-0c3d-4443-9b79-33fa4e7604ed
+Luna Experience,Cuke,264-1091,,,,7,12,FLOZ,17.0,2021-09-15,2021-09-15,,1,2,False,55,2026-07-17,used last 12mo,9df5286f-37dd-4c2e-9f35-6b612f8fd55a
+Luna Experience,Cuke,264-1091,,,,7,12,FLOZ,17.0,2021-09-15,2021-09-15,,2,2,True,55,2026-07-17,used last 12mo,4c989d0f-76b0-4382-bf25-1bfc6cea198f
+Luna Experience,Lettuce,264-1091,,,,7,12,FLOZ,42.5,2021-09-15,2021-09-15,,1,1,False,55,2026-07-17,used last 12mo,d10fd044-c568-4d69-a614-2158b6653c06
+Luna Experience (2),Lettuce,264-1091,,,,7,12,FLOZ,42.5,2021-09-15,2021-09-15,,1,1,False,0,,never used,59453b88-4350-4982-8314-2759f807b982
+Luna Sensation,Cuke,264-1090,,,,0,12,FLOZ,7.6,2023-08-11,2023-08-11,,1,2,False,121,2026-07-14,used last 12mo,0a0d2c5a-495e-44dc-86ad-475088c15a25
+Luna Sensation,Cuke,264-1090,,,,0,12,FLOZ,7.6,2023-08-11,2023-08-11,,2,2,True,121,2026-07-14,used last 12mo,162f46b4-eda5-4cb9-8036-934c1c286d90
+Luna Sensation,Lettuce,264-1090,,,,0,12,FLOZ,19.0,2023-08-11,2023-08-11,,1,2,False,121,2026-07-14,used last 12mo,69f2f5bb-5269-4263-9258-03d94798218f
+Luna Sensation,Lettuce,264-1090,,,,0,12,FLOZ,19.0,2023-08-11,2023-08-11,,2,2,True,121,2026-07-14,used last 12mo,08e55909-d715-46a9-9bc1-f9b4626bbc5c
+Marrone Bio Venerate CG,Lettuce,84059-14,,,,0,4,FLOZ,10.0,2021-11-21,2021-11-21,,1,1,False,2,2025-12-17,used last 12mo,11a8cc13-c874-4dc9-bba7-de2255e2fb15
+Marrone Bio Venerate CG,Lettuce,84059-14,,,,0,4,QT,10.0,2021-11-21,2021-11-21,,1,1,False,2,2025-12-17,used last 12mo,a7dad35d-2fbb-4cc7-8320-b836b2ec4388
+Merivon(R) Xemium(R),Cuke,7969-310,,,,0,12,OZ,5.5,2026-07-12,2026-07-12,,1,1,False,0,,never used,8a157730-e31b-4db1-b61f-ebdc5bc5baec
+Merivon(R) Xemium(R) (2),Lettuce,7969-310,,,,0,12,OZ,13.75,2026-07-12,2026-07-12,,1,1,False,0,,never used,b44f2737-2148-4a92-8a62-629680bcf87d
+Nanocrop,Cuke,N/A,,,,0,0,GAL,2.5,2022-08-01,2022-08-01,,1,2,False,50,2025-08-26,used last 12mo,018126fd-cdcf-47f3-953d-c731fdf0aae0
+Nanocrop,Cuke,N/A,,,,0,0,GAL,2.5,2022-08-01,2022-08-01,,2,2,True,50,2025-08-26,used last 12mo,d7001073-bdf0-4d88-b281-b62b79de3599
+Nanocrop (2),Lettuce,N/A,,,,0,0,GAL,6.25,2022-08-01,2022-08-01,,1,1,False,0,,never used,f6afe695-2222-4f77-89af-bb3ef3344b13
+Natural Wet,Cuke,N/A,,,,0,0,OZ,16.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,bb316bc4-abba-4bf5-ae79-f7d0cb10d767
+Natural Wet (2),Lettuce,N/A,,,,0,0,OZ,40.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,e3456e6d-9dc6-4575-884d-e4fe3963c9ca
+Oxidate 5.0,Cuke,70299–28,,,,0,1,GAL,1.0,2022-03-11,2022-03-11,,1,2,False,113,2026-07-16,used last 12mo,f076753a-b9e9-40fe-8232-a555bcd371f2
+Oxidate 5.0,Cuke,70299–28,,,,0,1,GAL,1.0,2022-03-11,2022-03-11,,2,2,True,113,2026-07-16,used last 12mo,1b701f2c-9e4b-4a66-8ce3-36976f13ebbe
+Oxidate 5.0,Lettuce,70299–28,,,,0,0,ML,300.0,2022-03-11,2022-03-11,,1,2,False,113,2026-07-16,used last 12mo,633cb98e-8f5b-4e2a-87f3-f2f6ea1d93f9
+Oxidate 5.0,Lettuce,70299–28,,,,0,0,ML,300.0,2022-03-11,2022-03-11,,2,2,True,113,2026-07-16,used last 12mo,dfcadcc8-d99c-4e18-9d78-735f0834ebfa
+Previcur Flex,Cuke,264-678,,,,2,12,GAL,3.0,2019-12-16,2019-12-16,,1,2,False,0,,never used,16431920-8e59-4939-aef8-c24ec99573b4
+Previcur Flex,Cuke,264-678,,,,2,12,GAL,3.0,2019-12-16,2019-12-16,,2,2,True,0,,never used,136c9b96-41c7-4aea-bc6a-e77d7221f07f
+Previcur Flex,Lettuce,264-678,,,,2,12,GAL,7.5,2019-12-16,2019-12-16,,1,1,False,0,,never used,4bb00be4-3b3e-4cbf-958a-f751560e0869
+Previcur Flex (2),Lettuce,264-678,,,,2,12,GAL,7.5,2019-12-16,2019-12-16,,1,1,False,0,,never used,3eb7e5c1-eaa3-477a-bddb-fdddd8e0943e
+Purecrop1,Cuke,LEGACY_UNKNOWN,,,,0,0,GAL,2.5,2026-07-12,2026-07-12,,1,1,False,1,2024-03-21,dormant 12mo+,65353562-7476-40c5-adac-193ed3b7cba6
+Pyganic 5.0,Cuke,1021-1772,,,,0,12,OZ,102.0,2017-06-14,2017-06-14,,1,2,False,186,2026-07-06,used last 12mo,54fd6ef0-7632-45af-a93a-d696ff4d45c8
+Pyganic 5.0,Cuke,1021-1772,,,,0,12,OZ,102.0,2017-06-14,2017-06-14,,2,2,True,186,2026-07-06,used last 12mo,92dd074e-5081-492e-894c-3e6282cd96b3
+Pyganic 5.0,Lettuce,1021-1772,,,,0,12,OZ,255.0,2017-06-14,2017-06-14,,1,2,False,186,2026-07-06,used last 12mo,5918011b-578e-48bf-b058-41f4836f3f89
+Pyganic 5.0,Lettuce,1021-1772,,,,0,12,OZ,255.0,2017-06-14,2017-06-14,,2,2,True,186,2026-07-06,used last 12mo,af15c1c0-fe25-46b9-b9a9-576b36669ee5
+Quadris,Cuke,100-1098,,,,1,4,FLOZ,15.5,2018-12-19,2018-12-19,,1,2,False,110,2026-07-16,used last 12mo,710a8562-5278-45c8-babd-183cb93814ae
+Quadris,Cuke,100-1098,,,,1,4,FLOZ,15.5,2018-12-19,2018-12-19,,2,2,True,110,2026-07-16,used last 12mo,dd6ea9e7-2632-44c7-b118-865d90af11e0
+Quadris,Lettuce,100-1098,,,,0,4,FLOZ,15.5,2018-12-19,2018-12-19,,1,2,False,110,2026-07-16,used last 12mo,159b269d-5819-4e18-87a5-bb232dc52b36
+Quadris,Lettuce,100-1098,,,,0,4,FLOZ,15.5,2018-12-19,2018-12-19,,2,2,True,110,2026-07-16,used last 12mo,ab5693bb-bf12-4fce-b18f-b2904257791b
+Radiant SC,Cuke,62719-545,,,,1,4,FLOZ,10.0,2024-03-25,2024-03-25,,1,2,False,11,2026-07-18,used last 12mo,6d752006-4a82-40e1-9724-acf3285a01e3
+Radiant SC,Cuke,62719-545,,,,1,4,FLOZ,10.0,2024-03-25,2024-03-25,,2,2,True,11,2026-07-18,used last 12mo,705311c2-d81d-4cd7-80e4-e910b625bb34
+Radiant SC,Lettuce,62719-545,,,,1,4,FLOZ,25.0,2024-03-25,2024-03-25,,1,2,False,11,2026-07-18,used last 12mo,c1478c00-8c9d-4779-9540-3e836dc8fb2b
+Radiant SC,Lettuce,62719-545,,,,1,4,FLOZ,25.0,2024-03-25,2024-03-25,,2,2,True,11,2026-07-18,used last 12mo,bf87018c-75c5-4418-9d19-2fd42d81a2d5
+Rally 40 WSP,Cuke,LEGACY_UNKNOWN,,,,0,24,OZ,5.0,2026-07-12,2026-07-12,,1,1,False,1,2024-04-22,dormant 12mo+,c5f5fe7b-0047-48bb-bb1f-6fa9b3d088d9
+Rally 40Wsp (Mycoinsecticide),Cuke,62719-410,,,,0,24,OZ,5.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,6e08c032-94c5-43cf-b1e8-bfa05750f071
+Rally 40Wsp (Mycoinsecticide) (2),Lettuce,62719-410,,,,0,24,OZ,12.5,2026-07-12,2026-07-12,,1,1,False,0,,never used,43f1049c-ad7d-4104-b903-2f934472a678
+Regalia Biofungicide,Cuke,84059-3,,,,0,4,GAL,1.9,2026-07-12,2026-07-12,,1,1,False,1,2024-10-16,dormant 12mo+,7ea3236b-81d1-42d0-9a48-2800b6c18cee
+Regalia Biofungicide (2),Lettuce,84059-3,,,,0,4,GAL,4.75,2026-07-12,2026-07-12,,1,1,False,0,,never used,1770b9a4-8d9f-4517-9d87-7d4e9a482256
+Serenade Soil,Cuke,264-1152,,,,0,4,FLOZ,3.5,2026-07-12,2026-07-12,,1,1,False,0,,never used,028344b5-82c4-4a80-a685-1a5a3ed673a6
+Serenade Soil (2),Lettuce,264-1152,,,,0,4,FLOZ,8.75,2026-07-12,2026-07-12,,1,1,False,0,,never used,28b663fc-dee8-437d-99d2-bf66a5d20f27
+Sovran,Cuke,7969-154,,,,0,12,OZ,4.8,2026-07-12,2026-07-12,,1,1,False,0,,never used,21798528-fcf0-4943-983d-5e197b5442f4
+Sovran (2),Lettuce,7969-154,,,,0,12,OZ,12.0,2026-07-12,2026-07-12,,1,1,False,0,,never used,68e65cbd-12d0-402f-9897-b898408662d3
+Torac,Cuke,71711-31,,,,1,12,FLOZ,21.0,2022-07-07,2022-07-07,,1,2,False,116,2026-07-17,used last 12mo,2a39ebed-da65-4d0b-bb92-75e900bd409d
+Torac,Cuke,71711-31,,,,1,12,FLOZ,21.0,2022-07-07,2022-07-07,,2,2,True,116,2026-07-17,used last 12mo,c4d613b1-fb26-418e-9814-4921eb70dabc
+Torac,Lettuce,71711-31,,,,1,12,FLOZ,21.0,2022-07-07,2022-07-07,,1,2,False,116,2026-07-17,used last 12mo,39247baa-4921-41ce-b397-1a9cc779c798
+Torac,Lettuce,71711-31,,,,1,12,FLOZ,21.0,2022-07-07,2022-07-07,,2,2,True,116,2026-07-17,used last 12mo,ef3a75f8-8f84-4e65-963f-eefa2c16b076
+Torino,Cuke,8033-103-10163,,,,0,4,FLOZ,3.4,2018-10-01,2018-10-01,,1,2,False,70,2026-05-15,used last 12mo,3f8ac631-952b-4754-a749-f429a1f1a0d1
+Torino,Cuke,8033-103-10163,,,,0,4,FLOZ,3.4,2018-10-01,2018-10-01,,2,2,True,70,2026-05-15,used last 12mo,412e2cc3-eb36-480d-8a9a-c47b2a074948
+Triathlon BA,Cuke,70051-107-59807,,,,0,4,QT,6.0,2019-03-14,2019-03-14,,1,1,False,1,2025-12-29,used last 12mo,381bac3c-0524-4b42-b296-8cc60fc732c4
+Triathlon BA,Lettuce,70051-107-59807,,,,0,4,FLOZ,15.0,2019-03-14,2019-03-14,,1,1,False,1,2025-12-29,used last 12mo,53ff2106-21d6-49b7-b188-a019bfe3e880
+Triathlon BA,Lettuce,70051-107-59807,,,,0,4,QT,15.0,2019-03-14,2019-03-14,,1,1,False,1,2025-12-29,used last 12mo,b619740a-4d66-4ed4-b9d8-736770bb542a
+Triathlon BA (2),Cuke,70051-107-59807,,,,0,4,FLOZ,6.0,2019-03-14,2019-03-14,,1,1,False,0,,never used,4bc97058-b180-4704-ad11-a699e9eb6704
+Tristar 8.5,Cuke,8033-106-1001,,,,7,12,FLOZ,-1,2026-07-12,2026-07-12,,1,1,False,0,,never used,89bd92dd-0c79-4342-a827-414199fcaf6f
+Tristar 8.5 (2),Lettuce,8033-106-1001,,,,7,12,FLOZ,-1,2026-07-12,2026-07-12,,1,1,False,0,,never used,e28578ec-6cdd-4473-ab09-f99f0c3ffc2c
+Velum One,Cuke,264-1078,,,,0,0,FLOZ,-1,2026-07-12,2026-07-12,,1,1,False,0,,never used,0964e4ff-3ce6-49d8-a563-002381fd0bb6
+Vivando,Cuke,7969-284,,,,0,12,FLOZ,15.4,2023-12-14,2023-12-14,,1,2,False,145,2026-07-15,used last 12mo,05498a56-5716-4193-983c-e6bfa4719b6c
+Vivando,Cuke,7969-284,,,,0,12,FLOZ,15.4,2023-12-14,2023-12-14,,2,2,True,145,2026-07-15,used last 12mo,be604c8e-0446-4e6f-a5ce-2f612e7f2cb9
+Widespread Max,Cuke,LEGACY_UNKNOWN,,,,0,0,FLOZ,-1,2026-07-12,2026-07-12,,1,1,False,4,2024-11-05,dormant 12mo+,5bbac8d1-fcaf-494b-8d70-eef040d1643b
+Widespread Max,Lettuce,LEGACY_UNKNOWN,,,,0,12,FLOZ,0.75,2026-07-12,2026-07-12,,1,1,False,4,2024-11-05,dormant 12mo+,f3488457-f996-4477-85a4-f44579de54de
+Wrangler,Cuke,34704-931,,,,21,12,OZ,0.5,2026-07-12,2026-07-12,,1,1,False,0,,never used,00a4aba5-1457-4b14-8b50-ee95353abb24
+Wrangler (2),Lettuce,34704-931,,,,21,12,OZ,1.25,2026-07-12,2026-07-12,,1,1,False,0,,never used,bd6df1cc-cd72-4423-ae25-8d9b960c5358
+Zerotol 2.0,Cuke,70299-12,,,,0,1,FLOZ,128.0,2026-07-12,2026-07-12,,1,1,False,18,2024-05-29,dormant 12mo+,a2c7e8c4-58e2-4c8e-a95c-b3c97dde712c
+Zerotol 2.0,Lettuce,70299-12,,,,0,1,FLOZ,320.0,2026-07-12,2026-07-12,,1,1,False,18,2024-05-29,dormant 12mo+,d4a7ac43-bc26-4ef0-bfb9-644777dcba59
