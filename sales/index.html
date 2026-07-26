@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sales Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260622c"></script>
+<script src="../lib/data-source.js?v=20260726a"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
@@ -39,6 +39,17 @@
   .neg { color: #e74c3c; }
   .no-data { display: flex; align-items: center; justify-content: center; height: 100%; color: #666; font-size: 0.95rem; }
 
+  /* Tab bar */
+  #tabbar { display: flex; gap: 4px; }
+  .tab-btn { padding: 5px 16px; font-size: 0.85rem; background: #0f3460; color: #9ab; border: 1px solid #0f3460; border-bottom: none; border-radius: 6px 6px 0 0; cursor: pointer; }
+  .tab-btn.active { background: #16213e; color: #4ecca3; border-color: #0f3460; font-weight: 600; }
+
+  /* Budget view */
+  #budgetView { flex: 1; overflow-y: auto; padding: 16px; }
+  .budget-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .budget-grid .chart-box { height: 320px; flex: none; }
+  @media (max-width: 900px) { .budget-grid { grid-template-columns: 1fr; } }
+
   /* Mobile: stack vertically */
   @media (max-width: 768px) {
     body { height: auto; min-height: 100vh; }
@@ -57,8 +68,16 @@
 <body>
 
 <div id="header">
-  <h1>Sales Dashboard</h1>
+  <div style="display:flex;align-items:flex-end;gap:16px;">
+    <h1>Sales Dashboard</h1>
+    <div id="tabbar">
+      <button class="tab-btn active" data-tab="budget" onclick="switchTab('budget')">Budget</button>
+      <button class="tab-btn" data-tab="customer" onclick="switchTab('customer')">Customer</button>
+    </div>
+  </div>
   <div style="display:flex;align-items:center;gap:12px;">
+    <button id="budgetPeriod" onclick="toggleBudgetPeriod()" style="padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Weekly</button>
+    <span id="custControls" style="display:none;align-items:center;gap:12px;">
     <button id="toggle25" onclick="toggle25Lines()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer;">Show '25</button>
     <button id="toggleUnit" onclick="toggleUnit()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer;">Cases</button>
     <button id="toggleByCust" onclick="toggleByCust()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer;">By Customer</button>
@@ -67,12 +86,21 @@
       <div id="productDropdown" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#0f3460;border:1px solid #555;border-radius:4px;z-index:100;min-width:140px;max-height:240px;overflow-y:auto;"></div>
     </div>
     <button id="toggleAll" onclick="toggleAllLines()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Clear All</button>
+    </span>
     <div class="info" id="status">Loading data...</div>
-    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">04-18 00:30</span>
+    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 12:00</span>
   </div>
 </div>
 
 <div id="loading">Loading invoice data...</div>
+
+<div id="budgetView" style="display:none;">
+  <div class="budget-grid">
+    <div class="chart-box"><h3>Total $ (000)</h3><canvas id="bTotalChart"></canvas></div>
+    <div class="chart-box"><h3>Cuke $ (000)</h3><canvas id="bCukeChart"></canvas></div>
+    <div class="chart-box"><h3>Lettuce $ (000)</h3><canvas id="bLettuceChart"></canvas></div>
+  </div>
+</div>
 
 <div id="main" style="display:none;">
   <div id="left">
@@ -130,6 +158,11 @@ const _hst = new Date(new Date().getTime() - 10 * 3600000);
 const MAX_MD = (_hst.getUTCMonth() + 1) * 100 + _hst.getUTCDate(); // e.g. 327 for March 27
 
 let allRows = [];
+let rawRows = [];            // originals only (Budget actuals)
+let currentTab = 'budget';   // 'budget' | 'customer'
+let budgetPeriod = 'weekly'; // 'weekly' | 'monthly'
+let budgetWeekly = null, budgetMonthly = null;
+let bCharts = {};
 let cukeChart, lettuceChart;
 let show25 = false;
 let byCust = false;
@@ -237,6 +270,7 @@ function parseGvizTable(table) {
 async function loadData() {
   const table = await DataSource.fetchTable('invoices_edi');
   allRows = parseGvizTable(table);
+  rawRows = allRows.slice(); // originals only (no virtual-customer dupes) — used by Budget actuals
   // Create virtual group by duplicating rows (originals stay untouched)
   const virtualRows = [];
   allRows.forEach(r => {
@@ -260,13 +294,126 @@ async function loadData() {
     `${allRows.length.toLocaleString()} invoices | YTD through ${Math.floor(MAX_MD/100)}/${MAX_MD%100}`;
   buildTable();
   document.getElementById('loading').style.display = 'none';
-  document.getElementById('main').style.display = 'flex';
   document.getElementById('toggle25').style.display = 'inline-block';
   document.getElementById('toggleUnit').style.display = 'inline-block';
   document.getElementById('toggleByCust').style.display = 'inline-block';
   document.getElementById('productFilterWrap').style.display = 'inline-block';
   document.getElementById('toggleAll').style.display = 'inline-block';
-  // Start with blank charts
+  applyTab(); // show whichever tab is active (default: Budget)
+}
+
+// ── Tabs (Budget | Customer) ──
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab));
+  applyTab();
+}
+function applyTab() {
+  const budget = currentTab === 'budget';
+  document.getElementById('budgetView').style.display = budget ? 'block' : 'none';
+  document.getElementById('main').style.display = budget ? 'none' : 'flex';
+  document.getElementById('custControls').style.display = budget ? 'none' : 'flex';
+  document.getElementById('budgetPeriod').style.display = budget ? 'inline-block' : 'none';
+  if (!allRows.length) return; // data not loaded yet
+  if (budget) loadBudget().then(renderBudget);
+}
+
+// ── Budget tab ──
+// Generic gviz->objects (no invoice-specific filtering like parseGvizTable does)
+function parseGvizGeneric(table) {
+  const labels = table.cols.map(c => c.label);
+  return table.rows.map(r => {
+    const o = {};
+    r.c.forEach((cell, i) => { o[labels[i]] = cell ? cell.v : null; });
+    return o;
+  });
+}
+async function loadBudget() {
+  if (budgetWeekly && budgetWeekly.length) return;
+  const [w, m] = await Promise.all([
+    DataSource.fetchTable('budget_weekly_farm', { mode: 'prod' }),
+    DataSource.fetchTable('budget_monthly_farm', { mode: 'prod' }),
+  ]);
+  budgetWeekly = parseGvizGeneric(w);
+  budgetMonthly = parseGvizGeneric(m);
+}
+function toggleBudgetPeriod() {
+  budgetPeriod = budgetPeriod === 'weekly' ? 'monthly' : 'weekly';
+  document.getElementById('budgetPeriod').textContent =
+    budgetPeriod === 'weekly' ? 'Weekly' : 'Monthly';
+  renderBudget();
+}
+function currentMonthHst() {
+  return new Date(Date.now() - 10 * 3600000).getUTCMonth() + 1;
+}
+// Build Bdg26 / Act26 / Act25 dollar ($000) series for a farm ('Total'|'Cuke'|'Lettuce')
+function budgetSeries(farm) {
+  const wk = budgetPeriod === 'weekly';
+  const N = wk ? 52 : 12;
+  const bsrc = wk ? budgetWeekly : budgetMonthly;
+  const bIdx = wk ? 'ISOWeek' : 'Month';
+  const yKey = wk ? 'ISOYear' : 'Year';
+  const iKey = wk ? 'ISOWeek' : 'Month';
+  const bud = Array(N).fill(0), budHas = Array(N).fill(false);
+  (bsrc || []).forEach(r => {
+    if (farm !== 'Total' && r.Farm !== farm) return;
+    const i = r[bIdx] - 1; if (i < 0 || i >= N) return;
+    bud[i] += Number(r.Dollars) || 0; budHas[i] = true;
+  });
+  const a26 = Array(N).fill(0), a26h = Array(N).fill(false);
+  const a25 = Array(N).fill(0), a25h = Array(N).fill(false);
+  rawRows.forEach(r => {
+    if (farm !== 'Total' && r.Farm !== farm) return;
+    const i = r[iKey] - 1; if (i < 0 || i >= N) return;
+    const d = (Number(r.Dollars) || 0) / 1000;
+    if (r[yKey] === 2026) { a26[i] += d; a26h[i] = true; }
+    else if (r[yKey] === 2025) { a25[i] += d; a25h[i] = true; }
+  });
+  const maxIdx = wk ? MAX_WEEK : currentMonthHst();
+  const axis = Array.from({ length: N }, (_, i) => i + 1);
+  const r1 = v => Math.round(v * 10) / 10;
+  return {
+    axis,
+    bdg: axis.map((_, i) => budHas[i] ? r1(bud[i]) : null),
+    act26: axis.map((_, i) => (a26h[i] && (i + 1) <= maxIdx) ? r1(a26[i]) : null),
+    act25: axis.map((_, i) => a25h[i] ? r1(a25[i]) : null),
+  };
+}
+function drawBudgetChart(canvasId, ckey, farm) {
+  const s = budgetSeries(farm);
+  const mk = (label, data, color) => ({
+    label, data, borderColor: color, backgroundColor: color,
+    tension: 0.3, pointRadius: 0, borderWidth: 2, spanGaps: false,
+  });
+  const datasets = [
+    mk('Bdg26', s.bdg, '#e74c3c'),
+    mk('Act26', s.act26, '#4a90d9'),
+    mk('Act25', s.act25, '#4ecca3'),
+  ];
+  if (bCharts[ckey]) bCharts[ckey].destroy();
+  bCharts[ckey] = new Chart(document.getElementById(canvasId).getContext('2d'), {
+    type: 'line',
+    data: { labels: s.axis, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#bbb', font: { size: 11 }, usePointStyle: true, pointStyle: 'circle', boxWidth: 6 } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y ?? '—'}` } },
+      },
+      scales: {
+        x: { ticks: { color: '#888', maxTicksLimit: 13, autoSkip: true }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { beginAtZero: true, ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+      },
+    },
+  });
+}
+function renderBudget() {
+  if (!budgetWeekly) return;
+  drawBudgetChart('bTotalChart', 'total', 'Total');
+  drawBudgetChart('bCukeChart', 'cuke', 'Cuke');
+  drawBudgetChart('bLettuceChart', 'lettuce', 'Lettuce');
 }
 
 let allVisible = true;
