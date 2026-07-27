@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sales Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260726h"></script>
+<script src="../lib/data-source.js?v=20260726i"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
@@ -96,7 +96,7 @@
     <button id="toggleAll" onclick="toggleAllLines()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Clear All</button>
     </span>
     <div class="info" id="status">Loading data...</div>
-    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 17:30</span>
+    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 18:00</span>
   </div>
 </div>
 
@@ -377,20 +377,53 @@ function parseGvizGeneric(table) {
 }
 async function loadBudget() {
   if (budgetWeekRaw && budgetWeekRaw.length) return;
-  const [w, m, p, h, a, y] = await Promise.all([
-    DataSource.fetchTable('budget_week_raw',   { mode: 'prod' }),
-    DataSource.fetchTable('budget_month_raw',  { mode: 'prod' }),
-    DataSource.fetchTable('budget_prices',     { mode: 'prod' }),
-    DataSource.fetchTable('harvest_weekly',    { mode: 'prod' }),
-    DataSource.fetchTable('sales_actuals',     { mode: 'prod' }),
-    DataSource.fetchTable('sales_actuals_ytd', { mode: 'prod' }),
+  const [w, m, p, hc, hl, a, y] = await Promise.all([
+    DataSource.fetchTable('budget_week_raw',       { mode: 'prod' }),
+    DataSource.fetchTable('budget_month_raw',      { mode: 'prod' }),
+    DataSource.fetchTable('budget_prices',         { mode: 'prod' }),
+    DataSource.fetchTable('grow_cuke_harvest_wk',    { mode: 'sheets' }), // grow lives in sheets, not prod
+    DataSource.fetchTable('grow_lettuce_harvest_wk', { mode: 'sheets' }),
+    DataSource.fetchTable('sales_actuals',         { mode: 'prod' }),
+    DataSource.fetchTable('sales_actuals_ytd',     { mode: 'prod' }),
   ]);
   budgetWeekRaw = parseGvizGeneric(w);
   budgetMonthRaw = parseGvizGeneric(m);
   budgetPrices = parseGvizGeneric(p)[0] || {};
-  harvestRows = parseGvizGeneric(h);
+  harvestRows = buildHarvestRows(hc, hl);
   budgetActuals = parseGvizGeneric(a);
   budgetActualsYtd = parseGvizGeneric(y);
+}
+// gviz "Date(y,m,d)" (m is 0-indexed) -> iso-week parts, or null
+function gvizDateParts(v) {
+  const m = String(v).match(/Date\((\d+),(\d+),(\d+)/);
+  if (!m) return null;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  const dt = new Date(Date.UTC(y, mo, d));
+  const t = new Date(dt); t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  const ys = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return { date: dt, isoyear: t.getUTCFullYear(), isoweek: Math.ceil(((t - ys) / 86400000 + 1) / 7), year: y, month: mo + 1 };
+}
+function isoWeekSunday(year, week) {
+  const jan4 = new Date(Date.UTC(year, 0, 4)), mon0 = (jan4.getUTCDay() + 6) % 7;
+  const sun = new Date(jan4); sun.setUTCDate(jan4.getUTCDate() - mon0 + (week - 1) * 7 + 6);
+  return sun;
+}
+const lettVariety = s => { s = (s || '').toLowerCase();
+  return s.includes('watercress') ? 'W' : s.includes('runaway') ? 'A' : 'L'; };
+// Build weekly grown rows from the two grow sheets; drop each farm's trailing
+// incomplete week (its Sunday beyond the farm's latest harvest date).
+function buildHarvestRows(cukeTbl, lettTbl) {
+  const agg = new Map(), maxDate = {};
+  const add = (farm, variety, grade, parts, pounds) => {
+    if (!parts || !pounds) return;
+    const k = [parts.isoyear, parts.isoweek, parts.year, parts.month, farm, variety, grade].join('|');
+    if (!agg.has(k)) agg.set(k, { isoyear: parts.isoyear, isoweek: parts.isoweek, year: parts.year, month: parts.month, farm, variety, grade, pounds_grown: 0 });
+    agg.get(k).pounds_grown += pounds;
+    if (!maxDate[farm] || parts.date > maxDate[farm]) maxDate[farm] = parts.date;
+  };
+  parseGvizGeneric(cukeTbl).forEach(r => add('Cuke', r.Variety, parseInt(r.Grade) || 1, gvizDateParts(r.HarvestDate), +r.Pounds || 0));
+  parseGvizGeneric(lettTbl).forEach(r => add('Lettuce', lettVariety(r.SeedName), 1, gvizDateParts(r.HarvestDate), +r.Pounds || 0));
+  return [...agg.values()].filter(row => maxDate[row.farm] && isoWeekSunday(row.isoyear, row.isoweek) <= maxDate[row.farm]);
 }
 function toggleBudgetPeriod() {
   budgetPeriod = budgetPeriod === 'weekly' ? 'monthly' : 'weekly';
