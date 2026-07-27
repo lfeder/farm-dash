@@ -144,10 +144,6 @@ input[type=time]:focus { outline:none; border-color:#4ecca3; }
   <h1>Lettuce Pack Plan</h1>
   <input type="date" id="pack-date">
   <span id="data-status" class="ds">—</span>
-  <div class="seg sm" id="seg-data-mode">
-    <button data-val="sheets">Sheets</button>
-    <button data-val="db">DB</button>
-  </div>
   <button id="email-btn" onclick="sendPackPlanEmail()">Email Plan</button>
   <span id="version"></span>
 </div>
@@ -357,7 +353,6 @@ const SIDE_ORDER = {'C':0,'A':1,'B':2,'AB':3};
 const POND_FANS  = new Set(['P7']);
 
 let d1Weather = 'avg', d2Weather = 'avg';
-let packDataMode = localStorage.getItem('packPlanDataMode') || 'sheets';
 let d1Date = '', d2Date = '', packDate = '';
 
 function $id(id) { return document.getElementById(id); }
@@ -759,8 +754,9 @@ function setStatus(msg,cls) { const e=$id('data-status'); e.textContent=msg; e.c
 
 async function loadData() {
   setStatus('loading…','loading');
-  // Pack keeps its own db/sheets selector; db => prod. Global toggle is gone.
-  const mode = packDataMode==='db' ? 'prod' : 'sheets';
+  // Sources pinned: harvest/grow-plan from sheets; POs from prod (below);
+  // the t-14/t-7 harvest actuals come from a prod view in loadActualHarvestLb.
+  const mode = 'sheets';
   const [oR,hR,gR,sR] = await Promise.allSettled([
     DataSource.fetchTable('lettuce_pack_orders', {mode:'prod'}), // POs always from prod (sales_po_detail_v)
     DataSource.fetchTable('lettuce_harvest',     {mode}),
@@ -833,12 +829,6 @@ function wireSeg(id, onChange) {
   });
 }
 
-$id('seg-data-mode').querySelectorAll('button').forEach(b =>
-  b.classList.toggle('active', b.dataset.val===packDataMode));
-wireSeg('seg-data-mode', v => {
-  packDataMode=v; localStorage.setItem('packPlanDataMode',v);
-  cachedOrders=null; cachedHarvest=null; cachedGrow=null; loadData();
-});
 wireSeg('seg-d1-wet', v => { d1Weather = v; });
 wireSeg('seg-d2-wet', v => { d2Weather = v; });
 ['cut','fans','heat','speed','cool'].forEach(ctrl => wireSeg(`seg-d1-${ctrl}`));
