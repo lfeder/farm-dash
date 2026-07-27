@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sales Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260726i"></script>
+<script src="../lib/data-source.js?v=20260726j"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
@@ -81,10 +81,13 @@
       <button class="tab-btn active" data-tab="budget" onclick="switchTab('budget')">Budget</button>
       <button class="tab-btn" data-tab="customer" onclick="switchTab('customer')">Customer</button>
     </div>
+    <span id="budgetToggles" style="display:none;align-items:center;gap:8px;">
+      <span style="color:#3a5a80;font-size:1rem;">|</span>
+      <button id="budgetPeriod" onclick="toggleBudgetPeriod()" style="padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Weekly</button>
+      <button id="budgetMetricBtn" onclick="toggleBudgetMetric()" style="padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Dollars</button>
+    </span>
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
-    <button id="budgetPeriod" onclick="toggleBudgetPeriod()" style="padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Weekly</button>
-    <button id="budgetMetricBtn" onclick="toggleBudgetMetric()" style="padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Dollars</button>
     <span id="custControls" style="display:none;align-items:center;gap:12px;">
     <button id="toggle25" onclick="toggle25Lines()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer;">Show '25</button>
     <button id="toggleUnit" onclick="toggleUnit()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer;">Cases</button>
@@ -96,7 +99,7 @@
     <button id="toggleAll" onclick="toggleAllLines()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Clear All</button>
     </span>
     <div class="info" id="status">Loading data...</div>
-    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 18:00</span>
+    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 18:20</span>
   </div>
 </div>
 
@@ -323,8 +326,7 @@ function applyTab() {
   document.getElementById('budgetView').style.display = budget ? 'block' : 'none';
   document.getElementById('main').style.display = budget ? 'none' : 'flex';
   document.getElementById('custControls').style.display = budget ? 'none' : 'flex';
-  document.getElementById('budgetPeriod').style.display = budget ? 'inline-block' : 'none';
-  document.getElementById('budgetMetricBtn').style.display = budget ? 'inline-block' : 'none';
+  document.getElementById('budgetToggles').style.display = budget ? 'inline-flex' : 'none';
   const status = document.getElementById('status');
   const loading = document.getElementById('loading');
   const done = () => { loading.style.display = 'none'; };
