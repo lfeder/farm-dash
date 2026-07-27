@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sales Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260726b"></script>
+<script src="../lib/data-source.js?v=20260726d"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
@@ -82,6 +82,7 @@
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
     <button id="budgetPeriod" onclick="toggleBudgetPeriod()" style="padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Weekly</button>
+    <button id="budgetMetricBtn" onclick="toggleBudgetMetric()" style="padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Dollars</button>
     <span id="custControls" style="display:none;align-items:center;gap:12px;">
     <button id="toggle25" onclick="toggle25Lines()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer;">Show '25</button>
     <button id="toggleUnit" onclick="toggleUnit()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #555;border-radius:4px;cursor:pointer;">Cases</button>
@@ -93,17 +94,17 @@
     <button id="toggleAll" onclick="toggleAllLines()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Clear All</button>
     </span>
     <div class="info" id="status">Loading data...</div>
-    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 14:30</span>
+    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 15:45</span>
   </div>
 </div>
 
 <div id="loading">Loading invoice data...</div>
 
 <div id="budgetView" style="display:none;">
-  <div class="bsec"><div class="bsec-h">Summary — $ (000), On &amp; Off Grade</div><div class="budget-grid" id="bg-farm"></div></div>
+  <div class="bsec"><div class="bsec-h">Summary — On &amp; Off Grade</div><div class="budget-grid" id="bg-farm"></div></div>
   <div class="bsec"><div class="bsec-h">On-grade lb/day by variety</div><div class="budget-grid" id="bg-var"></div></div>
   <div class="bsec"><div class="bsec-h">YTD summary</div><div id="bg-table"></div></div>
-  <div class="bsec"><div class="bsec-h">By product — $ (000)</div><div class="budget-grid" id="bg-prod"></div></div>
+  <div class="bsec"><div class="bsec-h">By product</div><div class="budget-grid" id="bg-prod"></div></div>
 </div>
 
 <div id="main" style="display:none;">
@@ -154,7 +155,8 @@ function maxWeek() {
   const hst = new Date(now.getTime() - 10 * 60 * 60 * 1000);
   const day = hst.getUTCDay(); // 0=Sun, 5=Fri, 6=Sat
   const hour = hst.getUTCHours();
-  const includeCurrentWeek = (day === 5 && hour >= 12) || day === 6 || day === 0;
+  // Current week is "closed" (shown) only from Fri 5pm HST onward (then Sat/Sun).
+  const includeCurrentWeek = (day === 5 && hour >= 17) || day === 6 || day === 0;
   return includeCurrentWeek ? currentISOWeek() : currentISOWeek() - 1;
 }
 const MAX_WEEK = maxWeek();
@@ -165,6 +167,7 @@ let allRows = [];
 let rawRows = [];            // originals only (Budget actuals)
 let currentTab = 'budget';   // 'budget' | 'customer'
 let budgetPeriod = 'weekly'; // 'weekly' | 'monthly'
+let budgetMetric = 'dollars'; // 'dollars' | 'cases' (variety lb/day charts always pounds)
 let budgetWeekRaw = null, budgetMonthRaw = null, budgetPrices = null, harvestRows = null;
 let bCharts = {};
 let cukeChart, lettuceChart;
@@ -319,6 +322,7 @@ function applyTab() {
   document.getElementById('main').style.display = budget ? 'none' : 'flex';
   document.getElementById('custControls').style.display = budget ? 'none' : 'flex';
   document.getElementById('budgetPeriod').style.display = budget ? 'inline-block' : 'none';
+  document.getElementById('budgetMetricBtn').style.display = budget ? 'inline-block' : 'none';
   if (!allRows.length) return; // data not loaded yet
   if (budget) loadBudget().then(renderBudget);
 }
@@ -370,30 +374,68 @@ function toggleBudgetPeriod() {
   document.getElementById('budgetPeriod').textContent = budgetPeriod === 'weekly' ? 'Weekly' : 'Monthly';
   renderBudget();
 }
-function currentMonthHst() { return new Date(Date.now() - 10 * 3600000).getUTCMonth() + 1; }
+function toggleBudgetMetric() {
+  budgetMetric = budgetMetric === 'dollars' ? 'cases' : 'dollars';
+  document.getElementById('budgetMetricBtn').textContent = budgetMetric === 'dollars' ? 'Dollars' : 'Cases';
+  renderBudget();
+}
+// A month is "closed" (shown) at the earlier of 5pm HST on its last day, or 5pm
+// HST on its last Friday when the last day is a Sat/Sun.
+function monthClosed(year, month) {
+  const last = new Date(Date.UTC(year, month, 0));   // last calendar day of `month`
+  const dow = last.getUTCDay();                      // 0=Sun,6=Sat
+  const close = new Date(last);
+  if (dow === 6) close.setUTCDate(last.getUTCDate() - 1);       // Sat -> prior Fri
+  else if (dow === 0) close.setUTCDate(last.getUTCDate() - 2);  // Sun -> prior Fri
+  // 5pm HST == 03:00 UTC next day (HST = UTC-10); hour 27 rolls the date forward
+  const closeMs = Date.UTC(close.getUTCFullYear(), close.getUTCMonth(), close.getUTCDate(), 27, 0, 0);
+  return Date.now() >= closeMs;
+}
+function lastClosedMonth() {
+  const hst = new Date(Date.now() - 10 * 3600000);
+  const y = hst.getUTCFullYear(), m = hst.getUTCMonth() + 1;
+  return monthClosed(y, m) ? m : m - 1;
+}
+// End (Sunday) of ISO week `w` in the budget year (2026), formatted MM/DD
+function isoWeekEndMMDD(w) {
+  const jan4 = new Date(Date.UTC(2026, 0, 4));
+  const mon0 = (jan4.getUTCDay() + 6) % 7;                 // 0=Mon
+  const sun = new Date(jan4);
+  sun.setUTCDate(jan4.getUTCDate() - mon0 + (w - 1) * 7 + 6);
+  return String(sun.getUTCMonth() + 1).padStart(2, '0') + '/' + String(sun.getUTCDate()).padStart(2, '0');
+}
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function budTooltipTitle(items) {
+  if (!items.length) return '';
+  const idx = +items[0].label;
+  return budgetPeriod === 'weekly' ? `Week ${idx} (end ${isoWeekEndMMDD(idx)})` : MONTH_ABBR[idx - 1];
+}
 const budN = () => budgetPeriod === 'weekly' ? 52 : 12;
-const budMaxIdx = () => budgetPeriod === 'weekly' ? MAX_WEEK : currentMonthHst();
+const budMaxIdx = () => budgetPeriod === 'weekly' ? MAX_WEEK : lastClosedMonth();
 
-// Budget from per-SKU case targets: metric 'dollars' ($000) or 'pounds'
+// Budget from per-SKU case targets: metric 'dollars' ($000) | 'cases' | 'pounds'
 function sBudget(codes, metric) {
   const N = budN(), arr = Array(N).fill(0), has = Array(N).fill(false);
   const rows = budgetPeriod === 'weekly' ? budgetWeekRaw : budgetMonthRaw;
   const ik = budgetPeriod === 'weekly' ? 'isoweek' : 'month';
   rows.forEach(r => { const i = (+r[ik]) - 1; if (i < 0 || i >= N) return;
     codes.forEach(code => { const cs = +r[code.toLowerCase()] || 0; if (!cs) return;
-      arr[i] += metric === 'dollars' ? cs * (+budgetPrices[code.toLowerCase()] || 0) / 1000 : cs * SKU[code].ppc;
+      arr[i] += metric === 'dollars' ? cs * (+budgetPrices[code.toLowerCase()] || 0) / 1000
+              : metric === 'pounds' ? cs * SKU[code].ppc : cs;
       has[i] = true; });
   });
   return { arr, has };
 }
-// Actuals from invoices: metric 'dollars' ($000) or 'pounds' (cases×ppc)
+// Actuals from invoices: metric 'dollars' ($000) | 'cases' | 'pounds' (cases×ppc)
 function sActual(codeSet, year, metric) {
   const N = budN(), arr = Array(N).fill(0), has = Array(N).fill(false);
   const yk = budgetPeriod === 'weekly' ? 'ISOYear' : 'Year';
   const ik = budgetPeriod === 'weekly' ? 'ISOWeek' : 'Month';
   rawRows.forEach(r => { if (r[yk] !== year) return; if (!codeSet.has(r.ProductCode)) return;
     const i = (+r[ik]) - 1; if (i < 0 || i >= N) return;
-    arr[i] += metric === 'dollars' ? (+r.Dollars || 0) / 1000 : (+r.Cases || 0) * (SKU[r.ProductCode] ? SKU[r.ProductCode].ppc : 0);
+    arr[i] += metric === 'dollars' ? (+r.Dollars || 0) / 1000
+            : metric === 'pounds' ? (+r.Cases || 0) * (SKU[r.ProductCode] ? SKU[r.ProductCode].ppc : 0)
+            : (+r.Cases || 0);
     has[i] = true; });
   return { arr, has };
 }
@@ -412,14 +454,31 @@ function toData(s, { div = 1, cut = false } = {}) {
   return Array.from({ length: N }, (_, i) => (s.has[i] && (!cut || (i + 1) <= max)) ? Math.round(s.arr[i] / div * 10) / 10 : null);
 }
 const mkDS = (label, data, color) => ({ label, data, borderColor: color, backgroundColor: color, tension: 0.3, pointRadius: 0, borderWidth: 2, spanGaps: false });
+const hexA = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
 function drawChart(canvas, datasets) {
   const N = budN(), labels = Array.from({ length: N }, (_, i) => i + 1);
   return new Chart(canvas.getContext('2d'), {
     type: 'line', data: { labels, datasets },
     options: {
       responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { labels: { color: '#bbb', font: { size: 10 }, usePointStyle: true, pointStyle: 'circle', boxWidth: 6 } },
-        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y ?? '—'}` } } },
+      plugins: {
+        legend: {
+          // Fade toggled-off series instead of striking the label through
+          onClick: (e, item, legend) => { const ci = legend.chart, i = item.datasetIndex;
+            ci.setDatasetVisibility(i, !ci.isDatasetVisible(i)); ci.update(); },
+          labels: {
+            font: { size: 10 }, usePointStyle: true, pointStyle: 'circle', boxWidth: 6,
+            generateLabels: (chart) => chart.data.datasets.map((ds, i) => {
+              const off = !chart.isDatasetVisible(i);
+              return { text: ds.label, datasetIndex: i, pointStyle: 'circle', hidden: false, // hidden:false => no strikethrough
+                fillStyle: off ? hexA(ds.borderColor, 0.25) : ds.borderColor,
+                strokeStyle: off ? hexA(ds.borderColor, 0.25) : ds.borderColor,
+                fontColor: off ? 'rgba(180,180,180,0.35)' : '#bbb' };
+            }),
+          },
+        },
+        tooltip: { callbacks: { title: budTooltipTitle, label: c => `${c.dataset.label}: ${c.parsed.y ?? '—'}` } },
+      },
       scales: { x: { ticks: { color: '#888', maxTicksLimit: 13, autoSkip: true }, grid: { color: 'rgba(255,255,255,0.04)' } },
         y: { beginAtZero: true, ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.06)' } } },
     },
@@ -439,16 +498,18 @@ function renderBudget() {
   const prodGrid = document.getElementById('bg-prod');
   farmGrid.innerHTML = ''; varGrid.innerHTML = ''; prodGrid.innerHTML = '';
 
-  // 1) Summary $ (000) by farm: Total, Cuke, Lettuce
+  const met = budgetMetric, metLabel = met === 'dollars' ? '$ (000)' : 'Cases';
+
+  // 1) Summary by farm (metric-toggled): Total, Cuke, Lettuce
   [['Total', SKU_CODES], ['Cuke', SKU_CODES.filter(c => SKU[c].f === 'Cuke')], ['Lettuce', SKU_CODES.filter(c => SKU[c].f === 'Lettuce')]]
     .forEach(([farm, codes]) => {
       const set = new Set(codes);
       const ds = [
-        mkDS('Bdg26', toData(sBudget(codes, 'dollars')), '#e74c3c'),
-        mkDS('Act26', toData(sActual(set, 2026, 'dollars'), { cut: true }), '#4a90d9'),
-        mkDS('Act25', toData(sActual(set, 2025, 'dollars')), '#4ecca3'),
+        mkDS('Bdg26', toData(sBudget(codes, met)), '#e74c3c'),
+        mkDS('Act26', toData(sActual(set, 2026, met), { cut: true }), '#4a90d9'),
+        mkDS('Act25', toData(sActual(set, 2025, met)), '#4ecca3'),
       ];
-      const { d, c } = box(`${farm} $ (000)`); farmGrid.appendChild(d);
+      const { d, c } = box(`${farm} ${metLabel}`); farmGrid.appendChild(d);
       bCharts['farm-' + farm] = drawChart(c, ds);
     });
 
@@ -470,30 +531,34 @@ function renderBudget() {
     bCharts['var-' + v] = drawChart(c, ds);
   });
 
-  // 3) By product $ (000)
+  // 3) By product (metric-toggled)
   GRADE1.forEach(code => {
     const set = new Set([code]);
     const ds = [
-      mkDS('Bdg26', toData(sBudget([code], 'dollars')), '#e74c3c'),
-      mkDS('Act26', toData(sActual(set, 2026, 'dollars'), { cut: true }), '#4a90d9'),
-      mkDS('Act25', toData(sActual(set, 2025, 'dollars')), '#4ecca3'),
+      mkDS('Bdg26', toData(sBudget([code], met)), '#e74c3c'),
+      mkDS('Act26', toData(sActual(set, 2026, met), { cut: true }), '#4a90d9'),
+      mkDS('Act25', toData(sActual(set, 2025, met)), '#4ecca3'),
     ];
-    const { d, c } = box(`${code} $ (000)`); prodGrid.appendChild(d);
+    const { d, c } = box(`${code} ${metLabel}`); prodGrid.appendChild(d);
     bCharts['prod-' + code] = drawChart(c, ds);
   });
 
   renderBudgetTable();
 }
-// Farm-level YTD summary table (calendar-year YTD via _md<=MAX_MD; budget YTD via ISO week<=MAX_WEEK)
+// Farm-level YTD summary table (calendar-year YTD via _md<=MAX_MD; budget YTD via ISO week<=MAX_WEEK).
+// Honors the $/Cases toggle: dollars are $000, cases are counts.
 function renderBudgetTable() {
   const wrap = document.getElementById('bg-table');
+  const met = budgetMetric;
+  const actVal = r => met === 'dollars' ? (+r.Dollars || 0) / 1000 : (+r.Cases || 0);
   const farmActual = (year, farm, ytd) => rawRows.reduce((s, r) =>
-    (r.Year === year && (!ytd || r._md <= MAX_MD) && (farm === 'Total' || r.Farm === farm)) ? s + (+r.Dollars || 0) / 1000 : s, 0);
+    (r.Year === year && (!ytd || r._md <= MAX_MD) && (farm === 'Total' || r.Farm === farm)) ? s + actVal(r) : s, 0);
   const farmBudget = (farm, ytd) => {
     const codes = farm === 'Total' ? SKU_CODES : SKU_CODES.filter(c => SKU[c].f === farm);
     return budgetWeekRaw.reduce((s, r) => {
       if (ytd && (+r.isoweek) > MAX_WEEK) return s;
-      return s + codes.reduce((a, code) => a + (+r[code.toLowerCase()] || 0) * (+budgetPrices[code.toLowerCase()] || 0) / 1000, 0);
+      return s + codes.reduce((a, code) => { const cs = +r[code.toLowerCase()] || 0;
+        return a + (met === 'dollars' ? cs * (+budgetPrices[code.toLowerCase()] || 0) / 1000 : cs); }, 0);
     }, 0);
   };
   const pct = (a, b) => (b ? Math.round((a / b - 1) * 100) + '%' : '—');
@@ -508,7 +573,7 @@ function renderBudgetTable() {
       <td class="num">${n(bdgFy)}</td><td class="num">${n(ly)}</td><td class="num ${cls(fy)}">${fy}</td></tr>`;
   }).join('');
   wrap.innerHTML = `<table class="budget-table"><thead><tr>
-    <th>$ (000)</th><th class="num">Act YTD</th><th class="num">Bdg YTD</th><th class="num">AvB Δ</th>
+    <th>${met === 'dollars' ? '$ (000)' : 'Cases'}</th><th class="num">Act YTD</th><th class="num">Bdg YTD</th><th class="num">AvB Δ</th>
     <th class="num">LYTD</th><th class="num">YTD Δ</th><th class="num">Bdg FY</th><th class="num">LY</th><th class="num">FY Δ</th>
     </tr></thead><tbody>${rows}</tbody></table>`;
 }
