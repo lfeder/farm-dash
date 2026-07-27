@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sales Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260726g"></script>
+<script src="../lib/data-source.js?v=20260726h"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
@@ -96,7 +96,7 @@
     <button id="toggleAll" onclick="toggleAllLines()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Clear All</button>
     </span>
     <div class="info" id="status">Loading data...</div>
-    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 17:00</span>
+    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 17:30</span>
   </div>
 </div>
 
@@ -170,7 +170,7 @@ let rawRows = [];            // originals only (Budget actuals)
 let currentTab = 'budget';   // 'budget' | 'customer'
 let budgetPeriod = 'weekly'; // 'weekly' | 'monthly'
 let budgetMetric = 'dollars'; // 'dollars' | 'cases' (variety lb/day charts always pounds)
-let budgetWeekRaw = null, budgetMonthRaw = null, budgetPrices = null, harvestRows = null, budgetActuals = null;
+let budgetWeekRaw = null, budgetMonthRaw = null, budgetPrices = null, harvestRows = null, budgetActuals = null, budgetActualsYtd = null;
 let bCharts = {};
 let cukeChart, lettuceChart;
 let show25 = false;
@@ -377,18 +377,20 @@ function parseGvizGeneric(table) {
 }
 async function loadBudget() {
   if (budgetWeekRaw && budgetWeekRaw.length) return;
-  const [w, m, p, h, a] = await Promise.all([
-    DataSource.fetchTable('budget_week_raw',  { mode: 'prod' }),
-    DataSource.fetchTable('budget_month_raw', { mode: 'prod' }),
-    DataSource.fetchTable('budget_prices',    { mode: 'prod' }),
-    DataSource.fetchTable('harvest_weekly',   { mode: 'prod' }),
-    DataSource.fetchTable('sales_actuals',    { mode: 'prod' }),
+  const [w, m, p, h, a, y] = await Promise.all([
+    DataSource.fetchTable('budget_week_raw',   { mode: 'prod' }),
+    DataSource.fetchTable('budget_month_raw',  { mode: 'prod' }),
+    DataSource.fetchTable('budget_prices',     { mode: 'prod' }),
+    DataSource.fetchTable('harvest_weekly',    { mode: 'prod' }),
+    DataSource.fetchTable('sales_actuals',     { mode: 'prod' }),
+    DataSource.fetchTable('sales_actuals_ytd', { mode: 'prod' }),
   ]);
   budgetWeekRaw = parseGvizGeneric(w);
   budgetMonthRaw = parseGvizGeneric(m);
   budgetPrices = parseGvizGeneric(p)[0] || {};
   harvestRows = parseGvizGeneric(h);
   budgetActuals = parseGvizGeneric(a);
+  budgetActualsYtd = parseGvizGeneric(y);
 }
 function toggleBudgetPeriod() {
   budgetPeriod = budgetPeriod === 'weekly' ? 'monthly' : 'weekly';
@@ -567,15 +569,16 @@ function renderBudget() {
   renderBudgetTable();
 }
 // YTD table — one row per shown SKU + Cuke/Lettuce subtotals + Total (subtotals
-// and Total include the hidden SKUs: OK/OJ/WF/JF). YTD keyed off calendar year
-// with an ISO-week cutoff (isoweek<=MAX_WEEK), matching the "complete weeks" rule.
+// and Total include the hidden SKUs: OK/OJ/WF/JF). Actuals are calendar-year
+// YTD (Jan 1 -> today) from the day-aware view, so they tie to QuickBooks.
 // Honors the $/Cases toggle: dollars are $000, cases are counts.
 function renderBudgetTable() {
   const wrap = document.getElementById('bg-table');
   const met = budgetMetric;
-  const actVal = r => met === 'dollars' ? (+r.Dollars || 0) / 1000 : (+r.Cases || 0);
-  const actual = (year, codeSet, ytd) => (budgetActuals || []).reduce((s, r) =>
-    (r.Year === year && (!ytd || (+r.ISOWeek) <= MAX_WEEK) && codeSet.has(r.ProductCode)) ? s + actVal(r) : s, 0);
+  const fld = ytd => met === 'dollars' ? (ytd ? 'YTDDollars' : 'FYDollars') : (ytd ? 'YTDCases' : 'FYCases');
+  const scale = met === 'dollars' ? 1000 : 1; // $ view is in $000
+  const actual = (year, codeSet, ytd) => (budgetActualsYtd || []).reduce((s, r) =>
+    (r.Year === year && codeSet.has(r.ProductCode)) ? s + (+r[fld(ytd)] || 0) : s, 0) / scale;
   const budget = (codes, ytd) => budgetWeekRaw.reduce((s, r) => {
     if (ytd && (+r.isoweek) > MAX_WEEK) return s;
     return s + codes.reduce((a, code) => { const cs = +r[code.toLowerCase()] || 0;
