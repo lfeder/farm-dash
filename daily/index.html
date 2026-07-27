@@ -57,7 +57,7 @@
   <h1>Daily</h1>
   <span style="display:flex;align-items:center;gap:6px;">
     <button class="gear-btn" id="srcGear" title="Data sources">&#9881;</button>
-    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-20 10:30</span>
+    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-26 18:45</span>
   </span>
 </div>
 
@@ -698,7 +698,7 @@ function renderLettuceTable() {
     .filter(r => (r.NetWeight || 0) > 0)
     .forEach(r => {
       const k = key(r.Pond, r.SeedName);
-      (phByKey[k] || (phByKey[k] = { boards: 0, net: 0 }));
+      (phByKey[k] || (phByKey[k] = { boards: 0, net: 0, pond: normPond(r.Pond), variety: r.SeedName }));
       phByKey[k].boards += Math.round(r.Boards) || 0;
       phByKey[k].net += r.NetWeight || 0;
     });
@@ -752,6 +752,29 @@ function renderLettuceTable() {
     `;
     tbody.appendChild(tr);
   });
+
+  // PH (packhouse) pond/varieties with no GH grid row for the day (e.g. GH weights
+  // not entered yet) — render them with GH cells blank so the packhouse weights we
+  // already have for today aren't hidden. Union of sources, not GH-gated.
+  Object.keys(phByKey).filter(k => !phSeen.has(k))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    .forEach(k => {
+      const ph = phByKey[k];
+      phSeen.add(k); totPhBoards += ph.boards; totPhNet += ph.net;
+      const phLb = ph.boards ? (ph.net / ph.boards).toFixed(1) : '';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="color:#4a8c5c;font-weight:600;">${ph.pond}</td>
+        <td></td>
+        <td>${ph.variety}</td>
+        <td class="num"></td>
+        <td class="num"></td>
+        <td class="num"></td>
+        <td class="num">${ph.boards.toLocaleString()}</td>
+        <td class="num">${phLb}</td>
+        <td class="num">${Math.round(ph.net).toLocaleString()}</td>`;
+      tbody.appendChild(tr);
+    });
 
   const avgLbBoard = totBoards ? totLbs / totBoards : 0;
   const avgPhLb = totPhBoards ? totPhNet / totPhBoards : 0;
