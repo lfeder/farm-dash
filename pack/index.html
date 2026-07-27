@@ -792,11 +792,15 @@ async function loadActualHarvestLb() {
   ])];
   try {
     const client = await DataSource.getClient('prod');
+    // Source the packhouse pond weights from grow_lettuce_pond_weight_v (the
+    // same current view the daily page uses). The old grow_harvest_weight base
+    // table went stale after 2026-07-11 (nightly grow migration lag), which
+    // blanked the t-14/t-7 harvest rows for any recent pack date.
     const { data, error } = await client
-      .from('grow_harvest_weight')
-      .select('harvest_date,site_id,net_weight')
+      .from('grow_lettuce_pond_weight_v')
+      .select('harvest_date,net_weight')
       .in('harvest_date', dates)
-      .in('site_id', ['p1','p2','p3','p4','p5','p6','p7'])
+      .eq('org_id', 'hawaii_farming')
       .eq('is_deleted', false);
     if (error || !data) return;
     cachedActualLb = {};
