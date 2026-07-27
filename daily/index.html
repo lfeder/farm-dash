@@ -39,8 +39,6 @@
   .fs-ca.zero { background: #eef3ee; color: #6a8a6a; border-color: #d8e2d8; }
   .fs-checks { flex: 1; background: #fdecc8; color: #9a6a00; border: 1px solid #f0d890; display: flex; align-items: center; }
   .fs-checks.zero { background: #eef3ee; color: #6a8a6a; border-color: #d8e2d8; }
-  /* Source settings gear */
-  .gear-btn { background: transparent; border: none; color: #fff; font-size: 1.05rem; cursor: pointer; padding: 2px 6px; line-height: 1; }
   /* Corrective-action detail list */
   .ca-list { margin-bottom: 24px; }
   .ca-item { border-bottom: 1px solid #ddd; padding: 8px 4px; font-size: 0.85rem; }
@@ -56,8 +54,7 @@
 <div id="header">
   <h1>Daily</h1>
   <span style="display:flex;align-items:center;gap:6px;">
-    <button class="gear-btn" id="srcGear" title="Data sources">&#9881;</button>
-    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-26 18:45</span>
+    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-26 20:05</span>
   </span>
 </div>
 
@@ -111,7 +108,7 @@
 <script>
 // ── Data ──
 // Invoices, cuke harvest, and lettuce harvest all flow through DataSource
-// (sheets | prod toggle; see ../lib/data-source.js). Lettuce's
+// (sources pinned per feed; see ../lib/data-source.js). Lettuce's
 // BoardsPerPond / PoundsPerBoard / GreenhouseNetWeight are reconstructed
 // from grow_harvest_weight.number_of_containers + net_weight via
 // grow_lettuce_harvest_v.
@@ -802,15 +799,18 @@ async function loadData() {
   const swallow = (p, name) => p.catch(e => { console.error(name + ' load error:', e); return null; });
   const [invoiceTable, cukeTable, lettTable, empTable, caTable, poTable,
          ruleTable, cukePreopTable, lettPreopTable, phTable] = await Promise.all([
-    DataSource.fetchTable('invoices_daily'),
-    DataSource.fetchTable('cuke_harvest_daily'),
-    DataSource.fetchTable('lettuce_harvest'),
-    swallow(DataSource.fetchTable('fsafe_emp'), 'fsafe_emp'),
-    swallow(DataSource.fetchTable('fsafe_ca'), 'fsafe_ca'),
+    // Sources are PINNED per feed (no runtime toggle): invoices -> prod
+    // (edi/QB, current), grow -> sheets (grow migration incomplete),
+    // food-safety -> sheets (only live source today).
+    DataSource.fetchTable('invoices_daily', { mode: 'prod' }),
+    DataSource.fetchTable('cuke_harvest_daily', { mode: 'sheets' }),
+    DataSource.fetchTable('lettuce_harvest', { mode: 'sheets' }),
+    swallow(DataSource.fetchTable('fsafe_emp', { mode: 'sheets' }), 'fsafe_emp'),
+    swallow(DataSource.fetchTable('fsafe_ca', { mode: 'sheets' }), 'fsafe_ca'),
     swallow(DataSource.fetchTable('lettuce_pack_orders', { mode: 'prod' }), 'lettuce_pack_orders'),
     swallow(DataSource.fetchTable('data_check_rule', { mode: 'prod' }), 'data_check_rule'),
-    swallow(DataSource.fetchTable('fsafe_cuke_preop'), 'fsafe_cuke_preop'),
-    swallow(DataSource.fetchTable('fsafe_lettuce_preop'), 'fsafe_lettuce_preop'),
+    swallow(DataSource.fetchTable('fsafe_cuke_preop', { mode: 'sheets' }), 'fsafe_cuke_preop'),
+    swallow(DataSource.fetchTable('fsafe_lettuce_preop', { mode: 'sheets' }), 'fsafe_lettuce_preop'),
     // PH weight is Supabase-only, so always fetch from prod regardless of the
     // page's data-source toggle (mirrors lettuce_pack_orders). Scope to the
     // real org and drop soft-deleted rows.
@@ -868,9 +868,6 @@ async function loadData() {
 
   setDay('today');
 }
-
-// Per-source settings panel behind the header gear
-if (window.DataSource && DataSource.renderSourcePanel) DataSource.renderSourcePanel('srcGear');
 
 loadData().catch(err => console.error('Load error:', err));
 </script>
