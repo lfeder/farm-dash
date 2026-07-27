@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sales Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260726d"></script>
+<script src="../lib/data-source.js?v=20260726g"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
@@ -52,7 +52,9 @@
   .budget-grid .chart-box { height: 300px; flex: none; }
   .budget-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
   .budget-table th { text-align: left; padding: 6px 10px; border-bottom: 2px solid #0f3460; color: #4ecca3; position: static; }
+  .budget-table th.num { text-align: right; }
   .budget-table td { padding: 5px 10px; border-bottom: 1px solid #0f3460; }
+  .budget-table tr.subtot td { font-weight: 600; color: #fff; border-top: 2px solid #0f3460; }
   @media (max-width: 900px) { .budget-grid { grid-template-columns: 1fr; } }
 
   /* Mobile: stack vertically */
@@ -94,7 +96,7 @@
     <button id="toggleAll" onclick="toggleAllLines()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Clear All</button>
     </span>
     <div class="info" id="status">Loading data...</div>
-    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 15:45</span>
+    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 17:00</span>
   </div>
 </div>
 
@@ -168,7 +170,7 @@ let rawRows = [];            // originals only (Budget actuals)
 let currentTab = 'budget';   // 'budget' | 'customer'
 let budgetPeriod = 'weekly'; // 'weekly' | 'monthly'
 let budgetMetric = 'dollars'; // 'dollars' | 'cases' (variety lb/day charts always pounds)
-let budgetWeekRaw = null, budgetMonthRaw = null, budgetPrices = null, harvestRows = null;
+let budgetWeekRaw = null, budgetMonthRaw = null, budgetPrices = null, harvestRows = null, budgetActuals = null;
 let bCharts = {};
 let cukeChart, lettuceChart;
 let show25 = false;
@@ -274,39 +276,39 @@ function parseGvizTable(table) {
   }).filter(r => r.CustomerGroup && r.ProductCode !== 'Sales');
 }
 
-async function loadData() {
-  const table = await DataSource.fetchTable('invoices_edi');
-  allRows = parseGvizTable(table);
-  rawRows = allRows.slice(); // originals only (no virtual-customer dupes) — used by Budget actuals
-  // Create virtual group by duplicating rows (originals stay untouched)
-  const virtualRows = [];
-  allRows.forEach(r => {
-    if (CUSTOMER_REMAP[r.CustomerName]) {
-      virtualRows.push({ ...r, CustomerGroup: CUSTOMER_REMAP[r.CustomerName] });
-    }
-  });
-  allRows = allRows.concat(virtualRows);
-  // Populate product filter dropdown
-  const allProducts = [...new Set(allRows.filter(r => r.Year === 2025 || r.Year === 2026).map(r => r.ProductCode))].filter(p => p !== 'KWC').sort();
-  const dd = document.getElementById('productDropdown');
-  allProducts.forEach(p => {
-    const lbl = document.createElement('label');
-    lbl.style.cssText = 'display:block;padding:4px 10px;cursor:pointer;font-size:0.75rem;color:#ccc;white-space:nowrap;';
-    lbl.onmouseenter = () => lbl.style.background = '#1a4a7a';
-    lbl.onmouseleave = () => lbl.style.background = '';
-    lbl.innerHTML = `<input type="checkbox" value="${p}" onchange="toggleProductFilter('${p}')" style="margin-right:6px;vertical-align:middle;"> ${p}`;
-    dd.appendChild(lbl);
-  });
-  document.getElementById('status').textContent =
-    `${allRows.length.toLocaleString()} invoices | YTD through ${Math.floor(MAX_MD/100)}/${MAX_MD%100}`;
-  buildTable();
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('toggle25').style.display = 'inline-block';
-  document.getElementById('toggleUnit').style.display = 'inline-block';
-  document.getElementById('toggleByCust').style.display = 'inline-block';
-  document.getElementById('productFilterWrap').style.display = 'inline-block';
-  document.getElementById('toggleAll').style.display = 'inline-block';
-  applyTab(); // show whichever tab is active (default: Budget)
+function init() {
+  applyTab(); // renders whichever tab is active (default: Budget); loader hides when its data resolves
+}
+
+// Customer tab reads the full per-invoice set (~24k rows) — loaded lazily on
+// first open so the default Budget tab isn't blocked by it.
+let customerLoaded = false, customerLoading = null;
+function loadCustomer() {
+  if (customerLoaded) return Promise.resolve();
+  if (customerLoading) return customerLoading;
+  customerLoading = (async () => {
+    const table = await DataSource.fetchTable('invoices_edi');
+    allRows = parseGvizTable(table);
+    rawRows = allRows.slice();
+    const virtualRows = [];
+    allRows.forEach(r => { if (CUSTOMER_REMAP[r.CustomerName]) virtualRows.push({ ...r, CustomerGroup: CUSTOMER_REMAP[r.CustomerName] }); });
+    allRows = allRows.concat(virtualRows);
+    const allProducts = [...new Set(allRows.filter(r => r.Year === 2025 || r.Year === 2026).map(r => r.ProductCode))].filter(p => p !== 'KWC').sort();
+    const dd = document.getElementById('productDropdown'); dd.innerHTML = '';
+    allProducts.forEach(p => {
+      const lbl = document.createElement('label');
+      lbl.style.cssText = 'display:block;padding:4px 10px;cursor:pointer;font-size:0.75rem;color:#ccc;white-space:nowrap;';
+      lbl.onmouseenter = () => lbl.style.background = '#1a4a7a';
+      lbl.onmouseleave = () => lbl.style.background = '';
+      lbl.innerHTML = `<input type="checkbox" value="${p}" onchange="toggleProductFilter('${p}')" style="margin-right:6px;vertical-align:middle;"> ${p}`;
+      dd.appendChild(lbl);
+    });
+    buildTable();
+    ['toggle25', 'toggleUnit', 'toggleByCust', 'productFilterWrap', 'toggleAll']
+      .forEach(id => document.getElementById(id).style.display = 'inline-block');
+    customerLoaded = true;
+  })();
+  return customerLoading;
 }
 
 // ── Tabs (Budget | Customer) ──
@@ -323,8 +325,21 @@ function applyTab() {
   document.getElementById('custControls').style.display = budget ? 'none' : 'flex';
   document.getElementById('budgetPeriod').style.display = budget ? 'inline-block' : 'none';
   document.getElementById('budgetMetricBtn').style.display = budget ? 'inline-block' : 'none';
-  if (!allRows.length) return; // data not loaded yet
-  if (budget) loadBudget().then(renderBudget);
+  const status = document.getElementById('status');
+  const loading = document.getElementById('loading');
+  const done = () => { loading.style.display = 'none'; };
+  const fail = (err) => { loading.style.display = 'flex';
+    loading.textContent = `Error loading data from ${DataSource.getMode()}. Check the Supabase project is reachable.`;
+    console.error(err); };
+  if (budget) {
+    loadBudget().then(() => { renderBudget(); status.textContent = `Budget — through wk ${MAX_WEEK}`; done(); }).catch(fail);
+  } else {
+    if (!customerLoaded) status.textContent = 'Loading invoices…';
+    loadCustomer().then(() => {
+      status.textContent = `${allRows.length.toLocaleString()} invoices | YTD through ${Math.floor(MAX_MD / 100)}/${MAX_MD % 100}`;
+      done();
+    }).catch(fail);
+  }
 }
 
 // ── Budget tab ──
@@ -346,6 +361,10 @@ const SKU = {
 };
 const SKU_CODES = Object.keys(SKU);
 const GRADE1 = ['KW','KR','KF','JW','JR','JF','EF','LW','LR','LF','WR','WF','AR','AF']; // OK/OJ are grade 2
+// Per-product charts (matches Michael's set: on-grade minus the near-zero KF/JF/WF)
+const PRODUCT_CHARTS = ['KW','KR','JW','JR','EF','LW','LR','LF','WR','AR','AF'];
+// SKUs hidden as individual TABLE rows but still rolled into subtotals/Total
+const TABLE_HIDE = new Set(['OK','OJ','WF','JF']);
 const VAR_NAME = { K:'Keiki', J:'Japanese', E:'English', L:'Lettuce', W:'Watercress', A:'Runaway' };
 const VARIETIES = ['K','J','E','L','W','A'];
 const varFarm = v => (v==='K'||v==='J'||v==='E') ? 'Cuke' : 'Lettuce';
@@ -358,16 +377,18 @@ function parseGvizGeneric(table) {
 }
 async function loadBudget() {
   if (budgetWeekRaw && budgetWeekRaw.length) return;
-  const [w, m, p, h] = await Promise.all([
+  const [w, m, p, h, a] = await Promise.all([
     DataSource.fetchTable('budget_week_raw',  { mode: 'prod' }),
     DataSource.fetchTable('budget_month_raw', { mode: 'prod' }),
     DataSource.fetchTable('budget_prices',    { mode: 'prod' }),
     DataSource.fetchTable('harvest_weekly',   { mode: 'prod' }),
+    DataSource.fetchTable('sales_actuals',    { mode: 'prod' }),
   ]);
   budgetWeekRaw = parseGvizGeneric(w);
   budgetMonthRaw = parseGvizGeneric(m);
   budgetPrices = parseGvizGeneric(p)[0] || {};
   harvestRows = parseGvizGeneric(h);
+  budgetActuals = parseGvizGeneric(a);
 }
 function toggleBudgetPeriod() {
   budgetPeriod = budgetPeriod === 'weekly' ? 'monthly' : 'weekly';
@@ -408,7 +429,7 @@ const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct',
 function budTooltipTitle(items) {
   if (!items.length) return '';
   const idx = +items[0].label;
-  return budgetPeriod === 'weekly' ? `Week ${idx} (end ${isoWeekEndMMDD(idx)})` : MONTH_ABBR[idx - 1];
+  return budgetPeriod === 'weekly' ? `Week ${idx} (${isoWeekEndMMDD(idx)})` : MONTH_ABBR[idx - 1];
 }
 const budN = () => budgetPeriod === 'weekly' ? 52 : 12;
 const budMaxIdx = () => budgetPeriod === 'weekly' ? MAX_WEEK : lastClosedMonth();
@@ -426,12 +447,12 @@ function sBudget(codes, metric) {
   });
   return { arr, has };
 }
-// Actuals from invoices: metric 'dollars' ($000) | 'cases' | 'pounds' (cases×ppc)
+// Actuals from the pre-aggregated view: metric 'dollars' ($000) | 'cases' | 'pounds'
 function sActual(codeSet, year, metric) {
   const N = budN(), arr = Array(N).fill(0), has = Array(N).fill(false);
   const yk = budgetPeriod === 'weekly' ? 'ISOYear' : 'Year';
   const ik = budgetPeriod === 'weekly' ? 'ISOWeek' : 'Month';
-  rawRows.forEach(r => { if (r[yk] !== year) return; if (!codeSet.has(r.ProductCode)) return;
+  (budgetActuals || []).forEach(r => { if (r[yk] !== year) return; if (!codeSet.has(r.ProductCode)) return;
     const i = (+r[ik]) - 1; if (i < 0 || i >= N) return;
     arr[i] += metric === 'dollars' ? (+r.Dollars || 0) / 1000
             : metric === 'pounds' ? (+r.Cases || 0) * (SKU[r.ProductCode] ? SKU[r.ProductCode].ppc : 0)
@@ -531,8 +552,8 @@ function renderBudget() {
     bCharts['var-' + v] = drawChart(c, ds);
   });
 
-  // 3) By product (metric-toggled)
-  GRADE1.forEach(code => {
+  // 3) By product (metric-toggled) — Michael's on-grade set (no KF/JF/WF)
+  PRODUCT_CHARTS.forEach(code => {
     const set = new Set([code]);
     const ds = [
       mkDS('Bdg26', toData(sBudget([code], met)), '#e74c3c'),
@@ -545,37 +566,45 @@ function renderBudget() {
 
   renderBudgetTable();
 }
-// Farm-level YTD summary table (calendar-year YTD via _md<=MAX_MD; budget YTD via ISO week<=MAX_WEEK).
+// YTD table — one row per shown SKU + Cuke/Lettuce subtotals + Total (subtotals
+// and Total include the hidden SKUs: OK/OJ/WF/JF). YTD keyed off calendar year
+// with an ISO-week cutoff (isoweek<=MAX_WEEK), matching the "complete weeks" rule.
 // Honors the $/Cases toggle: dollars are $000, cases are counts.
 function renderBudgetTable() {
   const wrap = document.getElementById('bg-table');
   const met = budgetMetric;
   const actVal = r => met === 'dollars' ? (+r.Dollars || 0) / 1000 : (+r.Cases || 0);
-  const farmActual = (year, farm, ytd) => rawRows.reduce((s, r) =>
-    (r.Year === year && (!ytd || r._md <= MAX_MD) && (farm === 'Total' || r.Farm === farm)) ? s + actVal(r) : s, 0);
-  const farmBudget = (farm, ytd) => {
-    const codes = farm === 'Total' ? SKU_CODES : SKU_CODES.filter(c => SKU[c].f === farm);
-    return budgetWeekRaw.reduce((s, r) => {
-      if (ytd && (+r.isoweek) > MAX_WEEK) return s;
-      return s + codes.reduce((a, code) => { const cs = +r[code.toLowerCase()] || 0;
-        return a + (met === 'dollars' ? cs * (+budgetPrices[code.toLowerCase()] || 0) / 1000 : cs); }, 0);
-    }, 0);
-  };
+  const actual = (year, codeSet, ytd) => (budgetActuals || []).reduce((s, r) =>
+    (r.Year === year && (!ytd || (+r.ISOWeek) <= MAX_WEEK) && codeSet.has(r.ProductCode)) ? s + actVal(r) : s, 0);
+  const budget = (codes, ytd) => budgetWeekRaw.reduce((s, r) => {
+    if (ytd && (+r.isoweek) > MAX_WEEK) return s;
+    return s + codes.reduce((a, code) => { const cs = +r[code.toLowerCase()] || 0;
+      return a + (met === 'dollars' ? cs * (+budgetPrices[code.toLowerCase()] || 0) / 1000 : cs); }, 0);
+  }, 0);
   const pct = (a, b) => (b ? Math.round((a / b - 1) * 100) + '%' : '—');
   const cls = v => v && v.startsWith('-') ? 'neg' : 'pos';
-  const rows = ['Cuke', 'Lettuce', 'Total'].map(farm => {
-    const actYtd = farmActual(2026, farm, true), bdgYtd = farmBudget(farm, true), lytd = farmActual(2025, farm, true);
-    const bdgFy = farmBudget(farm, false), ly = farmActual(2025, farm, false);
+  const n = v => Math.round(v).toLocaleString();
+  const row = (label, codes, bold) => {
+    const set = new Set(codes);
+    const actYtd = actual(2026, set, true), bdgYtd = budget(codes, true), lytd = actual(2025, set, true);
+    const bdgFy = budget(codes, false), ly = actual(2025, set, false);
     const avb = pct(actYtd, bdgYtd), ytd = pct(actYtd, lytd), fy = pct(bdgFy, ly);
-    const n = v => Math.round(v).toLocaleString();
-    return `<tr><td>${farm}</td><td class="num">${n(actYtd)}</td><td class="num">${n(bdgYtd)}</td>
+    return `<tr class="${bold ? 'subtot' : ''}"><td>${label}</td><td class="num">${n(actYtd)}</td><td class="num">${n(bdgYtd)}</td>
       <td class="num ${cls(avb)}">${avb}</td><td class="num">${n(lytd)}</td><td class="num ${cls(ytd)}">${ytd}</td>
       <td class="num">${n(bdgFy)}</td><td class="num">${n(ly)}</td><td class="num ${cls(fy)}">${fy}</td></tr>`;
-  }).join('');
+  };
+  const cuke = SKU_CODES.filter(c => SKU[c].f === 'Cuke');
+  const lett = SKU_CODES.filter(c => SKU[c].f === 'Lettuce');
+  let body = '';
+  cuke.filter(c => !TABLE_HIDE.has(c)).forEach(c => body += row(c, [c]));
+  body += row('Cuke', cuke, true);          // subtotal incl. hidden OK/OJ/JF
+  lett.filter(c => !TABLE_HIDE.has(c)).forEach(c => body += row(c, [c]));
+  body += row('Lettuce', lett, true);       // subtotal incl. hidden WF
+  body += row('Total', SKU_CODES, true);
   wrap.innerHTML = `<table class="budget-table"><thead><tr>
     <th>${met === 'dollars' ? '$ (000)' : 'Cases'}</th><th class="num">Act YTD</th><th class="num">Bdg YTD</th><th class="num">AvB Δ</th>
     <th class="num">LYTD</th><th class="num">YTD Δ</th><th class="num">Bdg FY</th><th class="num">LY</th><th class="num">FY Δ</th>
-    </tr></thead><tbody>${rows}</tbody></table>`;
+    </tr></thead><tbody>${body}</tbody></table>`;
 }
 
 let allVisible = true;
@@ -1051,15 +1080,7 @@ function renderChart(type, rows, label, useByCust) {
   else lettuceChart = chart;
 }
 
-loadData().catch(err => {
-  const mode = DataSource.getMode();
-  document.getElementById('loading').textContent =
-    `Error loading data from ${mode}. ` +
-    (mode === 'sheets'
-      ? 'Make sure the sheet is shared (anyone with link can view).'
-      : 'Check that the Supabase project is reachable and sales_invoice_v has data.');
-  console.error(err);
-});
+init();
 </script>
 </body>
 </html>
