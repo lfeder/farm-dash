@@ -99,7 +99,7 @@
     <button id="toggleAll" onclick="toggleAllLines()" style="display:none;padding:4px 10px;font-size:0.75rem;background:#0f3460;color:#ccc;border:1px solid #4ecca3;border-radius:4px;cursor:pointer;">Clear All</button>
     </span>
     <div class="info" id="status">Loading data...</div>
-    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 18:20</span>
+    <span id="versionStamp" style="font-size:0.7rem;color:#ccc;">07-26 20:05</span>
   </div>
 </div>
 
@@ -142,7 +142,9 @@
 </div>
 
 <script>
-// Data source (sheets | prod) comes from DataSource module
+// Data sources are PINNED per feed (no runtime sheets/prod toggle):
+//   invoices / actuals / budget -> prod (Supabase edi/QB + finance_ tables)
+//   grow "Grown" line           -> sheets (nightly grow migration still incomplete)
 // (see ../lib/data-source.js + ../lib/README.md).
 
 // Current ISO week for YTD cutoff
@@ -290,7 +292,7 @@ function loadCustomer() {
   if (customerLoaded) return Promise.resolve();
   if (customerLoading) return customerLoading;
   customerLoading = (async () => {
-    const table = await DataSource.fetchTable('invoices_edi');
+    const table = await DataSource.fetchTable('invoices_edi', { mode: 'prod' });
     allRows = parseGvizTable(table);
     rawRows = allRows.slice();
     const virtualRows = [];
@@ -331,7 +333,7 @@ function applyTab() {
   const loading = document.getElementById('loading');
   const done = () => { loading.style.display = 'none'; };
   const fail = (err) => { loading.style.display = 'flex';
-    loading.textContent = `Error loading data from ${DataSource.getMode()}. Check the Supabase project is reachable.`;
+    loading.textContent = `Error loading data from prod. Check the Supabase project is reachable.`;
     console.error(err); };
   if (budget) {
     loadBudget().then(() => { renderBudget(); status.textContent = `Budget — through wk ${MAX_WEEK}`; done(); }).catch(fail);
