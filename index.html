@@ -24,7 +24,6 @@
   <span class="brand">Dash</span>
   <div class="tabs" id="tabs"></div>
   <span id="version" style="margin-left:auto;font-size:0.7rem;color:#e0e0e0"></span>
-  <span id="modeToggle" style="margin-left:8px"></span>
 </nav>
 <div class="frame-container" id="frames"></div>
 <script>
@@ -88,7 +87,6 @@ DASHBOARDS.forEach(d => {
   tabs.appendChild(el);
 });
 
-DataSource.renderModeToggle('modeToggle');
 navigate(location.hash.slice(1) || DASHBOARDS[0].id);
 window.addEventListener('hashchange', () => navigate(location.hash.slice(1)));
 
