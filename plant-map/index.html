@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Greenhouse Plant Map</title>
-<script src="../lib/data-source.js?v=20260622c"></script>
+<script src="../lib/data-source.js?v=20260726k"></script>
 <style>
 :root {
     --bg-primary: #1a1a2e;
@@ -727,10 +727,10 @@ function buildRawRowsFromTables(rowsTbl, blocksTbl, plantTbl) {
 
 async function loadFromSupabase() {
     const [rowsTbl, blocksTbl, plantTbl, batchTbl] = await Promise.all([
-        DataSource.fetchTable('gh_rows'),
-        DataSource.fetchTable('gh_blocks'),
-        DataSource.fetchTable('row_plantings'),
-        DataSource.fetchTable('cuke_seed_batches'),
+        DataSource.fetchTable('gh_rows', { mode: 'prod' }),
+        DataSource.fetchTable('gh_blocks', { mode: 'prod' }),
+        DataSource.fetchTable('row_plantings', { mode: 'prod' }),
+        DataSource.fetchTable('cuke_seed_batches', { mode: 'prod' }),
     ]);
     RAW_ROWS = buildRawRowsFromTables(rowsTbl, blocksTbl, plantTbl);
     if (RAW_ROWS.length === 0) throw new Error('No plant-map rows returned from Supabase.');
@@ -750,37 +750,18 @@ async function loadFromSupabase() {
 
 // --- Init: dispatch by data mode ---
 function init() {
-    const mode = DataSource.getMode();
+    // Source is PINNED to prod (Supabase org_site_gh_* tables); the old
+    // sheets/prod toggle is gone. The GVIZ sheet path is retired.
     document.getElementById('content').innerHTML =
-        `<div style="text-align:center;padding:80px 20px;color:var(--text-secondary);font-size:1.2rem;">Loading plant map from ${mode === 'sheets' ? 'Google Sheets' : 'Supabase (' + mode + ')'}\u2026</div>`;
-
-    if (mode === 'sheets') {
-        // In sheets mode, fetch bag_changes tab via JSONP (prod pulls it
-        // from grow_cuke_seed_batch inside loadFromSupabase).
-        const script2 = document.createElement('script');
-        script2.src = BAG_CHANGES_URL;
-        script2.onerror = function() { bagChangesReady = true; if (mainDataReady) finishInit(); };
-        document.head.appendChild(script2);
-        const script = document.createElement('script');
-        script.src = GVIZ_URL;
-        script.onerror = function() {
-            document.getElementById('content').innerHTML =
-                '<div style="text-align:center;padding:60px 20px;color:#e57373;font-size:1.1rem;">' +
-                '<p>Failed to load data from Google Sheets.</p>' +
-                '<p style="font-size:0.85rem;margin-top:16px;color:var(--text-secondary);">Make sure the sheet is shared as &ldquo;Anyone with the link&rdquo; can view.</p>' +
-                '</div>';
-        };
-        document.head.appendChild(script);
-    } else {
-        loadFromSupabase().catch(err => {
-            console.error('Supabase plant-map load error:', err);
-            document.getElementById('content').innerHTML =
-                '<div style="text-align:center;padding:60px 20px;color:#e57373;font-size:1.1rem;">' +
-                '<p>Failed to load plant map from Supabase.</p>' +
-                '<p style="font-size:0.85rem;margin-top:16px;color:var(--text-secondary);">' + (err.message || err) + '</p>' +
-                '</div>';
-        });
-    }
+        `<div style="text-align:center;padding:80px 20px;color:var(--text-secondary);font-size:1.2rem;">Loading plant map from Supabase\u2026</div>`;
+    loadFromSupabase().catch(err => {
+        console.error('Supabase plant-map load error:', err);
+        document.getElementById('content').innerHTML =
+            '<div style="text-align:center;padding:60px 20px;color:#e57373;font-size:1.1rem;">' +
+            '<p>Failed to load plant map from Supabase.</p>' +
+            '<p style="font-size:0.85rem;margin-top:16px;color:var(--text-secondary);">' + (err.message || err) + '</p>' +
+            '</div>';
+    });
 }
 
 // --- Rendering ---
@@ -1297,16 +1278,15 @@ function clearEdits() {
 
 function saveEdits(saves) {
     if (!saves.length) return;
-    const mode = DataSource.getMode();
-    if (mode === 'sheets') saveToSheet(saves);
-    else saveToSupabase(saves).catch(err => {
+    // Pinned to prod: always write to Supabase.
+    saveToSupabase(saves).catch(err => {
         console.error('Supabase save error:', err);
         showSaveStatus('Save failed');
     });
 }
 
 async function saveToSupabase(saves) {
-    const client = await DataSource.getClient();
+    const client = await DataSource.getClient('prod');
     for (const s of saves) {
         if (!s.rowId) continue;
         const { error } = await client.from('grow_cuke_gh_row_planting')
