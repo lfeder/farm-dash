@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Daily Report</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260727a"></script>
+<script src="../lib/data-source.js?v=20260727b"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
@@ -54,7 +54,7 @@
 <div id="header">
   <h1>Daily</h1>
   <span style="display:flex;align-items:center;gap:6px;">
-    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-27 09:45</span>
+    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-27 10:05</span>
   </span>
 </div>
 
@@ -136,8 +136,9 @@ let weeklyChart = null;
 const HARVEST_ROWS = { cuke: () => cukeGrowRows, lettuce: () => lettuceGrowRows };
 
 const SKU_LB = { LW: 10.5, LR: 2.25, LF: 10.0, WR: 2.25 };
-// Cuke case net weights (lb/case, from sales_product.case_net_weight).
-const CUKE_LB = { KW: 16, KR: 12, KF: 12, JW: 14, JR: 14 };
+// Cuke SKU groupings. Pounds come from the view's pounds column (derived from
+// sales_product.case_net_weight) — the single source of truth, not hardcoded.
+const CUKE_SKUS = ['KW', 'KR', 'KF', 'JW', 'JR'];
 const CUKE_K = ['KW', 'KR', 'KF'];   // Keiki
 const CUKE_J = ['JW', 'JR'];         // Japanese
 // A pathogen "hit" = positive EMP result for one of these (excludes APC / indicator E. coli)
@@ -435,6 +436,7 @@ function renderCukePoTable() {
   const end   = rd.getTime() + 6 * 86400000;   // through 6 days after (14-day window)
   const today = rd.getTime();
 
+  const blank = () => ({ KW: 0, KR: 0, KF: 0, JW: 0, JR: 0, kLb: 0, jLb: 0 });
   const byDate = {};
   cukePoRows.forEach(r => {
     const dt = r._y ? new Date(Date.UTC(r._y, r._m - 1, r._d)) : null;
@@ -442,9 +444,11 @@ function renderCukePoTable() {
     const t = dt.getTime();
     if (t < start || t > end) return;
     const sku = r.SKU;
-    if (!(sku in CUKE_LB)) return;
-    if (!byDate[t]) byDate[t] = { dt, KW: 0, KR: 0, KF: 0, JW: 0, JR: 0 };
+    if (!CUKE_SKUS.includes(sku)) return;
+    if (!byDate[t]) byDate[t] = { dt, ...blank() };
     byDate[t][sku] += (r.Cases || 0);
+    if (CUKE_K.includes(sku)) byDate[t].kLb += (r.Pounds || 0);
+    else if (CUKE_J.includes(sku)) byDate[t].jLb += (r.Pounds || 0);
   });
 
   const tbody = document.getElementById('cukepo-tbody');
@@ -455,20 +459,19 @@ function renderCukePoTable() {
     return;
   }
 
-  const kLb = d => CUKE_K.reduce((s, k) => s + d[k] * CUKE_LB[k], 0);
-  const jLb = d => CUKE_J.reduce((s, k) => s + d[k] * CUKE_LB[k], 0);
-  const tot = { KW: 0, KR: 0, KF: 0, JW: 0, JR: 0 };
+  const tot = { ...blank(), dt: null };
   keys.forEach(k => {
     const d = byDate[k];
-    ['KW', 'KR', 'KF', 'JW', 'JR'].forEach(s => tot[s] += d[s]);
+    CUKE_SKUS.forEach(s => tot[s] += d[s]);
+    tot.kLb += d.kLb; tot.jLb += d.jLb;
     const label = d.dt.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', timeZone: 'UTC' }) +
       ' (' + d.dt.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }) + ')';
     const tr = document.createElement('tr');
     if (+k === today) tr.style.fontWeight = '700';
     tr.innerHTML = `
       <td>${label}</td>
-      <td class="num">${Math.round(kLb(d)).toLocaleString()}</td>
-      <td class="num">${Math.round(jLb(d)).toLocaleString()}</td>
+      <td class="num">${Math.round(d.kLb).toLocaleString()}</td>
+      <td class="num">${Math.round(d.jLb).toLocaleString()}</td>
       <td class="num">${d.KW || ''}</td>
       <td class="num">${d.KR || ''}</td>
       <td class="num">${d.KF || ''}</td>
@@ -481,8 +484,8 @@ function renderCukePoTable() {
   tr.className = 'total-row';
   tr.innerHTML = `
     <td>Total</td>
-    <td class="num">${Math.round(kLb(tot)).toLocaleString()}</td>
-    <td class="num">${Math.round(jLb(tot)).toLocaleString()}</td>
+    <td class="num">${Math.round(tot.kLb).toLocaleString()}</td>
+    <td class="num">${Math.round(tot.jLb).toLocaleString()}</td>
     <td class="num">${tot.KW || ''}</td>
     <td class="num">${tot.KR || ''}</td>
     <td class="num">${tot.KF || ''}</td>
