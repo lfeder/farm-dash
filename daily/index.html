@@ -27,6 +27,10 @@
   td { padding: 5px 10px; border-bottom: 1px solid #ddd; }
   tr.total-row td { border-top: 2px solid #999; font-weight: 600; }
   .section-title { font-size: 1.1rem; font-weight: 600; color: #333; margin: 24px 0 8px; }
+  /* Lettuce & Cuke PO tables share a fixed 9-column grid so their columns line up. */
+  .po-grid { table-layout: fixed; }
+  .po-grid th:first-child, .po-grid td:first-child { width: 16%; }
+  .po-grid th:not(:first-child), .po-grid td:not(:first-child) { width: 10.5%; }
   .chart-box { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 24px; border: 1px solid #ddd; }
   .chart-box h3 { font-size: 1rem; font-weight: 600; color: #333; margin-bottom: 8px; }
   .chart-wrap { position: relative; height: 300px; }
@@ -54,7 +58,7 @@
 <div id="header">
   <h1>Daily</h1>
   <span style="display:flex;align-items:center;gap:6px;">
-    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-27 10:15</span>
+    <span style="font-size:0.7rem;color:#fff;" id="versionStamp">07-27 10:30</span>
   </span>
 </div>
 
@@ -94,13 +98,13 @@
   </tr></thead><tbody id="lettuce-tbody"></tbody></table>
 
   <div class="section-title">Lettuce POs — next 7 days</div>
-  <table id="po-table"><thead><tr>
-    <th>Pack Date</th><th class="num">lb</th><th class="num">WR lb</th><th class="num">Mix lb</th><th class="num">Cases</th><th class="num">LW</th><th class="num">LF</th><th class="num">LR</th><th class="num">WR</th>
+  <table id="po-table" class="po-grid"><thead><tr>
+    <th>Pack Date</th><th class="num">Total lb</th><th class="num">WR lb</th><th class="num">Mix lb</th><th class="num">Cases</th><th class="num">LW</th><th class="num">LF</th><th class="num">LR</th><th class="num">WR</th>
   </tr></thead><tbody id="po-tbody"></tbody></table>
 
-  <div class="section-title">Cuke POs by invoice date — prior &amp; coming week</div>
-  <table id="cukepo-table"><thead><tr>
-    <th>Invoice Date</th><th class="num">Total K lb</th><th class="num">Total J lb</th>
+  <div class="section-title">Cuke POs by invoice date — next 7 days</div>
+  <table id="cukepo-table" class="po-grid"><thead><tr>
+    <th>Invoice Date</th><th class="num">Total K lb</th><th class="num">Total J lb</th><th class="num">Cases</th>
     <th class="num">KW</th><th class="num">KR</th><th class="num">KF</th><th class="num">JW</th><th class="num">JR</th>
   </tr></thead><tbody id="cukepo-tbody"></tbody></table>
 
@@ -432,8 +436,8 @@ function renderPoTable() {
 // ── Cuke POs by invoice date (prior + coming week) ──
 function renderCukePoTable() {
   const rd = refDate;
-  const start = rd.getTime() - 7 * 86400000;   // 7 days before refDate
-  const end   = rd.getTime() + 6 * 86400000;   // through 6 days after (14-day window)
+  const start = rd.getTime();                   // next 7 days (refDate .. +6)
+  const end   = rd.getTime() + 6 * 86400000;
   const today = rd.getTime();
 
   const blank = () => ({ KW: 0, KR: 0, KF: 0, JW: 0, JR: 0, kLb: 0, jLb: 0 });
@@ -455,7 +459,7 @@ function renderCukePoTable() {
   tbody.innerHTML = '';
   const keys = Object.keys(byDate).sort((a, b) => a - b);
   if (!keys.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="color:#888;">No cuke POs in this window</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="color:#888;">No cuke POs in the next 7 days</td></tr>';
     return;
   }
 
@@ -464,6 +468,7 @@ function renderCukePoTable() {
     const d = byDate[k];
     CUKE_SKUS.forEach(s => tot[s] += d[s]);
     tot.kLb += d.kLb; tot.jLb += d.jLb;
+    const cases = CUKE_SKUS.reduce((s, x) => s + d[x], 0);
     const label = d.dt.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', timeZone: 'UTC' }) +
       ' (' + d.dt.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }) + ')';
     const tr = document.createElement('tr');
@@ -472,6 +477,7 @@ function renderCukePoTable() {
       <td>${label}</td>
       <td class="num">${Math.round(d.kLb).toLocaleString()}</td>
       <td class="num">${Math.round(d.jLb).toLocaleString()}</td>
+      <td class="num">${cases.toLocaleString()}</td>
       <td class="num">${d.KW || ''}</td>
       <td class="num">${d.KR || ''}</td>
       <td class="num">${d.KF || ''}</td>
@@ -480,14 +486,17 @@ function renderCukePoTable() {
     tbody.appendChild(tr);
   });
 
-  // Total-row K/J lb are shown as lb per growing day (window / 14 days).
-  const GROW_DAYS = 14;
+  // Total-row K/J lb are shown as lb per growing day (window / 7 days); Cases is
+  // the total over the window.
+  const GROW_DAYS = 7;
+  const totCases = CUKE_SKUS.reduce((s, x) => s + tot[x], 0);
   const tr = document.createElement('tr');
   tr.className = 'total-row';
   tr.innerHTML = `
     <td>Total (lb/day)</td>
     <td class="num">${Math.round(tot.kLb / GROW_DAYS).toLocaleString()}</td>
     <td class="num">${Math.round(tot.jLb / GROW_DAYS).toLocaleString()}</td>
+    <td class="num">${totCases.toLocaleString()}</td>
     <td class="num">${tot.KW || ''}</td>
     <td class="num">${tot.KR || ''}</td>
     <td class="num">${tot.KF || ''}</td>
