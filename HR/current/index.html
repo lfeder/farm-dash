@@ -192,28 +192,31 @@ function render() {
   html += '<th>Tot</th></tr></thead><tbody>';
   let bTot = 0, aTot = 0;
   let bRow = '<tr class="bdg"><td>2026 Budget</td>';
-  let aRow = '<tr class="act" onclick="openDetail()"><td>2026 Actual</td>';
+  let aRow = '<tr class="act"><td>2026 Actual</td>';
   for (const l of LABOR) {
     const b = budgetVal(l), a = actualVal(l);
     bTot += b; aTot += a;
     bRow += '<td>' + fmt(b) + '</td>';
-    aRow += '<td>' + deltaTag(a, b) + fmt(a) + '</td>';
+    aRow += '<td onclick="openDetail(\'' + l + '\')">' + deltaTag(a, b) + fmt(a) + '</td>';
   }
   bRow += '<td class="tot">' + fmt(bTot) + '</td></tr>';
-  aRow += '<td class="tot">' + deltaTag(aTot, bTot) + fmt(aTot) + '</td></tr>';
+  aRow += '<td class="tot" onclick="openDetail()">' + deltaTag(aTot, bTot) + fmt(aTot) + '</td></tr>';
   document.getElementById('grid').innerHTML = html + bRow + aRow + '</tbody>';
 }
 
-async function openDetail() {
+async function openDetail(labor) {
   document.getElementById('modal').classList.add('show');
-  document.getElementById('modalTitle').textContent = '2026 PP ' + currentPP + ' — employees';
+  const scope = labor ? LABOR_LABEL[labor] : 'all';
+  document.getElementById('modalTitle').textContent = '2026 PP ' + currentPP + ' — employees (' + scope + ')';
   document.getElementById('modalBody').textContent = 'Loading…';
   try {
     const client = await DataSource.getClient();
-    const { data, error } = await client
+    let q = client
       .from('hr_staffing_pp_detail_v').select('*')
       .eq('year', 2026).eq('pp', currentPP)
       .order('hr_work_authorization_id').order('employee_name');
+    if (labor) q = q.eq('labor_type', labor);
+    const { data, error } = await q;
     if (error) throw error;
     if (!data || !data.length) {
       document.getElementById('modalBody').innerHTML = '<div style="color:#888">No employees.</div>';
