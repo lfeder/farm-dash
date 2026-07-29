@@ -42,6 +42,8 @@ td.tot { font-weight:700; color:#fff; border-left:2px solid #2a3a5e; }
 #modal th, #modal td { padding:5px 10px; text-align:left; }
 #modal th.num, #modal td.num { text-align:right; }
 #modal tfoot td { font-weight:700; color:#fff; border-top:2px solid #4ecca3; }
+#modal th.sortable { cursor:pointer; user-select:none; }
+#modal th.sortable:hover { color:#4ecca3; }
 </style>
 </head>
 <body>
@@ -222,27 +224,62 @@ async function openDetail(labor) {
       document.getElementById('modalBody').innerHTML = '<div style="color:#888">No employees.</div>';
       return;
     }
-    let rows = '', totH = 0, totC = 0;
-    for (const r of data) {
-      const h = parseFloat(r.total_hours) || 0;
-      const c = parseFloat(r.total_cost) || 0;
-      totH += h; totC += c;
-      rows += `<tr><td>${r.employee_name || ''}</td><td>${r.hr_department_id || ''}</td>
-        <td>${r.hr_work_authorization_id || ''}</td>
-        <td class="num">${h.toFixed(2)}</td>
-        <td class="num">$${c.toLocaleString(undefined,{maximumFractionDigits:2})}</td></tr>`;
-    }
-    document.getElementById('modalBody').innerHTML = `
-      <table>
-        <thead><tr><th>Name</th><th>Dept</th><th>Status</th><th class="num">Hours</th><th class="num">Total Cost</th></tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="3">${data.length} employees</td>
-          <td class="num">${totH.toFixed(2)}</td>
-          <td class="num">$${totC.toLocaleString(undefined,{maximumFractionDigits:2})}</td></tr></tfoot>
-      </table>`;
+    detailRows = data.map(r => ({
+      name:   r.employee_name || '',
+      dept:   r.hr_department_id || '',
+      status: r.hr_work_authorization_id || '',
+      hours:  parseFloat(r.total_hours) || 0,
+      cost:   parseFloat(r.total_cost) || 0,
+    }));
+    detailSort = { key: 'status', dir: 1 };
+    renderDetail();
   } catch (e) {
     document.getElementById('modalBody').innerHTML = '<div style="color:#e74c3c">Error: ' + e.message + '</div>';
   }
+}
+
+let detailRows = [];
+let detailSort = { key: 'status', dir: 1 };
+const DETAIL_COLS = [
+  { key:'name',   label:'Name' },
+  { key:'dept',   label:'Dept' },
+  { key:'status', label:'Status' },
+  { key:'hours',  label:'Hours', num:true },
+  { key:'cost',   label:'Total Cost', num:true },
+];
+
+function sortDetail(key) {
+  if (detailSort.key === key) detailSort.dir = -detailSort.dir;
+  else detailSort = { key, dir: DETAIL_COLS.find(c => c.key === key).num ? -1 : 1 };
+  renderDetail();
+}
+
+function renderDetail() {
+  const { key, dir } = detailSort;
+  const isNum = DETAIL_COLS.find(c => c.key === key).num;
+  const sorted = [...detailRows].sort((a, b) => {
+    const cmp = isNum ? a[key] - b[key] : String(a[key]).localeCompare(String(b[key])) || a.name.localeCompare(b.name);
+    return cmp * dir;
+  });
+  let rows = '', totH = 0, totC = 0;
+  for (const r of sorted) {
+    totH += r.hours; totC += r.cost;
+    rows += `<tr><td>${r.name}</td><td>${r.dept}</td><td>${r.status}</td>
+      <td class="num">${r.hours.toFixed(2)}</td>
+      <td class="num">$${r.cost.toLocaleString(undefined,{maximumFractionDigits:2})}</td></tr>`;
+  }
+  const ths = DETAIL_COLS.map(c => {
+    const arrow = c.key === key ? (dir === 1 ? ' ▲' : ' ▼') : '';
+    return `<th class="${c.num ? 'num ' : ''}sortable" onclick="sortDetail('${c.key}')">${c.label}${arrow}</th>`;
+  }).join('');
+  document.getElementById('modalBody').innerHTML = `
+    <table>
+      <thead><tr>${ths}</tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="3">${sorted.length} employees</td>
+        <td class="num">${totH.toFixed(2)}</td>
+        <td class="num">$${totC.toLocaleString(undefined,{maximumFractionDigits:2})}</td></tr></tfoot>
+    </table>`;
 }
 function closeModal() { document.getElementById('modal').classList.remove('show'); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
