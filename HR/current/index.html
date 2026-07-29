@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Staffing — Current</title>
+<script src="../../lib/data-source.js?v=20260728"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#1a1a2e; color:#e0e0e0; }
+#header { background:#16213e; padding:10px 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #0f3460; flex-wrap:wrap; gap:8px; }
+#header h1 { font-size:1.2rem; color:#4ecca3; }
+.controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.toggle-group { display:flex; gap:0; border:1px solid #2a3a5e; border-radius:4px; overflow:hidden; }
+.toggle-group button { padding:5px 12px; font-size:0.8rem; background:#16213e; color:#aaa; border:none; cursor:pointer; }
+.toggle-group button.active { background:#0f3460; color:#4ecca3; }
+a.full-link { font-size:0.75rem; color:#888; text-decoration:none; }
+a.full-link:hover { color:#4ecca3; }
+#status { font-size:0.7rem; color:#888; }
+#main { padding:20px; }
+#ppLabel { color:#aaa; font-size:0.85rem; margin-bottom:10px; }
+#ppLabel b { color:#e0e0e0; }
+table { border-collapse:collapse; font-size:0.95rem; min-width:640px; }
+th, td { padding:8px 16px; text-align:right; border-bottom:1px solid #0f3460; white-space:nowrap; font-variant-numeric:tabular-nums; }
+th { background:#0f3460; color:#aaa; font-weight:600; font-size:0.78rem; }
+th:first-child, td:first-child { text-align:left; }
+td:first-child { color:#e0e0e0; font-weight:600; background:#16213e; }
+tr.bdg td { background:rgba(155,89,182,0.06); }
+tr.act td { background:rgba(78,204,163,0.05); cursor:pointer; }
+tr.act:hover td { filter:brightness(1.2); }
+td.tot { font-weight:700; color:#fff; border-left:2px solid #2a3a5e; }
+.delta { font-size:0.78rem; margin-right:6px; }
+.delta.pos { color:#4ecca3; }
+.delta.neg { color:#e74c3c; }
+.delta.zero { color:#888; }
+#modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1000; align-items:flex-start; justify-content:center; padding:60px 20px; }
+#modal.show { display:flex; }
+#modalBox { background:#16213e; border:1px solid #2a3a5e; border-radius:8px; padding:14px 18px; min-width:520px; max-width:92vw; max-height:80vh; overflow:auto; }
+#modal h2 { font-size:1rem; color:#4ecca3; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+#modal h2 button { padding:2px 10px; font-size:0.7rem; background:#0f3460; color:#ccc; border:1px solid #555; border-radius:4px; cursor:pointer; }
+#modal table { width:100%; min-width:0; font-size:0.78rem; }
+#modal th, #modal td { padding:5px 10px; text-align:left; }
+#modal th.num, #modal td.num { text-align:right; }
+#modal tfoot td { font-weight:700; color:#fff; border-top:2px solid #4ecca3; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Staffing — Current PP</h1>
+  <div class="controls">
+    <div class="toggle-group" id="metricToggle">
+      <button data-metric="headcount" class="active">HC</button>
+      <button data-metric="hours">Hours</button>
+      <button data-metric="prodhours">Prod Hours</button>
+      <button data-metric="cost_total">Total Cost</button>
+    </div>
+    <a class="full-link" href="../">Full page →</a>
+    <span id="status">Loading…</span>
+  </div>
+</div>
+
+<div id="main">
+  <div id="ppLabel"></div>
+  <table id="grid"></table>
+</div>
+
+<div id="modal" onclick="if(event.target===this)closeModal()">
+  <div id="modalBox">
+    <h2><span id="modalTitle"></span><button onclick="closeModal()">Close ✕</button></h2>
+    <div id="modalBody">Loading…</div>
+  </div>
+</div>
+
+<script>
+const LABOR = ['local','wfe','h2a','f_local','fuerte'];
+const LABOR_LABEL = { local:'Local', wfe:'WFE', h2a:'H2A', f_local:'F(local)', fuerte:'Fuerte' };
+const PROD_MULT = { local:1, wfe:1.2, h2a:1.2, f_local:1.2, fuerte:1.2 };
+const PP_COUNT = 26;
+
+let metric = 'headcount';
+let budget = {};              // [pp][labor] = headcount (latest version, expanded)
+let actuals = { 2025:{}, 2026:{} }; // [pp][labor] = {headcount,hours,cost_total}
+let ppDates = {};             // 2026 [pp] = check_date
+let currentPP = 1;
+let rates = {};               // [labor] = {dollar_per_hour_total, hours_per_head_pp}
+
+async function loadBudget() {
+  const client = await DataSource.getClient();
+  const { data, error } = await client.from('hr_budgets').select('*').eq('year', 2026);
+  if (error) throw error;
+  const versions = {};
+  for (const r of data || []) {
+    const v = versions[r.saved_at] || (versions[r.saved_at] = {});
+    (v[r.pp] || (v[r.pp] = {}))[r.labor_type] = Number(r.headcount);
+  }
+  const keys = Object.keys(versions).sort();
+  if (!keys.length) throw new Error('no budget versions');
+  const sparse = versions[keys[keys.length - 1]];
+  // Expand: carry each sparse row forward to later PPs
+  let last = null;
+  for (let pp = 1; pp <= PP_COUNT; pp++) {
+    if (sparse[pp]) last = sparse[pp];
+    if (last) budget[pp] = { ...last };
+  }
+}
+
+async function loadActuals() {
+  const client = await DataSource.getClient();
+  const { data, error } = await client.from('hr_staffing_pp_v').select('*').gte('year', 2025);
+  if (error) throw error;
+  for (const r of data) {
+    if (!actuals[r.year]) continue;
+    const y = actuals[r.year];
+    (y[r.pp] || (y[r.pp] = {}))[r.labor_type] = {
+      headcount: r.headcount,
+      hours: parseFloat(r.hours) || 0,
+      cost_total: parseFloat(r.cost_total) || 0,
+    };
+    if (r.year === 2026) {
+      ppDates[r.pp] = r.check_date;
+      if (r.pp > currentPP) currentPP = r.pp;
+    }
+  }
+}
+
+// Same forecast rates as the full page: $/hr from 2026 YTD, hours/head/PP from full 2025.
+function computeRates() {
+  for (const l of LABOR) {
+    let h26 = 0, ct = 0, h25 = 0, hc25 = 0;
+    for (let pp = 1; pp <= currentPP; pp++) {
+      const a = actuals[2026][pp]?.[l];
+      if (a) { h26 += a.hours; ct += a.cost_total; }
+    }
+    for (let pp = 1; pp <= 26; pp++) {
+      const a = actuals[2025][pp]?.[l];
+      if (a) { h25 += a.hours; hc25 += a.headcount; }
+    }
+    rates[l] = {
+      dollar_per_hour_total: h26 > 0 ? ct / h26 : 0,
+      hours_per_head_pp: hc25 > 0 ? h25 / hc25 : 0,
+    };
+  }
+}
+
+function actualVal(l) {
+  const a = actuals[2026][currentPP]?.[l];
+  if (!a) return 0;
+  if (metric === 'headcount')  return a.headcount;
+  if (metric === 'hours')      return a.hours;
+  if (metric === 'prodhours')  return a.hours * PROD_MULT[l];
+  if (metric === 'cost_total') return a.cost_total;
+  return 0;
+}
+function budgetVal(l) {
+  const bHC = budget[currentPP]?.[l];
+  if (bHC == null) return 0;
+  if (metric === 'headcount') return bHC;
+  const r = rates[l];
+  const fHours = bHC * r.hours_per_head_pp;
+  if (metric === 'hours')      return fHours;
+  if (metric === 'prodhours')  return fHours * PROD_MULT[l];
+  if (metric === 'cost_total') return fHours * r.dollar_per_hour_total;
+  return 0;
+}
+
+function fmt(v) {
+  if (metric === 'headcount') return Math.round(v).toString();
+  if (metric === 'cost_total') {
+    if (Math.abs(v) >= 1000) return '$' + Math.round(v / 1000).toLocaleString() + 'k';
+    return '$' + Math.round(v).toLocaleString();
+  }
+  return Math.round(v).toLocaleString();
+}
+function deltaTag(a, b) {
+  const d = a - b;
+  const cls = d > 0 ? 'pos' : d < 0 ? 'neg' : 'zero';
+  const sign = d > 0 ? '+' : '';
+  let s;
+  if (metric === 'headcount') s = sign + Math.round(d);
+  else if (metric === 'cost_total') s = sign + (Math.abs(d) >= 1000 ? '$' + Math.round(d/1000).toLocaleString() + 'k' : '$' + Math.round(d).toLocaleString());
+  else s = sign + Math.round(d).toLocaleString();
+  return '<span class="delta ' + cls + '">' + s + '</span>';
+}
+
+function render() {
+  const date = ppDates[currentPP] || '';
+  document.getElementById('ppLabel').innerHTML =
+    'Pay period <b>PP ' + currentPP + '</b>' + (date ? ' · check date <b>' + date + '</b>' : '');
+  let html = '<thead><tr><th></th>';
+  for (const l of LABOR) html += '<th>' + LABOR_LABEL[l] + '</th>';
+  html += '<th>Tot</th></tr></thead><tbody>';
+  let bTot = 0, aTot = 0;
+  let bRow = '<tr class="bdg"><td>2026 Budget</td>';
+  let aRow = '<tr class="act" onclick="openDetail()"><td>2026 Actual</td>';
+  for (const l of LABOR) {
+    const b = budgetVal(l), a = actualVal(l);
+    bTot += b; aTot += a;
+    bRow += '<td>' + fmt(b) + '</td>';
+    aRow += '<td>' + deltaTag(a, b) + fmt(a) + '</td>';
+  }
+  bRow += '<td class="tot">' + fmt(bTot) + '</td></tr>';
+  aRow += '<td class="tot">' + deltaTag(aTot, bTot) + fmt(aTot) + '</td></tr>';
+  document.getElementById('grid').innerHTML = html + bRow + aRow + '</tbody>';
+}
+
+async function openDetail() {
+  document.getElementById('modal').classList.add('show');
+  document.getElementById('modalTitle').textContent = '2026 PP ' + currentPP + ' — employees';
+  document.getElementById('modalBody').textContent = 'Loading…';
+  try {
+    const client = await DataSource.getClient();
+    const { data, error } = await client
+      .from('hr_staffing_pp_detail_v').select('*')
+      .eq('year', 2026).eq('pp', currentPP)
+      .order('hr_work_authorization_id').order('employee_name');
+    if (error) throw error;
+    if (!data || !data.length) {
+      document.getElementById('modalBody').innerHTML = '<div style="color:#888">No employees.</div>';
+      return;
+    }
+    let rows = '', totH = 0, totC = 0;
+    for (const r of data) {
+      const h = parseFloat(r.total_hours) || 0;
+      const c = parseFloat(r.total_cost) || 0;
+      totH += h; totC += c;
+      rows += `<tr><td>${r.employee_name || ''}</td><td>${r.hr_department_id || ''}</td>
+        <td>${r.hr_work_authorization_id || ''}</td>
+        <td class="num">${h.toFixed(2)}</td>
+        <td class="num">$${c.toLocaleString(undefined,{maximumFractionDigits:2})}</td></tr>`;
+    }
+    document.getElementById('modalBody').innerHTML = `
+      <table>
+        <thead><tr><th>Name</th><th>Dept</th><th>Status</th><th class="num">Hours</th><th class="num">Total Cost</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="3">${data.length} employees</td>
+          <td class="num">${totH.toFixed(2)}</td>
+          <td class="num">$${totC.toLocaleString(undefined,{maximumFractionDigits:2})}</td></tr></tfoot>
+      </table>`;
+  } catch (e) {
+    document.getElementById('modalBody').innerHTML = '<div style="color:#e74c3c">Error: ' + e.message + '</div>';
+  }
+}
+function closeModal() { document.getElementById('modal').classList.remove('show'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+document.getElementById('metricToggle').addEventListener('click', e => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  metric = btn.dataset.metric;
+  document.querySelectorAll('#metricToggle button').forEach(b => b.classList.toggle('active', b === btn));
+  render();
+});
+
+(async () => {
+  try {
+    await Promise.all([loadBudget(), loadActuals()]);
+    computeRates();
+    render();
+    document.getElementById('status').textContent = '';
+  } catch (e) {
+    document.getElementById('status').textContent = 'Error: ' + e.message;
+  }
+})();
+</script>
+</body>
+</html>
