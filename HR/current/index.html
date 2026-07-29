@@ -30,6 +30,10 @@ a.full-link:hover { color:#4ecca3; }
 .lbox .n { font-size:1.4rem; font-weight:700; color:#fff; margin-top:2px; }
 .lbox .n.zero { color:#556; }
 .lbox.cur { border-color:#4ecca3; }
+.lbox { cursor:pointer; }
+.lbox:hover { background:#13325a; }
+.lbox.sel { background:#1a4a6e; border-color:#4ecca3; box-shadow:0 0 0 1px #4ecca3 inset; }
+#leavers tr.hl td { background:rgba(78,204,163,0.18); color:#fff; }
 #right td, #right th { text-align:left; }
 #ppLabel { color:#aaa; font-size:1.2rem; margin-bottom:14px; }
 #ppLabel b { color:#e0e0e0; }
@@ -265,6 +269,16 @@ async function openDetail(labor) {
   }
 }
 
+let leaverRows = [];
+let selectedMon = null;
+function selectMonth(mon) {
+  selectedMon = selectedMon === mon ? null : mon;
+  document.querySelectorAll('#leaverBoxes .lbox').forEach(b =>
+    b.classList.toggle('sel', b.dataset.mon === selectedMon));
+  document.querySelectorAll('#leavers tbody tr').forEach(tr =>
+    tr.classList.toggle('hl', selectedMon != null && tr.dataset.mon === selectedMon));
+}
+
 let detailRows = [];
 let detailSort = { key: 'status', dir: 1 };
 const DETAIL_COLS = [
@@ -353,7 +367,7 @@ function renderLeavers(rows) {
     const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
     const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     const n = byMonth[key] || 0;
-    boxes += '<div class="lbox' + (i === 0 ? ' cur' : '') + '">'
+    boxes += '<div class="lbox' + (i === 0 ? ' cur' : '') + '" data-mon="' + key + '" onclick="selectMonth(\'' + key + '\')">'
       + '<div class="m">' + MONTHS[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2) + '</div>'
       + '<div class="n' + (n === 0 ? ' zero' : '') + '">' + n + '</div></div>';
   }
@@ -363,14 +377,13 @@ function renderLeavers(rows) {
   if (!rows.length) { el.innerHTML = '<div style="color:#888">No end dates on file for active visa workers.</div>'; return; }
   let body = '';
   for (const r of rows) {
-    body += '<tr><td class="mon">' + fmtDate(r.end_date) + '</td>'
+    body += '<tr data-mon="' + r.end_date.slice(0, 7) + '"><td class="mon">' + fmtDate(r.end_date) + '</td>'
       + '<td>' + (r.hr_work_authorization_id || '') + '</td>'
       + '<td>' + (r.employee_name || '') + '</td>'
       + '<td>' + (r.hr_department_id || '') + '</td></tr>';
   }
   el.innerHTML = '<table><thead><tr><th>End date</th><th>Visa</th><th>Name</th><th>Dept</th></tr></thead>'
-    + '<tbody>' + body + '</tbody>'
-    + '<tfoot><tr><td colspan="4">' + rows.length + ' upcoming</td></tr></tfoot></table>';
+    + '<tbody>' + body + '</tbody></table>';
 }
 
 (async () => {
