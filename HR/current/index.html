@@ -17,7 +17,14 @@ body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; backg
 a.full-link { font-size:0.75rem; color:#888; text-decoration:none; }
 a.full-link:hover { color:#4ecca3; }
 #status { font-size:0.7rem; color:#888; }
-#main { padding:20px; }
+#main { padding:20px; display:flex; gap:24px; align-items:flex-start; }
+#left { flex:1; min-width:0; }
+#right { flex:1; min-width:0; background:#16213e; border:1px solid #2a3a5e; border-radius:6px; padding:14px 18px; }
+#right h3 { font-size:0.9rem; color:#4ecca3; margin-bottom:10px; }
+#right table { min-width:0; width:100%; font-size:0.82rem; }
+#right th, #right td { padding:5px 10px; }
+#right td.mon { font-weight:700; color:#fff; }
+#right td.names { text-align:left; color:#ccc; white-space:normal; font-size:0.78rem; line-height:1.5; }
 #ppLabel { color:#aaa; font-size:0.85rem; margin-bottom:10px; }
 #ppLabel b { color:#e0e0e0; }
 table { border-collapse:collapse; font-size:0.95rem; min-width:640px; }
@@ -57,14 +64,23 @@ td.tot { font-weight:700; color:#fff; border-left:2px solid #2a3a5e; }
       <button data-metric="prodhours">Prod Hours</button>
       <button data-metric="cost_total">Total Cost</button>
     </div>
-    <a class="full-link" href="../index.html">Full page →</a>
+    <div class="toggle-group">
+      <button class="active">Current</button>
+      <button onclick="location.href='../index.html'">Full</button>
+    </div>
     <span id="status">Loading…</span>
   </div>
 </div>
 
 <div id="main">
-  <div id="ppLabel"></div>
-  <table id="grid"></table>
+  <div id="left">
+    <div id="ppLabel"></div>
+    <table id="grid"></table>
+  </div>
+  <div id="right">
+    <h3>Visa workers who left — 2026</h3>
+    <div id="leavers">Loading…</div>
+  </div>
 </div>
 
 <div id="modal" onclick="if(event.target===this)closeModal()">
@@ -291,12 +307,71 @@ document.getElementById('metricToggle').addEventListener('click', e => {
   render();
 });
 
+// ===== Visa leavers (right panel) =====
+// A "leaver" = appeared in 2026 as a visa type (WFE/H2A/FUERTE) and is no
+// longer on payroll under ANY labor type (someone who converted to
+// FUERTE (Local) has not left). Names are matched case-insensitively —
+// payroll switched name casing mid-year, which otherwise fakes departures.
+const VISA = new Set(['wfe','h2a','fuerte']);
+async function loadLeavers() {
+  const client = await DataSource.getClient();
+  const all = [];
+  let page = 0; const PAGE = 1000;
+  while (true) {
+    const { data, error } = await client
+      .from('hr_staffing_pp_detail_v')
+      .select('employee_name, labor_type, pp, check_date')
+      .eq('year', 2026)
+      .range(page * PAGE, (page + 1) * PAGE - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    page++;
+  }
+  const ppl = new Map(); // UPPER name -> {name, lastPP, lastDate, everVisa, lastVisaType}
+  for (const r of all) {
+    const key = (r.employee_name || '').toUpperCase().trim();
+    if (!key) continue;
+    let p = ppl.get(key);
+    if (!p) { p = { name: key, lastPP: 0, lastDate: '', everVisa: false, lastVisaType: '' }; ppl.set(key, p); }
+    if (r.pp >= p.lastPP) { p.lastPP = r.pp; p.lastDate = r.check_date; }
+    if (VISA.has(r.labor_type)) { p.everVisa = true; p.lastVisaType = r.labor_type; }
+  }
+  const leavers = [...ppl.values()]
+    .filter(p => p.everVisa && p.lastPP < currentPP)
+    .sort((a, b) => a.lastDate.localeCompare(b.lastDate) || a.name.localeCompare(b.name));
+  renderLeavers(leavers);
+}
+
+function renderLeavers(leavers) {
+  const el = document.getElementById('leavers');
+  if (!leavers.length) { el.innerHTML = '<div style="color:#888">No visa workers have left in 2026.</div>'; return; }
+  const byMonth = new Map(); // 'YYYY-MM' -> [leaver]
+  for (const p of leavers) {
+    const mon = p.lastDate.slice(0, 7);
+    if (!byMonth.has(mon)) byMonth.set(mon, []);
+    byMonth.get(mon).push(p);
+  }
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const label = m => MONTHS[+m.slice(5) - 1] + ' ' + m.slice(0, 4);
+  const typeLbl = { wfe:'WFE', h2a:'H2A', fuerte:'Fuerte' };
+  let html = '<table><thead><tr><th style="text-align:left">Month</th><th class="num"># left</th><th style="text-align:left">Names</th></tr></thead><tbody>';
+  for (const [mon, list] of byMonth) {
+    const names = list.map(p => p.name + ' <span style="color:#888">(' + (typeLbl[p.lastVisaType] || '') + ')</span>').join(', ');
+    html += '<tr><td class="mon">' + label(mon) + '</td><td class="num">' + list.length + '</td><td class="names">' + names + '</td></tr>';
+  }
+  html += '</tbody><tfoot><tr><td>Total</td><td class="num">' + leavers.length + '</td><td></td></tr></tfoot></table>';
+  el.innerHTML = html;
+}
+
 (async () => {
   try {
     await Promise.all([loadBudget(), loadActuals()]);
     computeRates();
     render();
     document.getElementById('status').textContent = '';
+    await loadLeavers();
   } catch (e) {
     document.getElementById('status').textContent = 'Error: ' + e.message;
   }
