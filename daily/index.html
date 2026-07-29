@@ -440,15 +440,24 @@ function renderCukePoTable() {
   const end   = rd.getTime() + 6 * 86400000;
   const today = rd.getTime();
 
+  const priorStart = rd.getTime() - 7 * 86400000; // prior 7 days (refDate-7 .. refDate-1)
+  const priorEnd   = rd.getTime() - 1 * 86400000;
+
   const blank = () => ({ KW: 0, KR: 0, KF: 0, JW: 0, JR: 0, kLb: 0, jLb: 0 });
   const byDate = {};
+  const prior = blank();
   cukePoRows.forEach(r => {
     const dt = r._y ? new Date(Date.UTC(r._y, r._m - 1, r._d)) : null;
     if (!dt) return;
     const t = dt.getTime();
-    if (t < start || t > end) return;
     const sku = r.SKU;
     if (!CUKE_SKUS.includes(sku)) return;
+    if (t >= priorStart && t <= priorEnd) {
+      prior[sku] += (r.Cases || 0);
+      if (CUKE_K.includes(sku)) prior.kLb += (r.Pounds || 0);
+      else if (CUKE_J.includes(sku)) prior.jLb += (r.Pounds || 0);
+    }
+    if (t < start || t > end) return;
     if (!byDate[t]) byDate[t] = { dt, ...blank() };
     byDate[t][sku] += (r.Cases || 0);
     if (CUKE_K.includes(sku)) byDate[t].kLb += (r.Pounds || 0);
@@ -462,6 +471,23 @@ function renderCukePoTable() {
     tbody.innerHTML = '<tr><td colspan="9" style="color:#888;">No cuke POs in the next 7 days</td></tr>';
     return;
   }
+
+  // Prior-7-days total row above the daily rows — same lb/day convention as
+  // the Total row (K/J lb divided by 7 growing days), Cases = window total.
+  const priorCases = CUKE_SKUS.reduce((s, x) => s + prior[x], 0);
+  const priorTr = document.createElement('tr');
+  priorTr.className = 'total-row';
+  priorTr.innerHTML = `
+    <td>Prior 7 days (lb/day)</td>
+    <td class="num">${Math.round(prior.kLb / 7).toLocaleString()}</td>
+    <td class="num">${Math.round(prior.jLb / 7).toLocaleString()}</td>
+    <td class="num">${priorCases.toLocaleString()}</td>
+    <td class="num">${prior.KW || ''}</td>
+    <td class="num">${prior.KR || ''}</td>
+    <td class="num">${prior.KF || ''}</td>
+    <td class="num">${prior.JW || ''}</td>
+    <td class="num">${prior.JR || ''}</td>`;
+  tbody.appendChild(priorTr);
 
   const tot = { ...blank(), dt: null };
   keys.forEach(k => {
