@@ -307,7 +307,7 @@ function renderDetail() {
     totH += r.hours; totC += r.cost;
     rows += `<tr><td>${r.name}</td><td>${r.dept}</td><td>${r.status}</td>
       <td class="num">${r.hours.toFixed(2)}</td>
-      <td class="num">$${r.cost.toLocaleString(undefined,{maximumFractionDigits:2})}</td></tr>`;
+      <td class="num">$${r.cost.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}</td></tr>`;
   }
   const ths = DETAIL_COLS.map(c => {
     const arrow = c.key === key ? (dir === 1 ? ' ▲' : ' ▼') : '';
@@ -319,7 +319,7 @@ function renderDetail() {
       <tbody>${rows}</tbody>
       <tfoot><tr><td colspan="3">${sorted.length} employees</td>
         <td class="num">${totH.toFixed(2)}</td>
-        <td class="num">$${totC.toLocaleString(undefined,{maximumFractionDigits:2})}</td></tr></tfoot>
+        <td class="num">$${totC.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}</td></tr></tfoot>
     </table>`;
 }
 function closeModal() { document.getElementById('detail').classList.remove('show'); }
