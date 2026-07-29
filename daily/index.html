@@ -467,10 +467,6 @@ function renderCukePoTable() {
   const tbody = document.getElementById('cukepo-tbody');
   tbody.innerHTML = '';
   const keys = Object.keys(byDate).sort((a, b) => a - b);
-  if (!keys.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="color:#888;">No cuke POs in the next 7 days</td></tr>';
-    return;
-  }
 
   // Prior-7-days total row above the daily rows — same lb/day convention as
   // the Total row (K/J lb divided by 7 growing days), Cases = window total.
@@ -488,6 +484,11 @@ function renderCukePoTable() {
     <td class="num">${prior.JW || ''}</td>
     <td class="num">${prior.JR || ''}</td>`;
   tbody.appendChild(priorTr);
+
+  if (!keys.length) {
+    tbody.innerHTML += '<tr><td colspan="9" style="color:#888;">No cuke POs in the next 7 days</td></tr>';
+    return;
+  }
 
   const tot = { ...blank(), dt: null };
   keys.forEach(k => {
