@@ -33,16 +33,17 @@ a.full-link:hover { color:#4ecca3; }
 #right td, #right th { text-align:left; }
 #ppLabel { color:#aaa; font-size:1.2rem; margin-bottom:14px; }
 #ppLabel b { color:#e0e0e0; }
-table { border-collapse:collapse; font-size:1.4rem; min-width:0; width:100%; }
-th, td { padding:10px 14px; text-align:right; border-bottom:1px solid #0f3460; white-space:nowrap; font-variant-numeric:tabular-nums; }
-th { background:#0f3460; color:#aaa; font-weight:600; font-size:1.05rem; }
+table { border-collapse:collapse; font-size:1.15rem; min-width:0; width:100%; }
+th, td { padding:8px 12px; text-align:right; border-bottom:1px solid #0f3460; white-space:nowrap; font-variant-numeric:tabular-nums; }
+th { background:#0f3460; color:#aaa; font-weight:600; font-size:0.9rem; }
 th:first-child, td:first-child { text-align:left; }
 td:first-child { color:#e0e0e0; font-weight:600; background:#16213e; }
 tr.bdg td { background:rgba(155,89,182,0.06); }
 tr.act td { background:rgba(78,204,163,0.05); cursor:pointer; }
 tr.act:hover td { filter:brightness(1.2); }
 td.tot { font-weight:700; color:#fff; border-left:2px solid #2a3a5e; }
-.delta { font-size:0.95rem; margin-right:6px; }
+.delta { font-size:1rem; }
+tr.dlt td { background:rgba(78,204,163,0.03); font-size:1rem; }
 .delta.pos { color:#4ecca3; }
 .delta.neg { color:#e74c3c; }
 .delta.zero { color:#888; }
@@ -216,17 +217,20 @@ function render() {
   for (const l of LABOR) html += '<th>' + LABOR_LABEL[l] + '</th>';
   html += '<th>Tot</th></tr></thead><tbody>';
   let bTot = 0, aTot = 0;
-  let bRow = '<tr class="bdg"><td>2026 Budget</td>';
-  let aRow = '<tr class="act"><td>2026 Actual</td>';
+  let bRow = '<tr class="bdg"><td>Budget</td>';
+  let aRow = '<tr class="act"><td>Actual</td>';
+  let dRow = '<tr class="dlt"><td>Δ</td>';
   for (const l of LABOR) {
     const b = budgetVal(l), a = actualVal(l);
     bTot += b; aTot += a;
     bRow += '<td>' + fmt(b) + '</td>';
-    aRow += '<td onclick="openDetail(\'' + l + '\')">' + deltaTag(a, b) + fmt(a) + '</td>';
+    aRow += '<td onclick="openDetail(\'' + l + '\')">' + fmt(a) + '</td>';
+    dRow += '<td>' + deltaTag(a, b) + '</td>';
   }
   bRow += '<td class="tot">' + fmt(bTot) + '</td></tr>';
-  aRow += '<td class="tot" onclick="openDetail()">' + deltaTag(aTot, bTot) + fmt(aTot) + '</td></tr>';
-  document.getElementById('grid').innerHTML = html + bRow + aRow + '</tbody>';
+  aRow += '<td class="tot" onclick="openDetail()">' + fmt(aTot) + '</td></tr>';
+  dRow += '<td class="tot">' + deltaTag(aTot, bTot) + '</td></tr>';
+  document.getElementById('grid').innerHTML = html + bRow + aRow + dRow + '</tbody>';
 }
 
 async function openDetail(labor) {
