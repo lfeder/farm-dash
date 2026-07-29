@@ -31,18 +31,18 @@ a.full-link:hover { color:#4ecca3; }
 .lbox .n.zero { color:#556; }
 .lbox.cur { border-color:#4ecca3; }
 #right td, #right th { text-align:left; }
-#ppLabel { color:#aaa; font-size:0.85rem; margin-bottom:10px; }
+#ppLabel { color:#aaa; font-size:1.5rem; margin-bottom:16px; }
 #ppLabel b { color:#e0e0e0; }
-table { border-collapse:collapse; font-size:0.95rem; min-width:640px; }
-th, td { padding:8px 16px; text-align:right; border-bottom:1px solid #0f3460; white-space:nowrap; font-variant-numeric:tabular-nums; }
-th { background:#0f3460; color:#aaa; font-weight:600; font-size:0.78rem; }
+table { border-collapse:collapse; font-size:1.8rem; min-width:640px; }
+th, td { padding:12px 22px; text-align:right; border-bottom:1px solid #0f3460; white-space:nowrap; font-variant-numeric:tabular-nums; }
+th { background:#0f3460; color:#aaa; font-weight:600; font-size:1.3rem; }
 th:first-child, td:first-child { text-align:left; }
 td:first-child { color:#e0e0e0; font-weight:600; background:#16213e; }
 tr.bdg td { background:rgba(155,89,182,0.06); }
 tr.act td { background:rgba(78,204,163,0.05); cursor:pointer; }
 tr.act:hover td { filter:brightness(1.2); }
 td.tot { font-weight:700; color:#fff; border-left:2px solid #2a3a5e; }
-.delta { font-size:0.78rem; margin-right:6px; }
+.delta { font-size:1.1rem; margin-right:8px; }
 .delta.pos { color:#4ecca3; }
 .delta.neg { color:#e74c3c; }
 .delta.zero { color:#888; }
@@ -210,8 +210,7 @@ function deltaTag(a, b) {
 
 function render() {
   const date = ppDates[currentPP] || '';
-  document.getElementById('ppLabel').innerHTML =
-    'Pay period <b>PP ' + currentPP + '</b>' + (date ? ' · check date <b>' + date + '</b>' : '');
+  document.getElementById('ppLabel').innerHTML = 'As of <b>' + date + '</b>';
   let html = '<thead><tr><th></th>';
   for (const l of LABOR) html += '<th>' + LABOR_LABEL[l] + '</th>';
   html += '<th>Tot</th></tr></thead><tbody>';
