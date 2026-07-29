@@ -319,11 +319,16 @@ document.getElementById('metricToggle').addEventListener('click', e => {
 // below shows every future end date, including beyond the six boxes.
 async function loadLeavers() {
   const client = await DataSource.getClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  // Window = the six month boxes: this month through end of month +5
+  const limit = new Date(now.getFullYear(), now.getMonth() + 6, 0);
+  const limitStr = limit.getFullYear() + '-' + String(limit.getMonth() + 1).padStart(2, '0') + '-' + String(limit.getDate()).padStart(2, '0');
   const { data, error } = await client
     .from('hr_visa_end_dates_v')
     .select('employee_name, hr_department_id, hr_work_authorization_id, end_date')
     .gte('end_date', today)
+    .lte('end_date', limitStr)
     .order('end_date').order('employee_name');
   if (error) throw error;
   renderLeavers(data || []);
