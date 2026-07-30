@@ -825,6 +825,9 @@ function renderLettuceTable() {
 
   const phSeen = new Set();
   let totPhBoards = 0, totPhNet = 0;
+  // Collect rows first, then sort GH + PH-only rows TOGETHER by pond/side so
+  // PH-only ponds (no GH row yet) interleave in pond order instead of trailing.
+  const outRows = [];
 
   dayRows.forEach(r => {
     const boards = Math.round(r.BoardsPerPond) || 0;
@@ -863,7 +866,7 @@ function renderLettuceTable() {
       <td class="num">${phLbCell}</td>
       <td class="num">${phTotCell}</td>
     `;
-    tbody.appendChild(tr);
+    outRows.push({ pond: normPond(r.Pond), side: String(r.Side || ''), tr });
   });
 
   // PH (packhouse) pond/varieties with no GH grid row for the day (e.g. GH weights
@@ -886,8 +889,13 @@ function renderLettuceTable() {
         <td class="num">${ph.boards.toLocaleString()}</td>
         <td class="num">${phLb}</td>
         <td class="num">${Math.round(ph.net).toLocaleString()}</td>`;
-      tbody.appendChild(tr);
+      outRows.push({ pond: ph.pond, side: '', tr });
     });
+
+  outRows.sort((a, b) =>
+    a.pond.localeCompare(b.pond, undefined, { numeric: true, sensitivity: 'base' })
+    || a.side.localeCompare(b.side, undefined, { sensitivity: 'base' }));
+  outRows.forEach(r => tbody.appendChild(r.tr));
 
   const avgLbBoard = totBoards ? totLbs / totBoards : 0;
   const avgPhLb = totPhBoards ? totPhNet / totPhBoards : 0;
