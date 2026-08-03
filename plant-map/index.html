@@ -718,7 +718,7 @@ function buildRawRowsFromTables(rowsTbl, blocksTbl, plantTbl) {
                 total_plants2: plan.nb * plan.ppb,
                 variety2: plan.variety,
                 sheetRow: null, // only set in sheets mode
-                rowId: gr.id,   // org_site_gh_row_id — used for Supabase writes
+                rowId: gr.id,   // org_site_cuke_gh_row_id — used for Supabase writes
             });
         });
     });
@@ -1295,7 +1295,7 @@ async function saveToSupabase(saves) {
                 grow_variety_id_2: s.variety2,
                 plants_per_bag:    s.ppb,
             })
-            .eq('org_site_gh_row_id', s.rowId)
+            .eq('org_site_cuke_gh_row_id', s.rowId)
             .eq('scenario', 'current');
         if (error) throw error;
     }
