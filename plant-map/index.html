@@ -564,7 +564,7 @@ function buildBagChangesFromBatches(batchTbl) {
         const m = String(raw).match(/^(\d{4})-(\d{2})-(\d{2})/);
         if (!m) return;
         const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-        const site = b.site_id;
+        const site = siteKey(b.site_id);
         const ghs = site === 'hk' ? ['Hamakua', 'Kohala']
             : [SITE_GH_MAP[site] || (site || '').toUpperCase()];
         ghs.forEach(gh => {
@@ -651,6 +651,9 @@ function toggleView() {
 // Three tables joined client-side into the same shape parseGvizResponse
 // produces, so the rest of the dashboard code is mode-agnostic.
 const SITE_GH_MAP = {'01':'GH1','02':'GH2','03':'GH3','04':'GH4','05':'GH5','06':'GH6','07':'GH7','08':'GH8','ko':'Kona','hi':'Hilo','wa':'Waimea'};
+// Prod site_ids gained a farm prefix ('jtl_01', 'bip_hk'); strip it so the
+// old short keys ('01', 'hk') keep working.
+const siteKey = (s) => { const p = String(s || '').split('_'); return p[p.length - 1]; };
 const VARIETY_NAME_MAP = {'k':'Keiki','j':'Japanese','e':'English'};
 
 function gvizToObjects(t) {
@@ -683,10 +686,10 @@ function buildRawRowsFromTables(rowsTbl, blocksTbl, plantTbl) {
     // (reverse blocks like GH1/GH2/GH4 need row_num DESC to match the sheet).
     const rows = [];
     blocks.forEach(block => {
-        const site = block.site_id;
+        const site = siteKey(block.site_id);   // short key ('01', 'hk') for naming
         const dir = String(block.direction || '').toLowerCase();
         const rowsInBlock = ghRows
-            .filter(gr => gr.site_id === site &&
+            .filter(gr => gr.site_id === block.site_id &&
                 Number(gr.row_num) >= Number(block.row_num_from) &&
                 Number(gr.row_num) <= Number(block.row_num_to))
             .sort((a, b) => dir === 'reverse'
