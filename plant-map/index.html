@@ -667,7 +667,8 @@ function buildRawRowsFromTables(rowsTbl, blocksTbl, plantTbl) {
     const blocks = gvizToObjects(blocksTbl);
     const plantings = gvizToObjects(plantTbl);
     const planIdx = {};
-    plantings.forEach(p => { planIdx[`${p.row_id}|${p.scenario}`] = p; });
+    // Scenario values are Proper Case in prod ('Current'/'Planned') — normalize.
+    plantings.forEach(p => { planIdx[`${p.row_id}|${String(p.scenario || '').toLowerCase()}`] = p; });
     const encode = (p) => {
         if (!p) return { variety: '', ppb: 0, nb: 0 };
         const v1 = VARIETY_NAME_MAP[(p.variety || '').toLowerCase()] || '';
@@ -683,7 +684,7 @@ function buildRawRowsFromTables(rowsTbl, blocksTbl, plantTbl) {
     const rows = [];
     blocks.forEach(block => {
         const site = block.site_id;
-        const dir = block.direction;
+        const dir = String(block.direction || '').toLowerCase();
         const rowsInBlock = ghRows
             .filter(gr => gr.site_id === site &&
                 Number(gr.row_num) >= Number(block.row_num_from) &&
@@ -1225,7 +1226,7 @@ function renderPopup() {
     });
 }
 
-const VARIETY_CODE = { 'Keiki': 'k', 'Japanese': 'j', 'English': 'e' };
+const VARIETY_CODE = { 'Keiki': 'K', 'Japanese': 'J', 'English': 'E' };
 
 function applyVariety(i) {
     const opt = EDIT_OPTIONS[i];
@@ -1296,7 +1297,7 @@ async function saveToSupabase(saves) {
                 plants_per_bag:    s.ppb,
             })
             .eq('org_site_cuke_gh_row_id', s.rowId)
-            .eq('scenario', 'current');
+            .eq('scenario', 'Current');
         if (error) throw error;
     }
     showSaveStatus('Saved');
