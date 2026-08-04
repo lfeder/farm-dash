@@ -116,7 +116,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 09:45</span>
+  <span id="versionStamp">08-04 10:00</span>
 </div>
 
 <div id="content">
@@ -281,10 +281,9 @@ async function load() {
 }
 
 function render() {
-  // Weekday readout for the as-of date, e.g. "Sun" — working days Sun/Mon/Wed/Thu get a dot.
+  // Weekday readout for the as-of date, e.g. "Sun".
   const DOWS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const wd = asOf.getUTCDay();
-  document.getElementById('asofDow').textContent = DOWS[wd] + ([0, 1, 3, 4].includes(wd) ? ' ●' : '');
+  document.getElementById('asofDow').textContent = DOWS[asOf.getUTCDay()];
   renderGantt(asOf);
   renderLegend();
 }
