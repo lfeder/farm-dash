@@ -83,6 +83,20 @@
   .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 0.76rem; color: #555; }
   .legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
   #loading { padding: 40px; text-align: center; color: #4a8c5c; }
+
+  /* Builder tab */
+  .b-panel { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+  .b-form { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; font-size: 0.82rem; color: #444; }
+  .b-form label { display: flex; flex-direction: column; gap: 3px; font-weight: 600; }
+  .b-form select, .b-form input { font: inherit; font-weight: 400; padding: 3px 6px; border: 1px solid #bbb; border-radius: 4px; }
+  .b-note { font-size: 0.8rem; color: #666; margin: 8px 0; line-height: 1.45; }
+  .b-table { border-collapse: collapse; font-size: 0.78rem; margin-top: 6px; }
+  .b-table th, .b-table td { border: 1px solid #e2ddd4; padding: 3px 9px; text-align: left; white-space: nowrap; }
+  .b-table th { background: #faf7f2; color: #777; font-size: 0.7rem; }
+  .b-table td.num { text-align: right; }
+  .b-seq { font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; }
+  .b-seq b { color: #b3402f; }
+  .b-phase-here { background: #eefbf2; outline: 2px solid #2f7d4f; border-radius: 3px; padding: 0 2px; }
 </style>
 </head>
 <body>
@@ -97,8 +111,11 @@
     <span class="toggle" id="labelToggle">
       <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button>
     </span>
+    <span class="toggle" id="pageTabs" style="margin-left:24px">
+      <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button>
+    </span>
   </div>
-  <span id="versionStamp">08-03 16:00</span>
+  <span id="versionStamp">08-03 17:00</span>
 </div>
 
 <div id="content">
@@ -106,8 +123,39 @@
   <div id="main" style="display:none;">
     <div id="filterwarn" style="display:none;"></div>
     <div id="latewarn" style="display:none;"></div>
-    <div id="gantt"></div>
-    <div class="legend" id="legend"></div>
+    <div id="schedTab">
+      <div id="gantt"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div id="builderTab" style="display:none;">
+      <div class="b-panel">
+        <div class="section-title">Build new cycles</div>
+        <div class="b-form" id="bForm">
+          <label>Lane <select id="bLane"></select></label>
+          <label>Pattern <select id="bPattern"></select></label>
+          <label>Seed name <input id="bSeed" type="text" size="14" placeholder="e.g. Mixed Version 2.0"></label>
+          <label>Density <input id="bDens" type="number" size="6" value="330"></label>
+          <label>Start (pond date) <input id="bStart" type="date"></label>
+          <label>Weeks <input id="bWeeks" type="number" min="1" max="26" value="8"></label>
+          <label>Phase <select id="bPhase"></select></label>
+          <button id="bGen" class="step-btn" style="font-weight:600">Generate</button>
+        </div>
+        <div id="bState" class="b-note"></div>
+        <div id="bPreviewWrap" style="display:none;">
+          <div class="section-title" style="margin-top:14px">Generated rows <button id="bCopy" class="step-btn">Copy as TSV (sheet columns)</button></div>
+          <div id="bBalance" class="b-note"></div>
+          <table class="b-table" id="bPreview"></table>
+        </div>
+      </div>
+      <div class="b-panel">
+        <div class="section-title">Pattern reference — how the ponds stay full</div>
+        <div class="b-note">Ponding &amp; harvesting happen only Sun / Mon / Wed / Thu. Each pattern gives the days-on-pond for
+        cohorts going on each working day, chosen so every harvest also lands on a working day. The rows-per-event sequence
+        repeats over the cohorts concurrently on the pond and sums to lane capacity (110 rows on P2–P7, 83 on P1, 110 boards
+        on C lanes) — so what goes on each day exactly replaces what comes off, and the pond is always full.</div>
+        <div id="bRef">Loading patterns…</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -400,6 +448,222 @@ document.getElementById('labelToggle').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   document.querySelectorAll('#labelToggle button').forEach(x => x.classList.toggle('active', x === b));
   document.getElementById('gantt').classList.toggle('show-days', b.dataset.mode === 'days');
+});
+
+// ══════════════════════ Builder tab ══════════════════════
+// Patterns/sequences live in Supabase (lettuce_harvest_pattern / lettuce_pattern_rows).
+// The builder generates future sheet rows for one lane: it infers where the lane is
+// in its rows-per-event sequence (the phase), then continues the sequence from a
+// chosen start date. Output is preview + copy-as-TSV only — nothing writes anywhere.
+const SB = { url: 'https://zdvpqygiqavwpxljpvqw.supabase.co', key: 'sb_publishable_HaoyPZbNIUxKPnwCh3iI3Q_1NIiWGgv' };
+const SLOT_DOW = [0, 1, 3, 4];                       // Sun Mon Wed Thu (UTC getUTCDay)
+const SLOT_KEY = ['days_sun', 'days_mon', 'days_wed', 'days_thu'];
+const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+let patterns = null;   // { pattern: {days:[4], seqs: {laneClass: [rows...]}} }
+
+async function sbGet(path) {
+  const r = await fetch(`${SB.url}/rest/v1/${path}`, { headers: { apikey: SB.key, Authorization: `Bearer ${SB.key}` } });
+  if (!r.ok) throw new Error('Supabase ' + r.status);
+  return r.json();
+}
+
+async function loadPatterns() {
+  if (patterns) return patterns;
+  const [ps, rs] = await Promise.all([
+    sbGet('lettuce_harvest_pattern?select=*&order=pattern'),
+    sbGet('lettuce_pattern_rows?select=*&order=pattern,lane_class,seq'),
+  ]);
+  patterns = {};
+  ps.forEach(p => { patterns[p.pattern] = { days: SLOT_KEY.map(k => p[k]), seqs: {} }; });
+  rs.forEach(r => { (patterns[r.pattern].seqs[r.lane_class] = patterns[r.pattern].seqs[r.lane_class] || []).push(r.rows); });
+  return patterns;
+}
+
+// Lane helpers. Lane = pond+side string as shown on the schedule (P1AB, P2A, P7AB…).
+function laneClass(lane) {
+  if (lane.startsWith('P1')) return '1';
+  if (lane.endsWith('C')) return lane[1] + 'C';       // P2C -> 2C, P3C -> 3C
+  return '2-7';
+}
+function laneWidth(lane) {
+  const pond = lane.slice(0, 2), side = lane.slice(2);
+  if (pond === 'P1') return 10;
+  if (side === 'AB') return 20;
+  if (side[0] === 'A') return 10;
+  if (side[0] === 'B') return (pond === 'P2' || pond === 'P3') ? 9 : 10;
+  if (side[0] === 'C') return 1;
+  return 20;
+}
+// Capacity check for the reference panel: how many sequence entries are concurrently
+// on the pond (avg cycle days / 7 * events per week), so seq repeated over that = cap.
+function seqConcurrency(days, seqLen) {
+  const act = days.filter(d => d != null);
+  return Math.round(act.reduce((a, b) => a + b, 0) / act.length / 7 * act.length);
+}
+
+// On-pond events for a lane: cycles grouped by pond date (rows = boards / width).
+function laneEvents(lane) {
+  const pond = lane.slice(0, 2), side = lane.slice(2);
+  const w = laneWidth(lane);
+  const by = {};
+  cycles.filter(c => c.pond === pond && c.side === side && c.ponded)
+    .forEach(c => { const k = ymd(c.ponded); by[k] = (by[k] || 0) + c.boards / w; });
+  return Object.keys(by).sort().map(k => {
+    const [y, m, d] = k.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return { date: dt, dow: dt.getUTCDay(), rows: Math.round(by[k]) };
+  });
+}
+
+// Phase inference: which rotations of the sequence match the lane's most recent
+// events (by row counts)? Returns list of candidate "next seq index" values.
+function inferPhase(seq, events) {
+  const L = seq.length;
+  if (L === 1) return [0];
+  const recent = events.slice(-Math.min(L, 6)).map(e => e.rows);
+  const m = recent.length;
+  const cands = [];
+  for (let k = 0; k < L; k++) {            // k = seq index of recent[0]
+    let ok = true;
+    for (let i = 0; i < m; i++) if (seq[(k + i) % L] !== recent[i]) { ok = false; break; }
+    if (ok) cands.push((k + m) % L);       // next event's index
+  }
+  return cands.length ? [...new Set(cands)] : null;   // null = history doesn't match this pattern
+}
+
+function fmtUS(d) { return `${d.getUTCMonth() + 1}/${d.getUTCDate()}/${d.getUTCFullYear()}`; }
+
+function renderRef() {
+  const el = document.getElementById('bRef');
+  let h = '';
+  Object.keys(patterns).forEach(p => {
+    const { days, seqs } = patterns[p];
+    const land = SLOT_DOW.map((dow, i) => days[i] == null ? '—' : WD[(dow + days[i]) % 7]);
+    h += `<div style="margin:14px 0 4px"><b>${esc(p)}</b> <span style="color:#888;font-size:0.75rem">pond Sun/Mon/Wed/Thu → harvest ${land.join(' / ')}</span></div>`;
+    h += `<table class="b-table"><tr><th>Lane class</th><th>Rows sequence (repeats)</th><th>Sum</th><th>Fills</th></tr>`;
+    Object.keys(seqs).forEach(lc => {
+      const s = seqs[lc];
+      const conc = seqConcurrency(days, s.length);
+      const reps = Math.max(1, Math.round(conc / s.length));
+      const sum = s.reduce((a, b) => a + b, 0);
+      h += `<tr><td>${esc(lc)}</td><td class="b-seq">${s.join(' ')}</td><td class="num">${sum}</td>`
+        + `<td class="num">${sum * reps}${reps > 1 ? ` (×${reps})` : ''}${s.length === 1 ? ` (${s[0]}×${conc})` : ''}</td></tr>`;
+    });
+    h += `</table>`;
+  });
+  el.innerHTML = h;
+}
+
+function builderInit() {
+  const lanes = [...new Set(cycles.filter(c => c.ponded).map(c => c.pond + c.side))].sort();
+  const selL = document.getElementById('bLane');
+  selL.innerHTML = lanes.map(l => `<option>${esc(l)}</option>`).join('');
+  const selP = document.getElementById('bPattern');
+  selP.innerHTML = Object.keys(patterns).map(p => `<option>${esc(p)}</option>`).join('');
+  renderRef();
+  const upd = () => builderState();
+  selL.addEventListener('change', upd); selP.addEventListener('change', upd);
+  document.getElementById('bGen').addEventListener('click', builderGenerate);
+  document.getElementById('bCopy').addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('bPreview').dataset.tsv || '');
+  });
+  builderState();
+}
+
+// Show the lane's recent events + inferred phase; populate the phase picker.
+function builderState() {
+  const lane = document.getElementById('bLane').value;
+  const pat = document.getElementById('bPattern').value;
+  const lc = laneClass(lane);
+  const seq = (patterns[pat] || {}).seqs?.[lc];
+  const ev = laneEvents(lane);
+  const st = document.getElementById('bState');
+  const selPh = document.getElementById('bPhase');
+  const last = ev.slice(-6);
+  let html = `<b>${esc(lane)}</b> (class ${lc}, ${laneWidth(lane)} boards/row) — last events: `
+    + (last.map(e => `${WD[e.dow]} ${fmtMD(e.date)}=${e.rows}r`).join(', ') || 'none');
+  if (!seq) {
+    html += `<br><span style="color:#b3402f">Pattern ${esc(pat)} has no sequence for lane class ${lc}.</span>`;
+    selPh.innerHTML = '';
+  } else {
+    const cands = inferPhase(seq, ev);
+    const opts = seq.map((r, i) => `<option value="${i}">${i + 1} of ${seq.length} (${r} rows next)</option>`).join('');
+    selPh.innerHTML = opts;
+    if (cands && cands.length) {
+      selPh.value = cands[0];
+      html += `<br>Inferred phase: next event is position <b>${cands[0] + 1}</b> of ${seq.length} (${seq[cands[0]]} rows)`
+        + (cands.length > 1 ? ` — ambiguous, also possible: ${cands.slice(1).map(c => c + 1).join(', ')}` : '');
+    } else {
+      html += `<br><span style="color:#9a6a00">Recent history doesn't match this pattern's sequence (pattern change?). Pick the phase manually — during a transition, match new pondings to what harvests each day.</span>`;
+    }
+    // default start: next working day after the last event
+    const lastD = ev.length ? ev[ev.length - 1].date : hstToday();
+    let d = new Date(lastD.getTime() + DAY);
+    while (!SLOT_DOW.includes(d.getUTCDay())) d = new Date(d.getTime() + DAY);
+    document.getElementById('bStart').value = ymd(d);
+  }
+  st.innerHTML = html;
+}
+
+function builderGenerate() {
+  const lane = document.getElementById('bLane').value;
+  const pat = document.getElementById('bPattern').value;
+  const lc = laneClass(lane), w = laneWidth(lane);
+  const p = patterns[pat]; const seq = p.seqs[lc];
+  if (!seq) return;
+  const seedName = document.getElementById('bSeed').value.trim() || 'Mixed Version 2.0';
+  const dens = +document.getElementById('bDens').value || 330;
+  const weeks = +document.getElementById('bWeeks').value || 8;
+  const sv = document.getElementById('bStart').value;
+  const [y, m, dd] = sv.split('-').map(Number);
+  let d = new Date(Date.UTC(y, m - 1, dd));
+  let phase = +document.getElementById('bPhase').value || 0;
+  const end = new Date(d.getTime() + weeks * 7 * DAY);
+  const rowsOut = [];
+  while (d < end) {
+    const si = SLOT_DOW.indexOf(d.getUTCDay());
+    if (si >= 0 && p.days[si] != null) {
+      const r = seq[phase % seq.length]; phase++;
+      const harv = new Date(d.getTime() + p.days[si] * DAY);
+      rowsOut.push({ pond: lane.slice(0, 2), side: lane.slice(2), rows: r, boards: r * w,
+        seed: new Date(d.getTime() - 2 * DAY), ponded: new Date(d.getTime()), harv, days: p.days[si] });
+    }
+    d = new Date(d.getTime() + DAY);
+  }
+  // Preview table + balance vs existing expected harvests on this lane.
+  const pondP = lane.slice(0, 2), sideP = lane.slice(2);
+  const exist = {};
+  cycles.filter(c => c.pond === pondP && c.side === sideP && !c.harv && c.end).forEach(c => {
+    exist[ymd(c.end)] = (exist[ymd(c.end)] || 0) + c.boards;
+  });
+  let bal = '', mism = 0;
+  rowsOut.forEach(r => {
+    const off = exist[ymd(r.ponded)] || 0;
+    if (Math.round(off) !== r.boards) mism++;
+  });
+  bal = mism === 0
+    ? `<span style="color:#2f7d4f">✓ every generated on-pond day exactly replaces the boards expected to harvest that day.</span>`
+    : `<span style="color:#9a6a00">⚠ ${mism} of ${rowsOut.length} events don't match the boards harvesting that day on this lane (expected during a pattern transition, or if existing future rows already cover part of the window — check for overlap before pasting).</span>`;
+  document.getElementById('bBalance').innerHTML = bal;
+  const t = document.getElementById('bPreview');
+  t.innerHTML = `<tr><th>Pond</th><th>Side</th><th>Seed</th><th>Density</th><th>Rows</th><th>Boards</th><th>Seeding</th><th>On pond</th><th>Exp harvest</th><th>Days</th><th>Off that day</th></tr>`
+    + rowsOut.map(r => `<tr><td>${r.pond}</td><td>${r.side}</td><td>${esc(seedName)}</td><td class="num">${dens}</td><td class="num">${r.rows}</td><td class="num">${r.boards}</td><td>${fmtMD2(r.seed)}</td><td>${WD[r.ponded.getUTCDay()]} ${fmtMD2(r.ponded)}</td><td>${WD[r.harv.getUTCDay()]} ${fmtMD2(r.harv)}</td><td class="num">${r.days}</td><td class="num">${Math.round(exist[ymd(r.ponded)] || 0)}</td></tr>`).join('');
+  // TSV in grow_L_seeding column order: Pond, Side, Variety, SeedName, SeedsPerBoard, Boards, SeedingDate, PondDate, ExpHarvestDate
+  t.dataset.tsv = rowsOut.map(r => [r.pond, r.side, 'MS', seedName, dens, r.boards, fmtUS(r.seed), fmtUS(r.ponded), fmtUS(r.harv)].join('\t')).join('\n');
+  document.getElementById('bPreviewWrap').style.display = '';
+}
+
+// Tab switching; builder data loads lazily on first open.
+document.getElementById('pageTabs').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#pageTabs button').forEach(x => x.classList.toggle('active', x === b));
+  const builder = b.dataset.tab === 'builder';
+  document.getElementById('schedTab').style.display = builder ? 'none' : '';
+  document.getElementById('builderTab').style.display = builder ? '' : 'none';
+  if (builder && !patterns) {
+    try { await loadPatterns(); builderInit(); }
+    catch (err) { document.getElementById('bRef').textContent = 'Error loading patterns: ' + (err.message || err); }
+  }
 });
 
 load().catch(err => {
