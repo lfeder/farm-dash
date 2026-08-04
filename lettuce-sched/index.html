@@ -98,7 +98,7 @@
       <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button>
     </span>
   </div>
-  <span id="versionStamp">08-03 15:30</span>
+  <span id="versionStamp">08-03 16:00</span>
 </div>
 
 <div id="content">
@@ -258,7 +258,10 @@ function renderGantt(today) {
   // date but have no actual harvest recorded. The off-pond filter hides these,
   // so surface them here — each is either an unrecorded harvest or lettuce
   // genuinely overdue on the pond.
-  const late = cycles.filter(c => !c.harv && c.end && c.end <= today && c.ponded && c.ponded <= today)
+  // Always measured against REAL today, not the as-of date: rolling the view into
+  // the future simulates those harvests, it doesn't make them late.
+  const realToday = hstToday();
+  const late = cycles.filter(c => !c.harv && c.end && c.end <= realToday && c.ponded && c.ponded <= realToday)
     .sort((a, b) => a.end - b.end);
   const lw = document.getElementById('latewarn');
   if (late.length) {
