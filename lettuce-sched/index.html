@@ -116,7 +116,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 10:00</span>
+  <span id="versionStamp">08-04 10:30</span>
 </div>
 
 <div id="content">
@@ -136,6 +136,7 @@
           <label>Weeks (all lanes) <input id="bWeeks" type="number" min="1" max="26" value="8"></label>
           <button id="bGen" class="step-btn" style="font-weight:600">Generate all included lanes</button>
         </div>
+        <div id="bModes" class="b-note"></div>
         <table class="b-table" id="bLanes"></table>
         <div class="b-note">Start = first new pond date (defaults to the working day after the lane's last scheduled event).
         Phase = position in the pattern's rows sequence for that first event — inferred from the lane's recent history where it matches; pick manually after a pattern change.</div>
@@ -517,10 +518,14 @@ function laneEvents(lane) {
   const pond = lane.slice(0, 2), side = lane.slice(2);
   const w = laneWidth(lane);
   const by = {};
-  // P4 is built as one merged AB lane: its history spans separate A/B rows.
-  const sideMatch = c => side === 'AB' && pond === 'P4' ? ['A', 'B', 'AB'].includes(c.side) : c.side === side;
-  cycles.filter(c => c.pond === pond && sideMatch(c) && c.ponded)
-    .forEach(c => { const k = ymd(c.ponded); by[k] = (by[k] || 0) + c.boards / w; });
+  // Layout-agnostic history: an AB lane reads A+B+AB rows (boards summed over the
+  // full 20-wide lane); an A or B lane reads its own rows plus its width-share of
+  // any AB rows (an AB cohort spans both sides at the same row positions).
+  cycles.filter(c => c.pond === pond && c.ponded && (c.side === side || (side === 'AB' ? ['A', 'B'].includes(c.side) : c.side === 'AB')))
+    .forEach(c => {
+      const b = (side !== 'AB' && c.side === 'AB') ? c.boards * w / 20 : c.boards;
+      const k = ymd(c.ponded); by[k] = (by[k] || 0) + b / w;
+    });
   return Object.keys(by).sort().map(k => {
     const [y, m, d] = k.split('-').map(Number);
     const dt = new Date(Date.UTC(y, m - 1, d));
@@ -587,13 +592,30 @@ function renderRef() {
 // One config row per lane: include, pattern, seed, density, start, phase.
 // Defaults come from the lane's most recent cycle; phase is re-inferred whenever
 // the pattern changes.
+// Per-pond lane layout: 'AB' (one merged 20-wide lane) or 'A+B' (two lanes).
+// Flippable in the UI; persisted per browser. P1 is always a single AB lane;
+// C lanes are always excluded (built by hand).
+const LANE_MODE_KEY = 'lsched_lane_modes';
+function laneModes() {
+  const def = { P2: 'A+B', P3: 'A+B', P4: 'AB', P5: 'AB', P6: 'AB', P7: 'AB' };
+  try { return { ...def, ...JSON.parse(localStorage.getItem(LANE_MODE_KEY) || '{}') } } catch { return def }
+}
 function builderInit() {
-  // Builder lanes: no C lanes (built by hand), no stray P2AB, and P4 as one
-  // merged AB lane in place of P4A/P4B (matching P5-P7 convention).
-  let lanes = [...new Set(cycles.filter(c => c.ponded).map(c => c.pond + c.side))].sort()
-    .filter(l => !l.endsWith('C') && l !== 'P2AB' && l !== 'P4A' && l !== 'P4B');
-  if (!lanes.includes('P4AB')) lanes.push('P4AB');
-  lanes = lanes.sort();
+  const modes = laneModes();
+  const lanes = ['P1AB'];
+  ['P2', 'P3', 'P4', 'P5', 'P6', 'P7'].forEach(p => {
+    if (modes[p] === 'AB') lanes.push(p + 'AB'); else lanes.push(p + 'A', p + 'B');
+  });
+  // Pond layout toggles above the grid.
+  const mt = document.getElementById('bModes');
+  mt.innerHTML = 'Lane layout: ' + ['P2', 'P3', 'P4', 'P5', 'P6', 'P7'].map(p =>
+    `<button class="step-btn" data-pond="${p}" title="Click to flip">${p}: ${modes[p]}</button>`).join(' ');
+  mt.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const m = laneModes();
+    m[b.dataset.pond] = m[b.dataset.pond] === 'AB' ? 'A+B' : 'AB';
+    localStorage.setItem(LANE_MODE_KEY, JSON.stringify(m));
+    builderInit();                                   // rebuild the grid
+  });
   const t = document.getElementById('bLanes');
   const patOpts = p => Object.keys(patterns).map(x => `<option${x === p ? ' selected' : ''}>${esc(x)}</option>`).join('');
   const seedSel = cur => {
@@ -647,9 +669,9 @@ function builderInit() {
   const sw = document.getElementById('bStartWeek');
   sw.innerHTML = sunOpts;
   t.querySelectorAll('tr[data-lane] .bl-start').forEach(sel => { sel.innerHTML = sunOpts; });
-  sw.addEventListener('change', () => {
+  sw.onchange = () => {
     t.querySelectorAll('tr[data-lane] .bl-start').forEach(sel => { sel.value = sw.value; });
-  });
+  };
   // Lot picker follows the seed selection: active lots for that seed, or blank.
   const fillLots = tr => {
     const seed = tr.querySelector('.bl-seed').value;
@@ -667,10 +689,11 @@ function builderInit() {
     const toggle = () => tr.querySelectorAll('.bl-cfg').forEach(td => td.style.visibility = inc.checked ? '' : 'hidden');
     inc.addEventListener('change', toggle); toggle();
   });
-  document.getElementById('bGen').addEventListener('click', builderGenerate);
-  document.getElementById('bCopy').addEventListener('click', () => {
+  // Property assignment (not addEventListener) so rebuilds don't stack handlers.
+  document.getElementById('bGen').onclick = builderGenerate;
+  document.getElementById('bCopy').onclick = () => {
     navigator.clipboard.writeText(document.getElementById('bPreview').dataset.tsv || '');
-  });
+  };
 }
 
 // Fill one lane row's phase picker + default start from its pattern & history.
@@ -726,11 +749,14 @@ function builderGenerate() {
     let phase = +tr.querySelector('.bl-phase').value || 0;
     const end = new Date(d.getTime() + weeks * 7 * DAY);
     const pondP = lane.slice(0, 2), sideP = lane.slice(2);
-    const sideM = c => sideP === 'AB' && pondP === 'P4' ? ['A', 'B', 'AB'].includes(c.side) : c.side === sideP;
+    const wL = laneWidth(lane);
     const exist = {};
-    cycles.filter(c => c.pond === pondP && sideM(c) && !c.harv && c.end).forEach(c => {
-      exist[ymd(c.end)] = (exist[ymd(c.end)] || 0) + c.boards;
-    });
+    cycles.filter(c => c.pond === pondP && !c.harv && c.end
+        && (c.side === sideP || (sideP === 'AB' ? ['A', 'B'].includes(c.side) : c.side === 'AB')))
+      .forEach(c => {
+        const b = (sideP !== 'AB' && c.side === 'AB') ? c.boards * wL / 20 : c.boards;
+        exist[ymd(c.end)] = (exist[ymd(c.end)] || 0) + b;
+      });
     while (d < end) {
       const si = SLOT_DOW.indexOf(d.getUTCDay());
       if (si >= 0 && p.days[si] != null) {
