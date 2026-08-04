@@ -116,7 +116,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 10:30</span>
+  <span id="versionStamp">08-04 11:15</span>
 </div>
 
 <div id="content">
@@ -134,6 +134,12 @@
         <div class="b-form" style="margin-bottom:10px">
           <label>Start week (Sun) <select id="bStartWeek"></select></label>
           <label>Weeks (all lanes) <input id="bWeeks" type="number" min="1" max="26" value="8"></label>
+          <label>Mode <select id="bMode" title="How to size events during a transition">
+            <option value="steady">Steady pattern (may dip below full)</option>
+            <option value="match">Match harvests (always full, lumps recirculate)</option>
+            <option value="converge" selected>Converge (always full, splits excess to +7d)</option>
+          </select></label>
+          <label style="flex-direction:row;align-items:center;gap:5px"><input type="checkbox" id="bReplace" checked> Replace planned rows ≥ start</label>
           <button id="bGen" class="step-btn" style="font-weight:600">Generate all included lanes</button>
         </div>
         <div id="bModes" class="b-note"></div>
@@ -728,10 +734,22 @@ function laneRowState(tr) {
 }
 
 // Generate for every included lane over the shared weeks horizon.
+// Generation modes (the transition engine):
+// - steady:   follow the pattern's rows sequence from the chosen phase. Simple,
+//             but during a transition the lane can run under/over full.
+// - match:    each event puts on exactly the boards harvesting that day, so the
+//             lane is always full — but an uneven outgoing profile recirculates
+//             (every cohort returns a fixed number of events later).
+// - converge: always full AND works back to the template: pond the template rows
+//             with the normal cycle; any excess harvest goes on as a second row
+//             with cycle+7 days (lands the same working weekday a week later),
+//             pushing the lump forward until a light day absorbs it.
 function builderGenerate() {
   const weeks = +document.getElementById('bWeeks').value || 8;
+  const mode = document.getElementById('bMode').value;
+  const replace = document.getElementById('bReplace').checked;
   const out = [], tsv = [];
-  let mism = 0, total = 0;
+  let mism = 0, total = 0, minFillTxt = [];
   document.querySelectorAll('#bLanes tr[data-lane]').forEach(tr => {
     if (!tr.querySelector('.bl-inc').checked) return;
     const lane = tr.dataset.lane;
@@ -739,6 +757,7 @@ function builderGenerate() {
     const p = patterns[pat]; const seq = p.seqs[laneClass(lane)];
     if (!seq) return;
     const w = laneWidth(lane);
+    const cap = (lane.startsWith('P1') ? 83 : 110) * w;
     const seedName = tr.querySelector('.bl-seed').value.trim() || 'Mixed Version 2.0';
     const variety = (seedOptions.find(s => s.seed_name === seedName) || {}).variety || 'MS';
     const seedLot = tr.querySelector('.bl-lot').value;
@@ -746,43 +765,73 @@ function builderGenerate() {
     const sv = tr.querySelector('.bl-start').value;
     const [y, m, dd] = sv.split('-').map(Number);
     let d = new Date(Date.UTC(y, m - 1, dd));
+    const startT = d.getTime();
     let phase = +tr.querySelector('.bl-phase').value || 0;
     const end = new Date(d.getTime() + weeks * 7 * DAY);
     const pondP = lane.slice(0, 2), sideP = lane.slice(2);
-    const wL = laneWidth(lane);
-    const exist = {};
+    // Outgoing-harvest calendar. With "replace planned rows" on, rows whose pond
+    // date is on/after the start are assumed deleted and excluded.
+    const off = {};
     cycles.filter(c => c.pond === pondP && !c.harv && c.end
-        && (c.side === sideP || (sideP === 'AB' ? ['A', 'B'].includes(c.side) : c.side === 'AB')))
+        && (c.side === sideP || (sideP === 'AB' ? ['A', 'B'].includes(c.side) : c.side === 'AB'))
+        && !(replace && c.ponded && c.ponded.getTime() >= startT))
       .forEach(c => {
-        const b = (sideP !== 'AB' && c.side === 'AB') ? c.boards * wL / 20 : c.boards;
-        exist[ymd(c.end)] = (exist[ymd(c.end)] || 0) + b;
+        const b = (sideP !== 'AB' && c.side === 'AB') ? c.boards * w / 20 : c.boards;
+        off[ymd(c.end)] = (off[ymd(c.end)] || 0) + b;
       });
+    let fill = cap, minFill = cap;
+    const emit = (b, days) => {
+      const harv = new Date(d.getTime() + days * DAY);
+      off[ymd(harv)] = (off[ymd(harv)] || 0) + b;   // generated cohorts recirculate
+      out.push({ lane, pond: pondP, side: sideP, rows: Math.round(b / w * 10) / 10, boards: Math.round(b), seedName, dens,
+        seed: new Date(d.getTime() - 2 * DAY), ponded: new Date(d.getTime()), harv, days, off: 0, fill: 0 });
+      tsv.push([pondP, sideP, variety, seedName, seedLot, dens, Math.round(b), fmtUS(new Date(d.getTime() - 2 * DAY)), fmtUS(d), fmtUS(harv)].join('\t'));
+      return Math.round(b);
+    };
     while (d < end) {
       const si = SLOT_DOW.indexOf(d.getUTCDay());
       if (si >= 0 && p.days[si] != null) {
-        const r = seq[phase % seq.length]; phase++;
-        const harv = new Date(d.getTime() + p.days[si] * DAY);
-        const off = Math.round(exist[ymd(d)] || 0);
-        if (off !== r * w) mism++;
-        total++;
-        out.push({ lane, pond: pondP, side: sideP, rows: r, boards: r * w, seedName, dens,
-          seed: new Date(d.getTime() - 2 * DAY), ponded: new Date(d.getTime()), harv, days: p.days[si], off });
-        tsv.push([pondP, sideP, variety, seedName, seedLot, dens, r * w, fmtUS(new Date(d.getTime() - 2 * DAY)), fmtUS(d), fmtUS(harv)].join('\t'));
+        const offToday = Math.round(off[ymd(d)] || 0);
+        const target = seq[phase % seq.length] * w;
+        const before = out.length;
+        let onToday = 0;
+        if (mode === 'steady') {
+          onToday = emit(target, p.days[si]);
+        } else if (mode === 'match') {
+          if (offToday > 0) onToday = emit(offToday, p.days[si]);
+        } else {                                    // converge
+          if (offToday >= target) {
+            onToday = emit(target, p.days[si]);
+            if (offToday - target > 0) onToday += emit(offToday - target, p.days[si] + 7);
+          } else if (offToday > 0) {
+            onToday = emit(offToday, p.days[si]);
+          }
+        }
+        phase++;
+        fill += onToday - offToday;
+        if (fill < minFill) minFill = fill;
+        for (let i = before; i < out.length; i++) { out[i].off = offToday; out[i].fill = fill; }
+        if (onToday !== offToday) mism++;
+        total += out.length - before;
       }
       d = new Date(d.getTime() + DAY);
     }
+    if (minFill < cap) minFillTxt.push(`${lane} dips to ${minFill}/${cap}`);
   });
-  document.getElementById('bBalance').innerHTML = mism === 0
-    ? `<span style="color:#2f7d4f">✓ ${total} events across all lanes — every on-pond day exactly replaces the boards expected to harvest that day.</span>`
-    : `<span style="color:#9a6a00">⚠ ${mism} of ${total} events don't match the boards harvesting that day (expected during a pattern transition or where existing future rows overlap the window — check before pasting).</span>`;
+  const modeName = { steady: 'steady pattern', match: 'match harvests', converge: 'converge' }[mode];
+  document.getElementById('bBalance').innerHTML = (mism === 0
+    ? `<span style="color:#2f7d4f">✓ ${total} rows (${modeName}) — every on-pond day exactly replaces the boards harvesting that day; lanes stay full throughout.</span>`
+    : `<span style="color:#9a6a00">⚠ ${modeName}: ${mism} event days where on ≠ off — ${minFillTxt.length ? minFillTxt.join(' · ') : 'lane fill deviates from cap during the window'}.</span>`)
+    + (replace ? `<br><span style="color:#b3402f;font-weight:600">Replace mode: delete each lane's existing sheet rows with pond date ≥ its start before pasting, or boards double-count.</span>` : '');
   const t = document.getElementById('bPreview');
   let lastLane = null;
-  t.innerHTML = `<tr><th>Lane</th><th>Seed</th><th>Density</th><th>Rows</th><th>Boards</th><th>Seeding</th><th>On pond</th><th>Exp harvest</th><th>Days</th><th>Off that day</th></tr>`
+  t.innerHTML = `<tr><th>Lane</th><th>Seed</th><th>Density</th><th>Rows</th><th>Boards</th><th>Seeding</th><th>On pond</th><th>Exp harvest</th><th>Days</th><th>Off that day</th><th>Fill after</th></tr>`
     + out.map(r => {
       const sep = lastLane && r.lane !== lastLane ? ' style="border-top:3px solid #c9b896"' : '';
       lastLane = r.lane;
-      const offCol = r.off === r.boards ? '' : ';color:#9a6a00;font-weight:700';
-      return `<tr${sep}><td><b>${esc(r.lane)}</b></td><td>${esc(r.seedName)}</td><td class="num">${r.dens}</td><td class="num">${r.rows}</td><td class="num">${r.boards}</td><td>${fmtMD2(r.seed)}</td><td>${WD[r.ponded.getUTCDay()]} ${fmtMD2(r.ponded)}</td><td>${WD[r.harv.getUTCDay()]} ${fmtMD2(r.harv)}</td><td class="num">${r.days}</td><td class="num" style="${offCol.slice(1)}">${r.off}</td></tr>`;
+      const capL = (r.lane.startsWith('P1') ? 83 : 110) * laneWidth(r.lane);
+      const fillCol = r.fill === capL ? '' : 'color:#b3402f;font-weight:700';
+      return `<tr${sep}><td><b>${esc(r.lane)}</b></td><td>${esc(r.seedName)}</td><td class="num">${r.dens}</td><td class="num">${r.rows}</td><td class="num">${r.boards}</td><td>${fmtMD2(r.seed)}</td><td>${WD[r.ponded.getUTCDay()]} ${fmtMD2(r.ponded)}</td><td>${WD[r.harv.getUTCDay()]} ${fmtMD2(r.harv)}</td><td class="num">${r.days}</td><td class="num">${r.off}</td><td class="num" style="${fillCol}">${r.fill}</td></tr>`;
     }).join('');
   // TSV in grow_L_seeding column order: Pond, Side, Variety, SeedName, SeedsPerBoard, Boards, SeedingDate, PondDate, ExpHarvestDate
   t.dataset.tsv = tsv.join('\n');
