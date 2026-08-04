@@ -70,6 +70,7 @@
   .toggle button.active { background: #25623c; color: #fff; }
   #labelToggle { margin-left: 24px; }
   #filterwarn { margin: 0 0 12px; background: #fdf6e3; border: 1px solid #f0d890; color: #9a6a00; border-radius: 6px; padding: 8px 12px; font-size: 0.85rem; font-weight: 600; }
+  #latewarn { margin: 0 0 12px; background: #fdecea; border: 1px solid #e8a49c; color: #b3402f; border-radius: 6px; padding: 8px 12px; font-size: 0.85rem; font-weight: 600; }
   .g-block.planned { opacity: 0.6; border-style: dashed; }
 
   /* Issues + legend */
@@ -97,13 +98,14 @@
       <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button>
     </span>
   </div>
-  <span id="versionStamp">08-03 14:30</span>
+  <span id="versionStamp">08-03 15:00</span>
 </div>
 
 <div id="content">
   <div id="loading">Loading schedule…</div>
   <div id="main" style="display:none;">
     <div id="filterwarn" style="display:none;"></div>
+    <div id="latewarn" style="display:none;"></div>
     <div id="gantt"></div>
     <div class="legend" id="legend"></div>
   </div>
@@ -251,6 +253,28 @@ function renderGantt(today) {
     return 20;
   };
   const ponds = [...new Set(cycles.map(c => c.pond))].sort();
+
+  // Late-harvest checker: cycles whose expected harvest is on/before the as-of
+  // date but have no actual harvest recorded. The off-pond filter hides these,
+  // so surface them here — each is either an unrecorded harvest or lettuce
+  // genuinely overdue on the pond.
+  const late = cycles.filter(c => !c.harv && c.end && c.end <= today && c.ponded && c.ponded <= today)
+    .sort((a, b) => a.end - b.end);
+  const lw = document.getElementById('latewarn');
+  if (late.length) {
+    const byLane = {};
+    late.forEach(c => {
+      const k = c.pond + c.side;
+      (byLane[k] = byLane[k] || { n: 0, b: 0, oldest: c.end }).n++;
+      byLane[k].b += c.boards;
+      if (c.end < byLane[k].oldest) byLane[k].oldest = c.end;
+    });
+    const parts = Object.keys(byLane).sort().map(k =>
+      `${k}: ${byLane[k].n}× ${Math.round(byLane[k].b)} bd (oldest ${fmtMD(byLane[k].oldest)})`);
+    lw.textContent = `⚠ ${late.length} cycle${late.length > 1 ? 's' : ''} past expected harvest with no harvest recorded — ${parts.join(' · ')}`;
+    lw.style.display = '';
+  } else lw.style.display = 'none';
+
   const g = document.getElementById('gantt');
   g.innerHTML = '';
   const dEq = (a, b) => a && b && a.getTime() === b.getTime();   // same calendar day
