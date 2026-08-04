@@ -98,7 +98,7 @@
       <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button>
     </span>
   </div>
-  <span id="versionStamp">08-03 15:00</span>
+  <span id="versionStamp">08-03 15:30</span>
 </div>
 
 <div id="content">
@@ -304,10 +304,14 @@ function renderGantt(today) {
     // Gather only sides that actually have cycles, then allocate heights.
     const rows = sides.map(side => {
       const w = sideWidth(pond, side);
-      // End-of-day semantics: a cycle is off the pond once its harvest date — actual
-      // if recorded, else expected — is on/before the as-of date, so rolling the
-      // date forward drains ponds on schedule.
-      const list = cycles.filter(c => c.pond === pond && c.side === side && !(c.end && c.end <= today))
+      // End-of-day semantics, two regimes:
+      // - as-of today or earlier (reality): only an ACTUAL harvest takes a cycle off,
+      //   so unrecorded harvests stay visible (and trip the late banner).
+      // - as-of in the future (simulation): expected harvests drain the pond too,
+      //   so rolling forward previews the planned state.
+      const simFuture = today > hstToday();
+      const offBy = c => c.harv || (simFuture ? c.end : null);
+      const list = cycles.filter(c => c.pond === pond && c.side === side && !(offBy(c) && offBy(c) <= today))
         // Soonest harvest first (leftmost); same-day harvests sort by pond
         // date (earliest ponded first), so sheet row order never matters.
         .sort((a, b) => a.end - b.end || (a.ponded || a.seed) - (b.ponded || b.seed));
