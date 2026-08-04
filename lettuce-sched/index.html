@@ -97,7 +97,7 @@
       <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button>
     </span>
   </div>
-  <span id="versionStamp">07-06 13:00</span>
+  <span id="versionStamp">08-03 14:30</span>
 </div>
 
 <div id="content">
@@ -280,9 +280,10 @@ function renderGantt(today) {
     // Gather only sides that actually have cycles, then allocate heights.
     const rows = sides.map(side => {
       const w = sideWidth(pond, side);
-      // End-of-day semantics: a cycle actually harvested on/before the as-of date is
-      // off the pond; un-harvested cycles stay visible even past expected harvest.
-      const list = cycles.filter(c => c.pond === pond && c.side === side && !(c.harv && c.harv <= today))
+      // End-of-day semantics: a cycle is off the pond once its harvest date — actual
+      // if recorded, else expected — is on/before the as-of date, so rolling the
+      // date forward drains ponds on schedule.
+      const list = cycles.filter(c => c.pond === pond && c.side === side && !(c.end && c.end <= today))
         // Soonest harvest first (leftmost); same-day harvests sort by pond
         // date (earliest ponded first), so sheet row order never matters.
         .sort((a, b) => a.end - b.end || (a.ponded || a.seed) - (b.ponded || b.seed));
