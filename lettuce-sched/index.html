@@ -115,7 +115,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 09:10</span>
+  <span id="versionStamp">08-04 09:30</span>
 </div>
 
 <div id="content">
@@ -513,7 +513,9 @@ function laneEvents(lane) {
   const pond = lane.slice(0, 2), side = lane.slice(2);
   const w = laneWidth(lane);
   const by = {};
-  cycles.filter(c => c.pond === pond && c.side === side && c.ponded)
+  // P4 is built as one merged AB lane: its history spans separate A/B rows.
+  const sideMatch = c => side === 'AB' && pond === 'P4' ? ['A', 'B', 'AB'].includes(c.side) : c.side === side;
+  cycles.filter(c => c.pond === pond && sideMatch(c) && c.ponded)
     .forEach(c => { const k = ymd(c.ponded); by[k] = (by[k] || 0) + c.boards / w; });
   return Object.keys(by).sort().map(k => {
     const [y, m, d] = k.split('-').map(Number);
@@ -582,7 +584,12 @@ function renderRef() {
 // Defaults come from the lane's most recent cycle; phase is re-inferred whenever
 // the pattern changes.
 function builderInit() {
-  const lanes = [...new Set(cycles.filter(c => c.ponded).map(c => c.pond + c.side))].sort();
+  // Builder lanes: no C lanes (built by hand), no stray P2AB, and P4 as one
+  // merged AB lane in place of P4A/P4B (matching P5-P7 convention).
+  let lanes = [...new Set(cycles.filter(c => c.ponded).map(c => c.pond + c.side))].sort()
+    .filter(l => !l.endsWith('C') && l !== 'P2AB' && l !== 'P4A' && l !== 'P4B');
+  if (!lanes.includes('P4AB')) lanes.push('P4AB');
+  lanes = lanes.sort();
   const t = document.getElementById('bLanes');
   const patOpts = p => Object.keys(patterns).map(x => `<option${x === p ? ' selected' : ''}>${esc(x)}</option>`).join('');
   const seedSel = cur => {
@@ -600,14 +607,11 @@ function builderInit() {
       // guess from the newest cycle length. (P1AB pattern still undecided:
       // 21/__/21/__ vs 17/__/18/__ — defaulting to 21/__/21/__.)
       const DEFAULTS = {
-        P1AB: { pat: '21/__/21/__', seed: 'Astro' },
+        P1AB: { pat: '17/__/18/__', seed: 'Astro' },
         P2B: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P2C: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P3A: { pat: '28/28/28/28', seed: '3310' },
         P3B: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P3C: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P4A: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P4B: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
+        P4AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P5AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P6AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P7AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
@@ -718,8 +722,9 @@ function builderGenerate() {
     let phase = +tr.querySelector('.bl-phase').value || 0;
     const end = new Date(d.getTime() + weeks * 7 * DAY);
     const pondP = lane.slice(0, 2), sideP = lane.slice(2);
+    const sideM = c => sideP === 'AB' && pondP === 'P4' ? ['A', 'B', 'AB'].includes(c.side) : c.side === sideP;
     const exist = {};
-    cycles.filter(c => c.pond === pondP && c.side === sideP && !c.harv && c.end).forEach(c => {
+    cycles.filter(c => c.pond === pondP && sideM(c) && !c.harv && c.end).forEach(c => {
       exist[ymd(c.end)] = (exist[ymd(c.end)] || 0) + c.boards;
     });
     while (d < end) {
