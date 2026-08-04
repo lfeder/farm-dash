@@ -115,7 +115,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 07:30</span>
+  <span id="versionStamp">08-04 08:00</span>
 </div>
 
 <div id="content">
@@ -131,7 +131,7 @@
       <div class="b-panel">
         <div class="section-title">Build new cycles — all lanes</div>
         <div class="b-form" style="margin-bottom:10px">
-          <label>Start week (Sun) <input id="bStartWeek" type="date"></label>
+          <label>Start week (Sun) <select id="bStartWeek"></select></label>
           <label>Weeks (all lanes) <input id="bWeeks" type="number" min="1" max="26" value="8"></label>
           <button id="bGen" class="step-btn" style="font-weight:600">Generate all included lanes</button>
         </div>
@@ -606,12 +606,25 @@ function builderInit() {
         + `<td class="bl-cfg">${seedSel(lastC ? lastC.seedName : '')}</td>`
         + `<td class="bl-cfg"><select class="bl-lot" title="Active lots for this seed from inventory (invnt_lot)"></select></td>`
         + `<td class="bl-cfg"><input class="bl-dens" type="number" style="width:60px" value="${lastC ? lastC.seedsPerBoard : 330}"></td>`
-        + `<td class="bl-cfg"><input class="bl-start" type="date"></td>`
+        + `<td class="bl-cfg"><select class="bl-start"></select></td>`
         + `<td class="bl-cfg"><select class="bl-phase"></select><div class="bl-note" style="font-size:0.68rem;color:#9a6a00"></div></td>`
         + `<td class="bl-cfg" style="font-size:0.7rem;color:#777">${hist || '—'}</td>`
         + `</tr>`;
     }).join('');
   renderRef();
+  // Start weeks are Sundays only — both pickers are lists of the next 26 Sundays.
+  // Populate before laneRowState so per-lane defaults can be selected.
+  const sundays = [];
+  { let d = new Date(hstToday().getTime() + DAY);
+    while (d.getUTCDay() !== 0) d = new Date(d.getTime() + DAY);
+    for (let i = 0; i < 26; i++) { sundays.push(d); d = new Date(d.getTime() + 7 * DAY); } }
+  const sunOpts = sundays.map(s => `<option value="${ymd(s)}">Sun ${fmtMD2(s)}</option>`).join('');
+  const sw = document.getElementById('bStartWeek');
+  sw.innerHTML = sunOpts;
+  t.querySelectorAll('tr[data-lane] .bl-start').forEach(sel => { sel.innerHTML = sunOpts; });
+  sw.addEventListener('change', () => {
+    t.querySelectorAll('tr[data-lane] .bl-start').forEach(sel => { sel.value = sw.value; });
+  });
   // Lot picker follows the seed selection: active lots for that seed, or blank.
   const fillLots = tr => {
     const seed = tr.querySelector('.bl-seed').value;
@@ -628,17 +641,6 @@ function builderInit() {
     const inc = tr.querySelector('.bl-inc');
     const toggle = () => tr.querySelectorAll('.bl-cfg').forEach(td => td.style.visibility = inc.checked ? '' : 'hidden');
     inc.addEventListener('change', toggle); toggle();
-  });
-  // Global start week: always a Sunday; setting it moves every lane's start.
-  const sw = document.getElementById('bStartWeek');
-  const nextSunday = from => { let d = new Date(from.getTime()); while (d.getUTCDay() !== 0) d = new Date(d.getTime() + DAY); return d; };
-  sw.value = ymd(nextSunday(new Date(hstToday().getTime() + DAY)));
-  sw.addEventListener('change', () => {
-    if (!sw.value) return;
-    const [y, m, d] = sw.value.split('-').map(Number);
-    const sun = nextSunday(new Date(Date.UTC(y, m - 1, d)));   // snap forward to Sunday
-    sw.value = ymd(sun);
-    document.querySelectorAll('#bLanes tr[data-lane] .bl-start').forEach(inp => { inp.value = ymd(sun); });
   });
   document.getElementById('bGen').addEventListener('click', builderGenerate);
   document.getElementById('bCopy').addEventListener('click', () => {
@@ -669,10 +671,12 @@ function laneRowState(tr) {
     note.textContent = 'history ≠ pattern — set phase manually';
     note.style.color = '#9a6a00';
   }
+  // Default start: first Sunday after the lane's last scheduled event (Sundays only).
   const lastD = ev.length ? ev[ev.length - 1].date : hstToday();
   let d = new Date(lastD.getTime() + DAY);
-  while (!SLOT_DOW.includes(d.getUTCDay())) d = new Date(d.getTime() + DAY);
-  tr.querySelector('.bl-start').value = ymd(d);
+  while (d.getUTCDay() !== 0) d = new Date(d.getTime() + DAY);
+  const sel = tr.querySelector('.bl-start');
+  if ([...sel.options].some(o => o.value === ymd(d))) sel.value = ymd(d);
 }
 
 // Generate for every included lane over the shared weeks horizon.
