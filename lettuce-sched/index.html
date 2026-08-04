@@ -115,7 +115,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-03 19:00</span>
+  <span id="versionStamp">08-04 07:30</span>
 </div>
 
 <div id="content">
@@ -139,7 +139,7 @@
         <div class="b-note">Start = first new pond date (defaults to the working day after the lane's last scheduled event).
         Phase = position in the pattern's rows sequence for that first event — inferred from the lane's recent history where it matches; pick manually after a pattern change.</div>
         <div id="bPreviewWrap" style="display:none;">
-          <div class="section-title" style="margin-top:14px">Generated rows <button id="bCopy" class="step-btn">Copy as TSV (sheet columns)</button></div>
+          <div class="section-title" style="margin-top:14px">Generated rows <button id="bCopy" class="step-btn">Copy as TSV (Pond·Side·Variety·Seed·Lot·Density·Boards·Seeding·Pond·ExpHarvest)</button></div>
           <div id="bBalance" class="b-note"></div>
           <table class="b-table" id="bPreview"></table>
         </div>
@@ -461,6 +461,7 @@ const SLOT_KEY = ['days_sun', 'days_mon', 'days_wed', 'days_thu'];
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 let patterns = null;   // { pattern: {days:[4], seqs: {laneClass: [rows...]}} }
 let seedOptions = [];  // [{seed_name, variety}] — active seeds/mixes from prod inventory
+let lotOptions = {};   // { seed_name: [lot_number...] } — active lots from prod inventory
 
 async function sbGet(path) {
   const r = await fetch(`${SB.url}/rest/v1/${path}`, { headers: { apikey: SB.key, Authorization: `Bearer ${SB.key}` } });
@@ -470,12 +471,15 @@ async function sbGet(path) {
 
 async function loadPatterns() {
   if (patterns) return patterns;
-  const [ps, rs, seeds] = await Promise.all([
+  const [ps, rs, seeds, lots] = await Promise.all([
     sbGet('lettuce_harvest_pattern?select=*&order=pattern'),
     sbGet('lettuce_pattern_rows?select=*&order=pattern,lane_class,seq'),
     sbGet('lettuce_seed_options_v?select=seed_name,variety&order=seed_name'),
+    sbGet('lettuce_seed_lot_options_v?select=seed_name,lot_number&order=seed_name,lot_number'),
   ]);
   seedOptions = seeds;
+  lotOptions = {};
+  lots.forEach(l => { (lotOptions[l.seed_name] = lotOptions[l.seed_name] || []).push(l.lot_number); });
   patterns = {};
   ps.forEach(p => { patterns[p.pattern] = { days: SLOT_KEY.map(k => p[k]), seqs: {} }; });
   rs.forEach(r => { (patterns[r.pattern].seqs[r.lane_class] = patterns[r.pattern].seqs[r.lane_class] || []).push(r.rows); });
@@ -587,7 +591,7 @@ function builderInit() {
     return `<select class="bl-seed" title="Active seeds & mixes from production inventory">${extra}`
       + seedOptions.map(s => `<option value="${esc(s.seed_name)}"${s.seed_name === cur ? ' selected' : ''}>${esc(s.seed_name)} (${esc(s.variety)})</option>`).join('') + `</select>`;
   };
-  t.innerHTML = `<tr><th></th><th>Lane</th><th>Pattern</th><th>Seed (inventory)</th><th>Density</th><th>Start</th><th>Phase (next event)</th><th>Last events</th></tr>`
+  t.innerHTML = `<tr><th></th><th>Lane</th><th>Pattern</th><th>Seed (inventory)</th><th>Lot</th><th>Density</th><th>Start</th><th>Phase (next event)</th><th>Last events</th></tr>`
     + lanes.map(lane => {
       const ev = laneEvents(lane);
       const lastC = cycles.filter(c => (c.pond + c.side) === lane && c.ponded).sort((a, b) => a.ponded - b.ponded).pop();
@@ -600,6 +604,7 @@ function builderInit() {
         + `<td title="class ${laneClass(lane)} · ${laneWidth(lane)} boards/row"><b>${esc(lane)}</b></td>`
         + `<td class="bl-cfg"><select class="bl-pat">${patOpts(guess)}</select></td>`
         + `<td class="bl-cfg">${seedSel(lastC ? lastC.seedName : '')}</td>`
+        + `<td class="bl-cfg"><select class="bl-lot" title="Active lots for this seed from inventory (invnt_lot)"></select></td>`
         + `<td class="bl-cfg"><input class="bl-dens" type="number" style="width:60px" value="${lastC ? lastC.seedsPerBoard : 330}"></td>`
         + `<td class="bl-cfg"><input class="bl-start" type="date"></td>`
         + `<td class="bl-cfg"><select class="bl-phase"></select><div class="bl-note" style="font-size:0.68rem;color:#9a6a00"></div></td>`
@@ -607,9 +612,19 @@ function builderInit() {
         + `</tr>`;
     }).join('');
   renderRef();
+  // Lot picker follows the seed selection: active lots for that seed, or blank.
+  const fillLots = tr => {
+    const seed = tr.querySelector('.bl-seed').value;
+    const sel = tr.querySelector('.bl-lot');
+    const lots = lotOptions[seed] || [];
+    sel.innerHTML = `<option value="">—</option>` + lots.map(l => `<option>${esc(l)}</option>`).join('');
+    if (lots.length === 1) sel.value = lots[0];
+  };
   t.querySelectorAll('tr[data-lane]').forEach(tr => {
     laneRowState(tr);
+    fillLots(tr);
     tr.querySelector('.bl-pat').addEventListener('change', () => laneRowState(tr));
+    tr.querySelector('.bl-seed').addEventListener('change', () => fillLots(tr));
     const inc = tr.querySelector('.bl-inc');
     const toggle = () => tr.querySelectorAll('.bl-cfg').forEach(td => td.style.visibility = inc.checked ? '' : 'hidden');
     inc.addEventListener('change', toggle); toggle();
@@ -674,6 +689,7 @@ function builderGenerate() {
     const w = laneWidth(lane);
     const seedName = tr.querySelector('.bl-seed').value.trim() || 'Mixed Version 2.0';
     const variety = (seedOptions.find(s => s.seed_name === seedName) || {}).variety || 'MS';
+    const seedLot = tr.querySelector('.bl-lot').value;
     const dens = +tr.querySelector('.bl-dens').value || 330;
     const sv = tr.querySelector('.bl-start').value;
     const [y, m, dd] = sv.split('-').map(Number);
@@ -695,7 +711,7 @@ function builderGenerate() {
         total++;
         out.push({ lane, pond: pondP, side: sideP, rows: r, boards: r * w, seedName, dens,
           seed: new Date(d.getTime() - 2 * DAY), ponded: new Date(d.getTime()), harv, days: p.days[si], off });
-        tsv.push([pondP, sideP, variety, seedName, dens, r * w, fmtUS(new Date(d.getTime() - 2 * DAY)), fmtUS(d), fmtUS(harv)].join('\t'));
+        tsv.push([pondP, sideP, variety, seedName, seedLot, dens, r * w, fmtUS(new Date(d.getTime() - 2 * DAY)), fmtUS(d), fmtUS(harv)].join('\t'));
       }
       d = new Date(d.getTime() + DAY);
     }
