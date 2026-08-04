@@ -83,6 +83,7 @@
   .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 0.76rem; color: #555; }
   .legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
   #loading { padding: 40px; text-align: center; color: #4a8c5c; }
+  .b-blankrow td { color: #888; font-style: italic; }
 
   /* Builder tab */
   .b-panel { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
@@ -116,7 +117,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 11:15</span>
+  <span id="versionStamp">08-04 11:45</span>
 </div>
 
 <div id="content">
@@ -140,6 +141,7 @@
             <option value="converge" selected>Converge (always full, splits excess to +7d)</option>
           </select></label>
           <label style="flex-direction:row;align-items:center;gap:5px"><input type="checkbox" id="bReplace" checked> Replace planned rows ≥ start</label>
+          <label style="flex-direction:row;align-items:center;gap:5px" title="Converge mode: when a day's harvest is short of the template target, pond blank boards for the difference — they hold positions and absorb the deficit when they come off"><input type="checkbox" id="bBlanks"> Use blank boards</label>
           <button id="bGen" class="step-btn" style="font-weight:600">Generate all included lanes</button>
         </div>
         <div id="bModes" class="b-note"></div>
@@ -748,6 +750,7 @@ function builderGenerate() {
   const weeks = +document.getElementById('bWeeks').value || 8;
   const mode = document.getElementById('bMode').value;
   const replace = document.getElementById('bReplace').checked;
+  const useBlanks = document.getElementById('bBlanks').checked;
   const out = [], tsv = [];
   let mism = 0, total = 0, minFillTxt = [];
   document.querySelectorAll('#bLanes tr[data-lane]').forEach(tr => {
@@ -780,12 +783,14 @@ function builderGenerate() {
         off[ymd(c.end)] = (off[ymd(c.end)] || 0) + b;
       });
     let fill = cap, minFill = cap;
-    const emit = (b, days) => {
+    const emit = (b, days, blank) => {
       const harv = new Date(d.getTime() + days * DAY);
-      off[ymd(harv)] = (off[ymd(harv)] || 0) + b;   // generated cohorts recirculate
-      out.push({ lane, pond: pondP, side: sideP, rows: Math.round(b / w * 10) / 10, boards: Math.round(b), seedName, dens,
+      off[ymd(harv)] = (off[ymd(harv)] || 0) + b;   // generated cohorts recirculate (blanks free positions too)
+      out.push({ lane, pond: pondP, side: sideP, rows: Math.round(b / w * 10) / 10, boards: Math.round(b),
+        seedName: blank ? 'BLANK' : seedName, dens: blank ? 0 : dens, blank,
         seed: new Date(d.getTime() - 2 * DAY), ponded: new Date(d.getTime()), harv, days, off: 0, fill: 0 });
-      tsv.push([pondP, sideP, variety, seedName, seedLot, dens, Math.round(b), fmtUS(new Date(d.getTime() - 2 * DAY)), fmtUS(d), fmtUS(harv)].join('\t'));
+      tsv.push([pondP, sideP, blank ? 'BLANK' : variety, blank ? 'BLANK' : seedName, blank ? '' : seedLot,
+        blank ? 0 : dens, Math.round(b), fmtUS(new Date(d.getTime() - 2 * DAY)), fmtUS(d), fmtUS(harv)].join('\t'));
       return Math.round(b);
     };
     while (d < end) {
@@ -805,6 +810,9 @@ function builderGenerate() {
             if (offToday - target > 0) onToday += emit(offToday - target, p.days[si] + 7);
           } else if (offToday > 0) {
             onToday = emit(offToday, p.days[si]);
+            // Short of target: blank boards hold the remaining template positions
+            // and absorb the deficit lump when they come off.
+            if (useBlanks && target - offToday > 0) onToday += emit(target - offToday, p.days[si], true);
           }
         }
         phase++;
@@ -831,7 +839,8 @@ function builderGenerate() {
       lastLane = r.lane;
       const capL = (r.lane.startsWith('P1') ? 83 : 110) * laneWidth(r.lane);
       const fillCol = r.fill === capL ? '' : 'color:#b3402f;font-weight:700';
-      return `<tr${sep}><td><b>${esc(r.lane)}</b></td><td>${esc(r.seedName)}</td><td class="num">${r.dens}</td><td class="num">${r.rows}</td><td class="num">${r.boards}</td><td>${fmtMD2(r.seed)}</td><td>${WD[r.ponded.getUTCDay()]} ${fmtMD2(r.ponded)}</td><td>${WD[r.harv.getUTCDay()]} ${fmtMD2(r.harv)}</td><td class="num">${r.days}</td><td class="num">${r.off}</td><td class="num" style="${fillCol}">${r.fill}</td></tr>`;
+      const blankStyle = r.blank ? ' class="b-blankrow"' : '';
+      return `<tr${sep}${blankStyle}><td><b>${esc(r.lane)}</b></td><td>${r.blank ? '<i>BLANK boards</i>' : esc(r.seedName)}</td><td class="num">${r.dens || ''}</td><td class="num">${r.rows}</td><td class="num">${r.boards}</td><td>${r.blank ? '—' : fmtMD2(r.seed)}</td><td>${WD[r.ponded.getUTCDay()]} ${fmtMD2(r.ponded)}</td><td>${WD[r.harv.getUTCDay()]} ${fmtMD2(r.harv)}</td><td class="num">${r.days}</td><td class="num">${r.off}</td><td class="num" style="${fillCol}">${r.fill}</td></tr>`;
     }).join('');
   // TSV in grow_L_seeding column order: Pond, Side, Variety, SeedName, SeedsPerBoard, Boards, SeedingDate, PondDate, ExpHarvestDate
   t.dataset.tsv = tsv.join('\n');
