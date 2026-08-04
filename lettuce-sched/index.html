@@ -115,7 +115,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button>
     </span>
   </div>
-  <span id="versionStamp">08-03 17:00</span>
+  <span id="versionStamp">08-03 17:20</span>
 </div>
 
 <div id="content">
@@ -482,7 +482,7 @@ async function loadPatterns() {
 // Lane helpers. Lane = pond+side string as shown on the schedule (P1AB, P2A, P7AB…).
 function laneClass(lane) {
   if (lane.startsWith('P1')) return '1';
-  if (lane.endsWith('C')) return lane[1] + 'C';       // P2C -> 2C, P3C -> 3C
+  if (lane.endsWith('C')) return 'C';                 // all 1-wide C lanes share one class
   return '2-7';
 }
 function laneWidth(lane) {
@@ -540,14 +540,11 @@ function renderRef() {
     const { days, seqs } = patterns[p];
     const land = SLOT_DOW.map((dow, i) => days[i] == null ? '—' : WD[(dow + days[i]) % 7]);
     h += `<div style="margin:14px 0 4px"><b>${esc(p)}</b> <span style="color:#888;font-size:0.75rem">pond Sun/Mon/Wed/Thu → harvest ${land.join(' / ')}</span></div>`;
-    h += `<table class="b-table"><tr><th>Lane class</th><th>Rows sequence (repeats)</th><th>Sum</th><th>Fills</th></tr>`;
+    h += `<table class="b-table"><tr><th>Lane class</th><th>Rows sequence (repeats)</th><th>Sum = capacity</th></tr>`;
     Object.keys(seqs).forEach(lc => {
       const s = seqs[lc];
-      const conc = seqConcurrency(days, s.length);
-      const reps = Math.max(1, Math.round(conc / s.length));
       const sum = s.reduce((a, b) => a + b, 0);
-      h += `<tr><td>${esc(lc)}</td><td class="b-seq">${s.join(' ')}</td><td class="num">${sum}</td>`
-        + `<td class="num">${sum * reps}${reps > 1 ? ` (×${reps})` : ''}${s.length === 1 ? ` (${s[0]}×${conc})` : ''}</td></tr>`;
+      h += `<tr><td>${esc(lc)}</td><td class="b-seq">${s.join(' ')}</td><td class="num">${sum}</td></tr>`;
     });
     h += `</table>`;
   });
