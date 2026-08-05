@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-05 01:40</span>
+  <span id="versionStamp">08-05 01:50</span>
 </div>
 
 <div id="content">
@@ -384,13 +384,12 @@ function renderGantt(today) {
     // Gather only sides that actually have cycles, then allocate heights.
     const rows = sides.map(side => {
       const w = sideWidth(pond, side);
-      // End-of-day semantics, two regimes:
-      // - as-of today or earlier (reality): only an ACTUAL harvest takes a cycle off,
-      //   so unrecorded harvests stay visible (and trip the late banner).
-      // - as-of in the future (simulation): expected harvests drain the pond too,
-      //   so rolling forward previews the planned state.
-      const simFuture = today > hstToday();
-      const offBy = c => c.harv || (simFuture ? c.end : null);
+      // End-of-day semantics: a cycle is off the pond once its harvest date —
+      // actual if recorded, else expected — is on/before the as-of date. On a
+      // harvest day the day's due cycles are assumed cut (they show in the
+      // gutter); anything that slips past its day untouched is caught by the
+      // late banner, not by lingering on the map.
+      const offBy = c => c.harv || c.end;
       const list = cycles.filter(c => c.pond === pond && c.side === side && !(offBy(c) && offBy(c) <= today))
         // PHYSICAL pond order: earliest ponded closest to the harvest edge;
         // within a cohort, sooner harvest = front edge.
