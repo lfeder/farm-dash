@@ -117,7 +117,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 12:30</span>
+  <span id="versionStamp">08-04 13:15</span>
 </div>
 
 <div id="content">
@@ -138,11 +138,10 @@
           <label>Mode <select id="bMode" title="How to size events during a transition">
             <option value="steady">Steady pattern (may dip below full)</option>
             <option value="match">Match harvests (always full, lumps recirculate)</option>
-            <option value="converge" selected>Converge (always full, splits excess to +7d)</option>
+            <option value="converge" selected>Converge (always full, blanks buffer the change)</option>
             <option value="split">Split harvests (template from day 1, edits existing rows)</option>
           </select></label>
           <label style="flex-direction:row;align-items:center;gap:5px"><input type="checkbox" id="bReplace" checked> Replace planned rows ≥ start</label>
-          <label style="flex-direction:row;align-items:center;gap:5px" title="Converge mode: when a day's harvest is short of the template target, pond blank boards for the difference — they hold positions and absorb the deficit when they come off"><input type="checkbox" id="bBlanks"> Use blank boards</label>
           <button id="bGen" class="step-btn" style="font-weight:600">Generate all included lanes</button>
         </div>
         <div id="bModes" class="b-note"></div>
@@ -747,10 +746,12 @@ function laneRowState(tr) {
 // - match:    each event puts on exactly the boards harvesting that day, so the
 //             lane is always full — but an uneven outgoing profile recirculates
 //             (every cohort returns a fixed number of events later).
-// - converge: always full AND works back to the template: pond the template rows
-//             with the normal cycle; any excess harvest goes on as a second row
-//             with cycle+7 days (lands the same working weekday a week later),
-//             pushing the lump forward until a light day absorbs it.
+// - converge: always full AND works to the template without touching existing
+//             rows, using BLANK boards as a buffer. Blanks have no fixed harvest
+//             date — they come off whenever needed. Excess harvest → pond the
+//             template's real rows + blanks for the rest; short days → pull
+//             blanks off to make room for full template rows. The blank pool
+//             drains as the new cycle settles.
 // - split:    farm practice — reshape harvests to hit the template immediately by
 //             moving boards between ADJACENT harvest events: harvest part of the
 //             next cohort early (pull), or leave the tail of today's cohort for
@@ -760,7 +761,6 @@ function builderGenerate() {
   const weeks = +document.getElementById('bWeeks').value || 8;
   const mode = document.getElementById('bMode').value;
   const replace = document.getElementById('bReplace').checked;
-  const useBlanks = document.getElementById('bBlanks').checked;
   const out = [], tsv = [], edits = [];
   let mism = 0, total = 0, minFillTxt = [];
   document.querySelectorAll('#bLanes tr[data-lane]').forEach(tr => {
@@ -795,6 +795,7 @@ function builderGenerate() {
         (offC[k] = offC[k] || []).push({ label: `${c.seedName || c.variety} ponded ${fmtMD(c.ponded || c.seed)}`, b });
       });
     let fill = cap, minFill = cap;
+    const blankPool = [];   // blank boards on the pond, FIFO; harvest date flexible
     const emit = (b, days, blank) => {
       const harv = new Date(d.getTime() + days * DAY);
       off[ymd(harv)] = (off[ymd(harv)] || 0) + b;   // generated cohorts recirculate (blanks free positions too)
@@ -858,17 +859,31 @@ function builderGenerate() {
         } else if (mode === 'match') {
           const offToday = Math.round(off[ymd(d)] || 0);
           if (offToday > 0) onToday = emit(offToday, p.days[si]);
-        } else {                                    // converge
-          const offToday = Math.round(off[ymd(d)] || 0);
-          if (offToday >= target) {
-            onToday = emit(target, p.days[si]);
-            if (offToday - target > 0) onToday += emit(offToday - target, p.days[si] + 7);
-          } else if (offToday > 0) {
-            onToday = emit(offToday, p.days[si]);
-            // Short of target: blank boards hold the remaining template positions
-            // and absorb the deficit lump when they come off.
-            if (useBlanks && target - offToday > 0) onToday += emit(target - offToday, p.days[si], true);
+        } else {                                    // converge (blank-buffered)
+          const offReal = Math.round(off[ymd(d)] || 0);
+          // Short day: pull blanks off the pond (they harvest any working day)
+          // to make room for full template rows.
+          let blanksOff = 0;
+          if (offReal < target && blankPool.length) {
+            let need = target - offReal;
+            while (need > 0 && blankPool.length) {
+              const bp = blankPool[0];
+              const mv = Math.min(bp.b, need);
+              bp.b -= mv; need -= mv; blanksOff += mv;
+              // emit the blank's row now that its real harvest date is known
+              out.push({ lane, pond: pondP, side: sideP, rows: Math.round(mv / w * 10) / 10, boards: mv,
+                seedName: 'BLANK', dens: 0, blank: true,
+                seed: bp.ponded, ponded: bp.ponded, harv: new Date(d.getTime()), days: Math.round((d.getTime() - bp.ponded.getTime()) / DAY), off: 0, fill: 0 });
+              tsv.push([pondP, sideP, 'BLANK', 'BLANK', '', 0, mv, fmtUS(bp.ponded), fmtUS(bp.ponded), fmtUS(d)].join('\t'));
+              if (bp.b <= 0) blankPool.shift();
+            }
           }
+          const totalOff = offReal + blanksOff;
+          const onReal = Math.min(target, totalOff);
+          const onBlank = totalOff - onReal;
+          if (onReal > 0) onToday = emit(onReal, p.days[si]);
+          if (onBlank > 0) { blankPool.push({ ponded: new Date(d.getTime()), b: onBlank }); onToday += onBlank; }
+          offUsed = totalOff;
         }
         const offToday = offUsed;
         phase++;
@@ -880,6 +895,15 @@ function builderGenerate() {
       }
       d = new Date(d.getTime() + DAY);
     }
+    // Blanks still on the pond at window end: emit as open rows (harvest = window
+    // end as a placeholder) so the paste accounts for every board.
+    blankPool.forEach(bp => {
+      if (bp.b <= 0) return;
+      out.push({ lane, pond: pondP, side: sideP, rows: Math.round(bp.b / w * 10) / 10, boards: bp.b,
+        seedName: 'BLANK (still on pond)', dens: 0, blank: true,
+        seed: bp.ponded, ponded: bp.ponded, harv: end, days: Math.round((end.getTime() - bp.ponded.getTime()) / DAY), off: 0, fill: cap });
+      tsv.push([pondP, sideP, 'BLANK', 'BLANK', '', 0, bp.b, fmtUS(bp.ponded), fmtUS(bp.ponded), fmtUS(end)].join('\t'));
+    });
     if (minFill < cap) minFillTxt.push(`${lane} dips to ${minFill}/${cap}`);
   });
   const modeName = { steady: 'steady pattern', match: 'match harvests', converge: 'converge', split: 'split harvests' }[mode];
