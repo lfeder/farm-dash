@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 21:10</span>
+  <span id="versionStamp">08-04 21:25</span>
 </div>
 
 <div id="content">
@@ -475,6 +475,8 @@ function renderGantt(today) {
 
   const at = document.getElementById('axisTrack');
   if (at) at.style.minWidth = maxTrackW + 'px';
+  // Right-anchored blocks only align if every track is the SAME width.
+  g.querySelectorAll('.g-track').forEach(tr2 => { tr2.style.minWidth = maxTrackW + 'px'; tr2.style.width = maxTrackW + 'px'; });
   g.scrollLeft = g.scrollWidth;      // open at the harvest edge (right)
 }
 
@@ -1087,6 +1089,9 @@ function renderBMap() {
       + `<div class="g-track" style="height:24px;min-width:${Math.max(x, capR * PX) + 40}px">${blocks}</div></div>`;
   });
   el.innerHTML = h || '<div class="none">Generate first.</div>';
+  let mw = 0;
+  el.querySelectorAll('.g-track').forEach(tr2 => { mw = Math.max(mw, parseInt(tr2.style.minWidth) || 0); });
+  el.querySelectorAll('.g-track').forEach(tr2 => { tr2.style.minWidth = mw + 'px'; tr2.style.width = mw + 'px'; });
   el.scrollLeft = el.scrollWidth;    // open at the harvest edge (right)
 }
 document.getElementById('bMapDate').addEventListener('change', renderBMap);
