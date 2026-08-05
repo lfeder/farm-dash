@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-05 01:50</span>
+  <span id="versionStamp">08-05 02:00</span>
 </div>
 
 <div id="content">
@@ -1184,28 +1184,29 @@ function printLabels() {
         if (!changed) return;
         const src = srcOf(c) || {};
         const seedD = src.seed || new Date(c.ponded.getTime() - 2 * DAY);
+        const w2 = laneWidth(lane);
         chunkBoards(Math.round(c.boards)).forEach(b2 => {
           cards.push({
-            line1: `${lane}, S#:${src.seedsPerBoard || ''}, B#:${b2}`,
+            line1: `${lane}, S#:${src.seedsPerBoard || ''}, B#:${b2}, R#:${Math.round(b2 / w2 * 10) / 10}`,
             line2: `S:${mmdd(seedD)}, P:${mmdd(c.ponded)}, H:${mmdd(c.end)}`,
-            line3: `${src.variety || ''}:${c.name || src.seedName || ''} — ${kind}`,
-            color: wdColor(seedD),
+            line3: `${src.variety || ''}:${c.name || src.seedName || ''}`,
+            kind,
           });
         });
       });
   });
   if (!cards.length) { btn.textContent = 'No changes'; setTimeout(() => btn.textContent = 'Print labels', 1500); return; }
-  openPrintDoc(`<html><head><title>Cycle labels</title><style>
+  openPrintDoc(`<html><head><meta charset="utf-8"><title>Cycle labels</title><style>
     @page { margin: 8mm; }
     html, body { margin: 0; }
     body { font-family: Arial, sans-serif; color: #000; }
     .label-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-    .label { min-width: 0; min-height: 92px; padding: 8px 10px; display: flex; flex-direction: column;
-      justify-content: center; font-size: 12px; font-weight: bold; line-height: 1.35;
-      overflow-wrap: anywhere; break-inside: avoid;
-      -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .label { position: relative; min-width: 0; min-height: 92px; padding: 8px 10px; display: flex; flex-direction: column;
+      justify-content: center; font-size: 14px; font-weight: bold; line-height: 1.35;
+      border: 1px solid #000; overflow-wrap: anywhere; break-inside: avoid; }
+    .kind { position: absolute; top: 6px; right: 8px; font-size: 15px; font-weight: 900; letter-spacing: 0.5px; }
   </style></head><body><div class="label-grid">`
-    + cards.map(c => `<div class="label" style="border-left:18px solid ${c.color}"><div>${esc(c.line1)}</div><div>${esc(c.line2)}</div><div>${esc(c.line3)}</div></div>`).join('')
+    + cards.map(c => `<div class="label"><span class="kind">${esc(c.kind)}</span><div>${esc(c.line1)}</div><div>${esc(c.line2)}</div><div>${esc(c.line3)}</div></div>`).join('')
     + `</div><scr` + `ipt>window.print()</scr` + `ipt></body></html>`);
 }
 // Walking sheet: the Both view (or active view) as a printable page.
