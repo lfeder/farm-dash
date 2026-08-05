@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 21:25</span>
+  <span id="versionStamp">08-04 21:45</span>
 </div>
 
 <div id="content">
@@ -835,7 +835,7 @@ function builderGenerate() {
         const b = (sideP !== 'AB' && c.side === 'AB') ? c.boards * w / 20 : c.boards;
         off[ymd(c.end)] = (off[ymd(c.end)] || 0) + b;
         const k = ymd(c.end);
-        (offC[k] = offC[k] || []).push({ label: `${c.seedName || c.variety} ponded ${fmtMD(c.ponded || c.seed)}`, b });
+        (offC[k] = offC[k] || []).push({ label: `${c.seedName || c.variety} ponded ${fmtMD(c.ponded || c.seed)}`, b, p: ymd(c.ponded || c.seed) });
         (bVizData[lane] = bVizData[lane] || []).push({ ponded: c.ponded, end: c.end, boards: b, name: c.seedName || c.variety });
       });
     // Auto-phase: slide the sequence over the first cycle's outgoing harvests
@@ -861,7 +861,7 @@ function builderGenerate() {
     const emit = (b, days, blank) => {
       const harv = new Date(d.getTime() + days * DAY);
       off[ymd(harv)] = (off[ymd(harv)] || 0) + b;   // generated cohorts recirculate (blanks free positions too)
-      (offC[ymd(harv)] = offC[ymd(harv)] || []).push({ label: (blank ? 'BLANK' : 'new') + ` ponded ${fmtMD(d)}`, b, gen: true });
+      (offC[ymd(harv)] = offC[ymd(harv)] || []).push({ label: (blank ? 'BLANK' : 'new') + ` ponded ${fmtMD(d)}`, b, gen: true, p: ymd(d) });
       out.push({ lane, pond: pondP, side: sideP, rows: Math.round(b / w * 10) / 10, boards: Math.round(b),
         seedName: blank ? 'BLANK' : seedName, dens: blank ? 0 : dens, blank,
         seed: new Date(d.getTime() - 2 * DAY), ponded: new Date(d.getTime()), harv, days, off: 0, fill: 0 });
@@ -887,29 +887,37 @@ function builderGenerate() {
           const tot = () => Math.round(ev.reduce((s, e) => s + e.b, 0));
           const nextKey = () => Object.keys(offC).filter(x => x > k && offC[x].some(e => e.b > 0)).sort()[0];
           if (tot() > target) {
+            // FIFO pond: previously-left rows sit at the harvest edge and are cut
+            // FIRST; what stays behind is the tail of the day's YOUNGEST boards
+            // (latest pond date), so each deferral waits only until the next event.
             let excess = tot() - target;
             let nk = nextKey();
             if (!nk) { let nd = new Date(d.getTime() + DAY); while (!SLOT_DOW.includes(nd.getUTCDay())) nd = new Date(nd.getTime() + DAY); nk = ymd(nd); offC[nk] = offC[nk] || []; }
-            for (let i = ev.length - 1; i >= 0 && excess > 0; i--) {
-              if (ev[i].b <= 0) continue;
-              const mv = Math.min(ev[i].b, excess);
-              ev[i].b -= mv; excess -= mv;
-              offC[nk].push({ label: ev[i].label, b: mv, gen: ev[i].gen });
+            const byYoungest = ev.slice().sort((a2, b2) => (b2.p || '').localeCompare(a2.p || ''));
+            for (const e2 of byYoungest) {
+              if (excess <= 0) break;
+              if (e2.b <= 0) continue;
+              const mv = Math.min(e2.b, excess);
+              e2.b -= mv; excess -= mv;
+              offC[nk].push({ label: e2.label, b: mv, gen: e2.gen, p: e2.p });
               off[nk] = (off[nk] || 0) + mv;
-              edits.push({ lane, cohort: ev[i].label, boards: mv, from: k, to: nk, kind: 'leave on pond — harvest with next event' });
+              edits.push({ lane, cohort: e2.label, boards: mv, from: k, to: nk, p: e2.p, kind: 'leave on pond — harvest with next event' });
             }
           } else if (tot() < target) {
+            // Deficit: harvest early from the next event's OLDEST boards (they
+            // are physically next at the harvest edge anyway).
             let need = target - tot();
             const nk = nextKey();                      // pull from the next event only
             if (nk) {
-              const arr = offC[nk];
-              for (let i = 0; i < arr.length && need > 0; i++) {
-                if (arr[i].gen || arr[i].b <= 0) continue;   // don't harvest our own new cohorts early
-                const mv = Math.min(arr[i].b, need);
-                arr[i].b -= mv; need -= mv;
-                ev.push({ label: arr[i].label, b: mv });
+              const arr = offC[nk].slice().sort((a2, b2) => (a2.p || '').localeCompare(b2.p || ''));
+              for (const e2 of arr) {
+                if (need <= 0) break;
+                if (e2.gen || e2.b <= 0) continue;     // don't harvest our own new cohorts early
+                const mv = Math.min(e2.b, need);
+                e2.b -= mv; need -= mv;
+                ev.push({ label: e2.label, b: mv, p: e2.p });
                 off[nk] = (off[nk] || 0) - mv;
-                edits.push({ lane, cohort: arr[i].label, boards: mv, from: nk, to: k, kind: 'harvest early — with this event' });
+                edits.push({ lane, cohort: e2.label, boards: mv, from: nk, to: k, p: e2.p, kind: 'harvest early — with this event' });
               }
             }
           }
@@ -972,9 +980,9 @@ function builderGenerate() {
   // cohorts (move boards between harvest dates), then append generated rows.
   edits.forEach(e => {
     const list = bVizData[e.lane] || [];
-    // Mirror the generator: moves take from already-moved (split) pieces first,
-    // so original cohorts stay intact and only the traveling remainder cascades.
-    const cands = list.filter(c => !c.gen && ymd(c.end) === e.from && c.boards > 0);
+    // Match the exact cohort by pond date (FIFO: moves name specific boards).
+    const cands = list.filter(c => !c.gen && ymd(c.end) === e.from && c.boards > 0
+      && (!e.p || ymd(c.ponded) === e.p));
     const src = cands.find(c => c.split) || cands[cands.length - 1];
     if (!src) return;
     const mv = Math.min(src.boards, e.boards);
