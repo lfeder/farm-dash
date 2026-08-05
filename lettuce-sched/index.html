@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-05 00:15</span>
+  <span id="versionStamp">08-05 00:25</span>
 </div>
 
 <div id="content">
@@ -1152,11 +1152,16 @@ function printLabels() {
       const k = `${ymd(c.ponded)}|${ymd(c.end)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
       if (merged[k]) merged[k].boards += c.boards; else merged[k] = { ...c };
     });
-    Object.values(merged).sort((a, b) => a.ponded - b.ponded || a.end - b.end).forEach(c => {
+    // Only cycles already ON the pond get labels here — new/future cycles are
+    // labeled by the app as they pond. Ordered lane -> harvest date (walk order).
+    const dv = document.getElementById('bMapDate').value;
+    const [y3, m3, d3] = dv.split('-').map(Number);
+    const asof = new Date(Date.UTC(y3, m3 - 1, d3));
+    Object.values(merged)
+      .filter(c => !c.gen && c.ponded && c.ponded <= asof)
+      .sort((a, b) => a.end - b.end || a.ponded - b.ponded).forEach(c => {
       let kind = null;
-      if (c.blank) kind = 'BLANK';
-      else if (c.gen) kind = 'NEW';
-      else if (c.split) kind = 'SPLIT';
+      if (c.split) kind = 'SPLIT';
       else {
         // original: label only if its board count changed vs the source data
         const pondP = lane.slice(0, 2), sideP = lane.slice(2);
