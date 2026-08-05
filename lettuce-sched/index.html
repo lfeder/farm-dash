@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 18:00</span>
+  <span id="versionStamp">08-04 18:15</span>
 </div>
 
 <div id="content">
@@ -729,8 +729,10 @@ function initViz() {
     const b = (lane.endsWith('AB') && c.side !== 'AB') ? c.boards : (!lane.endsWith('AB') && c.side === 'AB') ? c.boards * w / 20 : c.boards;
     (bVizData[lane] = bVizData[lane] || []).push({ ponded: c.ponded, end: c.end, boards: b, name: c.seedName || c.variety });
   });
+  // Map opens at the start date, end-of-day semantics (that day's harvests off,
+  // that day's pondings on) — matching the Schedule tab.
   const md = document.getElementById('bMapDate');
-  if (!md.value) md.value = ymd(hstToday());
+  md.value = document.getElementById('bStartWeek').value || ymd(hstToday());
   renderBMap();
 }
 
