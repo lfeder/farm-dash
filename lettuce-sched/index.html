@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 18:50</span>
+  <span id="versionStamp">08-04 19:05</span>
 </div>
 
 <div id="content">
@@ -147,6 +147,9 @@
             <input type="date" id="bMapDate" style="font:inherit;padding:2px 6px;border:1px solid #bbb;border-radius:4px">
             <button id="bMapNext" class="step-btn">►</button>
             <span id="bMapDow" style="color:#888"></span>
+            <span class="toggle" id="bMapSrc" style="margin-left:12px">
+              <button data-src="current" class="active">Current</button><button data-src="plan">Plan</button>
+            </span>
             <span style="margin-left:16px"><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#5cab4a;vertical-align:-1px"></span> existing</span>
             <span><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#2c7fb8;vertical-align:-1px"></span> new</span>
             <span><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#9e9e9e;vertical-align:-1px"></span> blanks</span>
@@ -715,7 +718,7 @@ function laneRowState(tr) {
 
 // Startup view of the pond map: every unharvested cycle as-is, dated today.
 function initViz() {
-  bVizData = {};
+  bVizData = bVizCurrent = {};
   const modes = laneModes();
   const laneOf = c => {
     if (c.pond === 'P1') return 'P1AB';
@@ -759,7 +762,7 @@ function builderGenerate() {
   const mode = 'split';       // "Neutral" — reshape harvests via adjacent splits
   const replace = true;       // planned rows >= start are always replaced
   const out = [], tsv = [], edits = [];
-  bVizData = {};
+  bVizData = bVizPlan = {};
   let mism = 0, total = 0, minFillTxt = [];
   document.querySelectorAll('#bLanes tr[data-lane]').forEach(tr => {
     if (!tr.querySelector('.bl-inc').checked) return;
@@ -939,6 +942,7 @@ function builderGenerate() {
   });
   const sw2 = document.getElementById('bStartWeek').value;
   document.getElementById('bMapDate').value = sw2;
+  document.querySelectorAll('#bMapSrc button').forEach(x => x.classList.toggle('active', x.dataset.src === 'plan'));
   renderBMap();
   document.getElementById('bMapWrap').style.display = '';
   const modeName = { steady: 'steady pattern', match: 'match harvests', converge: 'converge', split: 'split harvests' }[mode];
@@ -974,7 +978,9 @@ function builderGenerate() {
 
 // ── Preview pond map: the proposed schedule (existing cycles with split edits
 // applied + generated rows) drawn like the Schedule tab, at a scrubable date.
-let bVizData = null;
+let bVizData = null;         // dataset the map is showing
+let bVizCurrent = null;      // as-is data (initViz)
+let bVizPlan = null;         // last generated plan
 function renderBMap() {
   if (!bVizData) return;
   const el = document.getElementById('bMap');
@@ -1023,6 +1029,14 @@ function renderBMap() {
   el.innerHTML = h || '<div class="none">Generate first.</div>';
 }
 document.getElementById('bMapDate').addEventListener('change', renderBMap);
+document.getElementById('bMapSrc').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const src = b.dataset.src === 'plan' ? bVizPlan : bVizCurrent;
+  if (!src) return;                               // no plan generated yet
+  document.querySelectorAll('#bMapSrc button').forEach(x => x.classList.toggle('active', x === b));
+  bVizData = src;
+  renderBMap();
+});
 document.getElementById('bMapPrev').addEventListener('click', () => {
   const i = document.getElementById('bMapDate');
   const [y, m, dd] = i.value.split('-').map(Number);
