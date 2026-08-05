@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 20:30</span>
+  <span id="versionStamp">08-04 20:45</span>
 </div>
 
 <div id="content">
@@ -410,7 +410,10 @@ function renderGantt(today) {
       // (latest harvest first); the cap line marks the seeding edge — where
       // rows-remaining-to-the-right equals capacity.
       let x = 0, blocks = '', totalRows = 0, prevDays = null, cumRows = 0, capPos = null;
-      const rev = list.slice().reverse();
+      // Show only the near future on the left (pondings within 14 days);
+      // farther-out plans are not drawn, keeping the pond anchored in view.
+      const rev = list.filter(c => c.ponded && c.ponded.getTime() <= today.getTime() + 14 * DAY)
+        .slice().reverse();
       const allRows = rev.reduce((s, c) => s + c.boards / w, 0);
       rev.forEach(c => {
         const r = c.boards / w;
@@ -1051,6 +1054,7 @@ function renderBMap() {
     });
     // Reversed layout: seeding/faded LEFT → harvest RIGHT (latest harvest first).
     const list = Object.values(merged)
+      .filter(c => c.ponded && c.ponded.getTime() <= asof.getTime() + 14 * DAY)
       .sort((a, b) => (b.end - a.end) || (b.ponded - a.ponded));
     const allRows = list.reduce((s, c) => s + c.boards / w, 0);
     let x = 0, blocks = '', onRows = 0, cumRows = 0, capPos = null;
