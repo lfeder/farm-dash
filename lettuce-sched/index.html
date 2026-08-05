@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 23:45</span>
+  <span id="versionStamp">08-05 00:05</span>
 </div>
 
 <div id="content">
@@ -151,6 +151,7 @@
               <button data-src="current" class="active">Current</button><button data-src="plan">Plan</button><button data-src="both">Both</button>
             </span>
             <button id="bLabels" class="step-btn" style="margin-left:12px" title="Print tags for changed/new cycles only">Print labels</button>
+            <button id="bPrintMap" class="step-btn" title="Printable walking sheet of the map">Print map</button>
             <span style="margin-left:16px"><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#5cab4a;vertical-align:-1px"></span> existing</span>
             <span><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#1e5e2e;vertical-align:-1px"></span> moved</span>
             <span><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#2c7fb8;vertical-align:-1px"></span> new</span>
@@ -1126,13 +1127,19 @@ function bLaneRow(lane, entries, asof, sub, compact, shift = 0) {
     const rr = Math.round(onRows);
     const lc = rr === capR ? '#2f7d4f' : '#b3402f';
     const ht = compact ? 18 : 24;
-    return `<div class="g-row" style="min-height:${ht}px${sub === 'plan' ? ';border-bottom:2px solid #c9b896' : ''}">`
+    return `<div class="g-row" style="min-height:${ht}px${sub === 'plan' ? ';border-bottom:2px solid #c9b896;margin-bottom:14px' : ''}">`
       + `<div class="g-label" style="left:0;flex:0 0 90px;background:#fff"><span style="font-weight:600">${esc(lane)}${sub ? ` <span style=\"color:#999;font-weight:400;font-size:0.65rem\">${sub}</span>` : ''}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
       + `<div class="g-track" style="height:${ht}px;min-width:${Math.max(x, capR * PX) + 40}px">${blocks}</div></div>`;
   }
 }
 // Label sheet: one tag per CHANGED or NEW cycle (split pieces, reduced
 // originals, generated rows, blanks). Untouched cycles print nothing.
+// Open a print document via a Blob URL — document.write into a fresh window is
+// blocked from the embedded (iframe) context and yields a blank tab.
+function openPrintDoc(html) {
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  window.open(url, '_blank');
+}
 function printLabels() {
   const btn = document.getElementById('bLabels');
   if (!bVizPlan) { btn.textContent = 'Generate first'; setTimeout(() => btn.textContent = 'Print labels', 1500); return; }
@@ -1164,8 +1171,7 @@ function printLabels() {
     });
   });
   if (!tags.length) { btn.textContent = 'No changes'; setTimeout(() => btn.textContent = 'Print labels', 1500); return; }
-  const wdw = window.open('', '_blank');
-  wdw.document.write(`<html><head><title>Cycle labels</title><style>
+  openPrintDoc(`<html><head><title>Cycle labels</title><style>
     body{font-family:-apple-system,sans-serif;margin:16px}
     .tag{display:inline-block;width:220px;border:2px solid #333;border-radius:8px;margin:6px;padding:10px 12px;vertical-align:top;page-break-inside:avoid}
     .tag .lane{font-size:1.5rem;font-weight:800}
@@ -1177,8 +1183,32 @@ function printLabels() {
      <div class="seed">${esc(t.name)}</div>
      <div class="nums">${t.boards} boards · ${t.rows} rows<br>Pond: ${WD[t.ponded.getUTCDay()]} ${fmtMD2(t.ponded)}<br>Harvest: ${WD[t.end.getUTCDay()]} ${fmtMD2(t.end)}</div></div>`).join('')
     + `<scr` + `ipt>window.print()</scr` + `ipt></body></html>`);
-  wdw.document.close();
 }
+// Walking sheet: the Both view (or active view) as a printable page.
+function printMap() {
+  const dv = document.getElementById('bMapDate').value;
+  const [y, m, dd] = dv.split('-').map(Number);
+  const asof = new Date(Date.UTC(y, m - 1, dd));
+  const sets = bVizPlan ? [[bVizCurrent, 'now'], [bVizPlan, 'plan']] : [[bVizCurrent, '']];
+  const lanes = [...new Set(sets.flatMap(([d2]) => Object.keys(d2 || {})))].sort();
+  let rowsH = '';
+  lanes.forEach(lane => {
+    sets.forEach(([data, sub]) => { rowsH += bLaneRow(lane, data[lane] || [], asof, sub, true); });
+  });
+  openPrintDoc(`<html><head><title>Pond map ${fmtMD2(asof)}</title><style>
+    body{font-family:-apple-system,sans-serif;margin:10px;font-size:11px}
+    h2{font-size:15px;margin:0 0 8px}
+    .g-row{display:flex;align-items:stretch;min-height:20px;page-break-inside:avoid}
+    .g-label{flex:0 0 78px;display:flex;align-items:center;justify-content:space-between;font-size:11px;padding-right:6px}
+    .g-label .cap{font-size:10px}
+    .g-track{position:relative;flex:1 1 auto;height:20px !important}
+    .g-block{position:absolute;top:1px;bottom:1px;border:1px solid #333;border-radius:2px;color:#fff;font-weight:700;font-size:9px;display:flex;align-items:center;justify-content:center;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .g-block.planned{opacity:0.45;border-style:dashed}
+    .g-cap{position:absolute;top:0;bottom:0;border-left:3px solid #000}
+    </style></head><body><h2>Pond map — ${WD[asof.getUTCDay()]} ${fmtMD2(asof)} (now vs plan · dark = moved · blue = new)</h2>`
+    + rowsH + `<scr` + `ipt>window.print()</scr` + `ipt></body></html>`);
+}
+document.getElementById('bPrintMap').addEventListener('click', printMap);
 document.getElementById('bLabels').addEventListener('click', printLabels);
 document.getElementById('bMapDate').addEventListener('change', renderBMap);
 document.getElementById('bMapSrc').addEventListener('click', e => {
