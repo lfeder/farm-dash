@@ -117,7 +117,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 15:00</span>
+  <span id="versionStamp">08-04 16:10</span>
 </div>
 
 <div id="content">
@@ -154,6 +154,16 @@
           <div id="bEdits" style="display:none;">
             <div class="section-title" style="margin-top:10px;font-size:0.9rem">Harvest split edits — apply to EXISTING rows</div>
             <table class="b-table" id="bEditsTable"></table>
+          </div>
+          <div id="bMapWrap" style="display:none;">
+            <div class="section-title" style="margin-top:14px">Preview pond map — as of
+              <button id="bMapPrev" class="step-btn">◄</button>
+              <input type="date" id="bMapDate" style="font:inherit;padding:2px 6px;border:1px solid #bbb;border-radius:4px">
+              <button id="bMapNext" class="step-btn">►</button>
+              <span id="bMapDow" style="color:#888;font-size:0.8rem"></span>
+            </div>
+            <div class="b-note">Existing cycles (with the split edits applied) + the generated rows. Solid = on pond at this date, faded = not yet on, gray = blanks. Black line = capacity.</div>
+            <div id="bMap" style="background:#fff;border:1px solid #ddd;border-radius:8px;overflow-x:auto"></div>
           </div>
           <table class="b-table" id="bPreview"></table>
         </div>
@@ -762,6 +772,7 @@ function builderGenerate() {
   const mode = document.getElementById('bMode').value;
   const replace = document.getElementById('bReplace').checked;
   const out = [], tsv = [], edits = [];
+  bVizData = {};
   let mism = 0, total = 0, minFillTxt = [];
   document.querySelectorAll('#bLanes tr[data-lane]').forEach(tr => {
     if (!tr.querySelector('.bl-inc').checked) return;
@@ -793,6 +804,7 @@ function builderGenerate() {
         off[ymd(c.end)] = (off[ymd(c.end)] || 0) + b;
         const k = ymd(c.end);
         (offC[k] = offC[k] || []).push({ label: `${c.seedName || c.variety} ponded ${fmtMD(c.ponded || c.seed)}`, b });
+        (bVizData[lane] = bVizData[lane] || []).push({ ponded: c.ponded, end: c.end, boards: b, name: c.seedName || c.variety });
       });
     let fill = cap, minFill = cap;
     const blankPool = [];   // blank boards on the pond, FIFO; harvest date flexible
@@ -906,6 +918,24 @@ function builderGenerate() {
     });
     if (minFill < cap) minFillTxt.push(`${lane} dips to ${minFill}/${cap}`);
   });
+  // Fold results into the preview map data: apply split edits to existing
+  // cohorts (move boards between harvest dates), then append generated rows.
+  edits.forEach(e => {
+    const list = bVizData[e.lane] || [];
+    const src = list.find(c => !c.gen && ymd(c.end) === e.from && c.boards > 0);
+    if (!src) return;
+    const mv = Math.min(src.boards, e.boards);
+    src.boards -= mv;
+    const [y2, m2, d2] = e.to.split('-').map(Number);
+    list.push({ ponded: src.ponded, end: new Date(Date.UTC(y2, m2 - 1, d2)), boards: mv, name: src.name + ' (split)' });
+  });
+  out.forEach(r => {
+    (bVizData[r.lane] = bVizData[r.lane] || []).push({ ponded: r.ponded, end: r.harv, boards: r.boards, name: r.blank ? 'BLANK' : r.seedName, gen: true, blank: r.blank });
+  });
+  const sw2 = document.getElementById('bStartWeek').value;
+  document.getElementById('bMapDate').value = sw2;
+  renderBMap();
+  document.getElementById('bMapWrap').style.display = '';
   const modeName = { steady: 'steady pattern', match: 'match harvests', converge: 'converge', split: 'split harvests' }[mode];
   // Harvest split edit list (existing rows to modify by hand / in Supabase later).
   const ed = document.getElementById('bEdits');
@@ -939,6 +969,57 @@ function builderGenerate() {
   t.dataset.tsv = tsv.join('\n');
   document.getElementById('bPreviewWrap').style.display = '';
 }
+
+// ── Preview pond map: the proposed schedule (existing cycles with split edits
+// applied + generated rows) drawn like the Schedule tab, at a scrubable date.
+let bVizData = null;
+function renderBMap() {
+  if (!bVizData) return;
+  const el = document.getElementById('bMap');
+  const dv = document.getElementById('bMapDate').value;
+  if (!dv) return;
+  const [y, m, dd] = dv.split('-').map(Number);
+  const asof = new Date(Date.UTC(y, m - 1, dd));
+  document.getElementById('bMapDow').textContent = WD[asof.getUTCDay()];
+  const PX = 6;
+  let h = '';
+  Object.keys(bVizData).sort().forEach(lane => {
+    const w = laneWidth(lane);
+    const capR = lane.startsWith('P1') ? 83 : 110;
+    // On the pond at asof (solid) then future pondings (faded), harvest order.
+    const list = bVizData[lane].filter(c => c.boards > 0.5 && c.end > asof)
+      .sort((a, b) => (a.end - b.end) || (a.ponded - b.ponded));
+    let x = 0, blocks = '', onRows = 0;
+    list.forEach(c => {
+      const r = c.boards / w;
+      const on = c.ponded && c.ponded <= asof;
+      if (on) onRows += r;
+      const bw = Math.max(4, r * PX);
+      // existing = green, generated (new plan) = blue, blanks = gray
+      const bg = c.blank ? '#9e9e9e' : (c.gen ? '#2c7fb8' : '#5cab4a');
+      blocks += `<div class="g-block${on ? '' : ' planned'}" style="left:${x}px;width:${bw}px;background:${bg}" title="${esc(c.name || '')} P:${fmtMD2(c.ponded)} H:${fmtMD2(c.end)} ${Math.round(c.boards)}bd">${Math.round(r)}</div>`;
+      x += bw + 1;
+    });
+    blocks += `<div class="g-cap" style="left:${capR * PX}px"></div>`;
+    const rr = Math.round(onRows);
+    const lc = rr === capR ? '#2f7d4f' : '#b3402f';
+    h += `<div class="g-row" style="min-height:24px">`
+      + `<div class="g-label" style="position:static;flex:0 0 90px"><span style="font-weight:600">${esc(lane)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
+      + `<div class="g-track" style="height:24px;min-width:${Math.max(x, capR * PX) + 40}px">${blocks}</div></div>`;
+  });
+  el.innerHTML = h || '<div class="none">Generate first.</div>';
+}
+document.getElementById('bMapDate').addEventListener('change', renderBMap);
+document.getElementById('bMapPrev').addEventListener('click', () => {
+  const i = document.getElementById('bMapDate');
+  const [y, m, dd] = i.value.split('-').map(Number);
+  i.value = ymd(new Date(Date.UTC(y, m - 1, dd) - DAY)); renderBMap();
+});
+document.getElementById('bMapNext').addEventListener('click', () => {
+  const i = document.getElementById('bMapDate');
+  const [y, m, dd] = i.value.split('-').map(Number);
+  i.value = ymd(new Date(Date.UTC(y, m - 1, dd) + DAY)); renderBMap();
+});
 
 // Tab switching; builder data loads lazily on first open.
 document.getElementById('pageTabs').addEventListener('click', async e => {
