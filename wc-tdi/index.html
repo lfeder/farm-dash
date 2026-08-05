@@ -49,6 +49,7 @@
 <div class="tabs" id="secTabs">
   <button data-p="reporting" class="active">Insurer Reporting</button>
   <button data-p="wage">Wage Summary</button>
+  <button data-p="qb">QB</button>
   <button data-p="audit">Annual Audit</button>
 </div>
 
@@ -84,8 +85,13 @@
   </div>
   <div id="sumWrap" style="display:none; gap:24px; align-items:flex-start; flex-wrap:wrap">
     <div id="sumPivot" style="overflow:auto"></div>
-    <div id="sumByStruct" style="overflow:auto"></div>
   </div>
+</div>
+
+<div class="panel" data-panel="qb">
+  <div class="sub">By structure, every pay period this year · wages include OT (not broken out) · same basis as Wage Summary</div>
+  <div id="qbStatus" style="color:#8aa;padding:16px 0">Loading…</div>
+  <div id="qbMain" style="overflow:auto"></div>
 </div>
 
 <div class="panel" data-panel="audit">
@@ -307,7 +313,7 @@ load();
 
 // ---- WC Wage Summary section (independent of the wc/tdi toggle) ----
 const SUM_NULL = '—';
-let SUM_ROWS = [], SUM_DATE = '';
+let SUM_ROWS = [], SUM_DATE = '', SUM_ALL = [];
 
 function sumMonthKey(r) { return r.check.y + '-' + String(r.check.m).padStart(2, '0'); }
 function sumMonthLabel(mk) { const [y, m] = mk.split('-'); return `${MN[+m]} ${yy(y)}`; }
@@ -327,6 +333,7 @@ async function loadSummary() {
     return r.check && c !== '' && c !== 'N/A' && c !== 'UNCLASSIFIED';
   });
 
+  SUM_ALL = rows;
   // 6 most recent calendar months present.
   const months = [...new Set(rows.map(sumMonthKey))].sort((a, b) => b.localeCompare(a)).slice(0, 6);
   const keep = new Set(months);
@@ -339,9 +346,9 @@ async function loadSummary() {
   $('sumBar').style.display = 'flex';
   $('sumWrap').style.display = 'flex';
   $('sumDate').innerHTML = dates.map(d => `<option value="${d}"${d === SUM_DATE ? ' selected' : ''}>${sumDateLabel(d)}</option>`).join('');
-  $('sumDate').onchange = () => { SUM_DATE = $('sumDate').value; renderSummaryPivot(); renderSummaryDetail(); };
+  $('sumDate').onchange = () => { SUM_DATE = $('sumDate').value; renderSummaryPivot(); };
   renderSummaryPivot();
-  renderSummaryDetail();
+  renderQB();
 }
 
 function renderSummaryPivot() {
@@ -374,28 +381,29 @@ function renderSummaryPivot() {
   $('sumPivot').innerHTML = h;
 }
 
-function sumAggregate(rows, keyOf) {
-  const m = {};
-  rows.forEach(r => { const k = keyOf(r) || SUM_NULL; (m[k] = m[k] || { b: 0, o: 0 }); m[k].b += r.base; m[k].o += r.ot; });
-  const lines = Object.keys(m).sort((a, b) => (a === SUM_NULL) - (b === SUM_NULL) || a.localeCompare(b))
-    .map(k => ({ label: k, b: m[k].b, o: m[k].o }));
-  const tot = lines.reduce((a, l) => ({ b: a.b + l.b, o: a.o + l.o }), { b: 0, o: 0 });
-  return { lines, tot };
-}
-
-function sumDetailTable(title, firstHeader, agg) {
-  let h = `<div class="muted" style="margin-bottom:4px">${title}</div>`;
-  h += `<table><thead><tr><th class="lbl">${firstHeader}</th><th>Base</th><th>OT</th></tr></thead><tbody>`;
-  agg.lines.forEach(l => { h += `<tr><td class="lbl">${l.label}</td><td>${fmt(l.b)}</td><td>${fmt(l.o)}</td></tr>`; });
-  h += `<tr class="tot"><td class="lbl">TOTAL</td><td>${fmt(agg.tot.b)}</td><td>${fmt(agg.tot.o)}</td></tr>`;
+// ---- QB tab: by structure, every pay period of the current year; OT folded into wages ----
+function renderQB() {
+  if (!SUM_ALL.length) { $('qbStatus').textContent = 'No wage rows.'; return; }
+  const year = Math.max(...SUM_ALL.map(r => r.check.y));
+  const rows = SUM_ALL.filter(r => r.check.y === year);
+  const byDate = {};
+  rows.forEach(r => {
+    const d = (byDate[r.iso] = byDate[r.iso] || { h: 0, s: 0 });
+    const w = r.base + r.ot;
+    if ((r.structure || '').toLowerCase() === 'hourly') d.h += w; else d.s += w;
+  });
+  const dates = Object.keys(byDate).sort();
+  let h = `<div class="muted" style="margin-bottom:4px">${year} pay periods</div>`;
+  h += '<table><thead><tr><th class="lbl">Check Date</th><th>Hourly</th><th>Salary</th><th>Total</th></tr></thead><tbody>';
+  let tH = 0, tS = 0;
+  dates.forEach(iso => {
+    const d = byDate[iso]; tH += d.h; tS += d.s;
+    h += `<tr><td class="lbl">${sumDateLabel(iso)}</td><td>${fmt(d.h)}</td><td>${fmt(d.s)}</td><td>${fmt(d.h + d.s)}</td></tr>`;
+  });
+  h += `<tr class="tot"><td class="lbl">${year} TOTAL</td><td>${fmt(tH)}</td><td>${fmt(tS)}</td><td>${fmt(tH + tS)}</td></tr>`;
   h += '</tbody></table>';
-  return h;
-}
-
-function renderSummaryDetail() {
-  const rows = SUM_ROWS.filter(r => r.iso === SUM_DATE);
-  const label = SUM_DATE ? sumDateLabel(SUM_DATE) : '—';
-  $('sumByStruct').innerHTML = sumDetailTable(`By structure · ${label}`, 'Structure', sumAggregate(rows, r => r.structure));
+  $('qbStatus').style.display = 'none';
+  $('qbMain').innerHTML = h;
 }
 
 loadSummary();
