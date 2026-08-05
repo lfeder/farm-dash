@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-05 00:25</span>
+  <span id="versionStamp">08-05 00:50</span>
 </div>
 
 <div id="content">
@@ -1143,51 +1143,65 @@ function openPrintDoc(html) {
 function printLabels() {
   const btn = document.getElementById('bLabels');
   if (!bVizPlan) { btn.textContent = 'Generate first'; setTimeout(() => btn.textContent = 'Print labels', 1500); return; }
-  const tags = [];
+  // Same card format as the aloha app (seeding-labels.ts): 3-up grid, 92px min
+  // cards, Arial bold 12px, 18px left border colored by SEEDING weekday
+  // (Fri/Sun blue, Sat/Mon yellow), batches over 90 boards chunked. Only cycles
+  // already ON the pond that the plan changes — new cycles are labeled by the app.
+  const dv = document.getElementById('bMapDate').value;
+  const [y3, m3, d3] = dv.split('-').map(Number);
+  const asof = new Date(Date.UTC(y3, m3 - 1, d3));
+  const wdColor = d2 => { const wd2 = d2.getUTCDay(); return (wd2 === 5 || wd2 === 0) ? '#00B0F0' : (wd2 === 6 || wd2 === 1) ? '#FFFF00' : 'white'; };
+  const mmdd = d2 => String(d2.getUTCMonth() + 1).padStart(2, '0') + String(d2.getUTCDate()).padStart(2, '0');
+  const chunkBoards = tot => { if (tot <= 90) return [tot]; const n2 = Math.ceil(tot / 90); const base = Math.floor(tot / n2); const rem = tot % n2; return Array.from({ length: n2 }, (_, i2) => base + (i2 < rem ? 1 : 0)); };
+  const cards = [];
   Object.keys(bVizPlan).sort().forEach(lane => {
-    const w = laneWidth(lane);
-    // merge fragments like the map does
+    const pondP = lane.slice(0, 2), sideP = lane.slice(2);
+    const srcOf = c => cycles.find(x => x.pond === pondP
+      && (x.side === sideP || (sideP === 'AB' ? ['A', 'B', 'AB'].includes(x.side) : x.side === 'AB'))
+      && x.ponded && ymd(x.ponded) === ymd(c.ponded));
     const merged = {};
     bVizPlan[lane].filter(c => c.boards > 0.5).forEach(c => {
       const k = `${ymd(c.ponded)}|${ymd(c.end)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
       if (merged[k]) merged[k].boards += c.boards; else merged[k] = { ...c };
     });
-    // Only cycles already ON the pond get labels here — new/future cycles are
-    // labeled by the app as they pond. Ordered lane -> harvest date (walk order).
-    const dv = document.getElementById('bMapDate').value;
-    const [y3, m3, d3] = dv.split('-').map(Number);
-    const asof = new Date(Date.UTC(y3, m3 - 1, d3));
     Object.values(merged)
-      .filter(c => !c.gen && c.ponded && c.ponded <= asof)
-      .sort((a, b) => a.end - b.end || a.ponded - b.ponded).forEach(c => {
-      let kind = null;
-      if (c.split) kind = 'SPLIT';
-      else {
-        // original: label only if its board count changed vs the source data
-        const pondP = lane.slice(0, 2), sideP = lane.slice(2);
-        const orig = cycles.filter(x => x.pond === pondP
-          && (x.side === sideP || (sideP === 'AB' ? ['A', 'B', 'AB'].includes(x.side) : x.side === 'AB'))
-          && x.ponded && ymd(x.ponded) === ymd(c.ponded) && x.end && ymd(x.end) === ymd(c.end))
-          .reduce((s2, x) => s2 + x.boards, 0);
-        if (Math.round(orig) !== Math.round(c.boards)) kind = 'CHANGED';
-      }
-      if (kind) tags.push({ lane, kind, name: c.name || '', boards: Math.round(c.boards),
-        rows: Math.round(c.boards / w * 10) / 10, ponded: c.ponded, end: c.end });
-    });
+      .filter(c => !c.gen && c.ponded && c.ponded <= asof && c.end > asof)
+      .sort((a, b) => a.end - b.end || a.ponded - b.ponded)
+      .forEach(c => {
+        let changed = !!c.split;
+        if (!changed) {
+          const orig = cycles.filter(x => x.pond === pondP
+            && (x.side === sideP || (sideP === 'AB' ? ['A', 'B', 'AB'].includes(x.side) : x.side === 'AB'))
+            && x.ponded && ymd(x.ponded) === ymd(c.ponded) && x.end && ymd(x.end) === ymd(c.end))
+            .reduce((s2, x) => s2 + x.boards, 0);
+          changed = Math.round(orig) !== Math.round(c.boards);
+        }
+        if (!changed) return;
+        const src = srcOf(c) || {};
+        const seedD = src.seed || new Date(c.ponded.getTime() - 2 * DAY);
+        chunkBoards(Math.round(c.boards)).forEach(b2 => {
+          cards.push({
+            line1: `${lane}, S#:${src.seedsPerBoard || ''}, B#:${b2}`,
+            line2: `S:${mmdd(seedD)}, P:${mmdd(c.ponded)}, H:${mmdd(c.end)}`,
+            line3: `${src.variety || ''}:${c.name || src.seedName || ''}${c.split ? ' (SPLIT)' : ''}`,
+            color: wdColor(seedD),
+          });
+        });
+      });
   });
-  if (!tags.length) { btn.textContent = 'No changes'; setTimeout(() => btn.textContent = 'Print labels', 1500); return; }
+  if (!cards.length) { btn.textContent = 'No changes'; setTimeout(() => btn.textContent = 'Print labels', 1500); return; }
   openPrintDoc(`<html><head><title>Cycle labels</title><style>
-    body{font-family:-apple-system,sans-serif;margin:16px}
-    .tag{display:inline-block;width:220px;border:2px solid #333;border-radius:8px;margin:6px;padding:10px 12px;vertical-align:top;page-break-inside:avoid}
-    .tag .lane{font-size:1.5rem;font-weight:800}
-    .tag .kind{float:right;font-size:0.7rem;font-weight:700;border:1px solid #333;border-radius:4px;padding:1px 5px}
-    .tag .seed{font-size:1rem;font-weight:600;margin:4px 0}
-    .tag .nums{font-size:0.85rem;line-height:1.5}
-  </style></head><body>` + tags.map(t =>
-    `<div class="tag"><span class="kind">${t.kind}</span><div class="lane">${esc(t.lane)}</div>
-     <div class="seed">${esc(t.name)}</div>
-     <div class="nums">${t.boards} boards · ${t.rows} rows<br>Pond: ${WD[t.ponded.getUTCDay()]} ${fmtMD2(t.ponded)}<br>Harvest: ${WD[t.end.getUTCDay()]} ${fmtMD2(t.end)}</div></div>`).join('')
-    + `<scr` + `ipt>window.print()</scr` + `ipt></body></html>`);
+    @page { margin: 8mm; }
+    html, body { margin: 0; }
+    body { font-family: Arial, sans-serif; color: #000; }
+    .label-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .label { min-width: 0; min-height: 92px; padding: 8px 10px; display: flex; flex-direction: column;
+      justify-content: center; font-size: 12px; font-weight: bold; line-height: 1.35;
+      overflow-wrap: anywhere; break-inside: avoid;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  </style></head><body><div class="label-grid">`
+    + cards.map(c => `<div class="label" style="border-left:18px solid ${c.color}"><div>${esc(c.line1)}</div><div>${esc(c.line2)}</div><div>${esc(c.line3)}</div></div>`).join('')
+    + `</div><scr` + `ipt>window.print()</scr` + `ipt></body></html>`);
 }
 // Walking sheet: the Both view (or active view) as a printable page.
 function printMap() {
@@ -1198,7 +1212,11 @@ function printMap() {
   const lanes = [...new Set(sets.flatMap(([d2]) => Object.keys(d2 || {})))].sort();
   let rowsH = '';
   lanes.forEach(lane => {
-    sets.forEach(([data, sub]) => { rowsH += bLaneRow(lane, data[lane] || [], asof, sub, true); });
+    sets.forEach(([data, sub]) => {
+      // Walking sheet shows only what is ON the pond: no gutter, no future.
+      const onPond = (data[lane] || []).filter(c => c.ponded && c.ponded <= asof && c.end > asof);
+      rowsH += bLaneRow(lane, onPond, asof, sub, true);
+    });
   });
   openPrintDoc(`<html><head><title>Pond map ${fmtMD2(asof)}</title><style>
     body{font-family:-apple-system,sans-serif;margin:10px;font-size:11px}
