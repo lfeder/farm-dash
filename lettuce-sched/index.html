@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 19:40</span>
+  <span id="versionStamp">08-04 19:55</span>
 </div>
 
 <div id="content">
@@ -954,11 +954,15 @@ function builderGenerate() {
   // cohorts (move boards between harvest dates), then append generated rows.
   edits.forEach(e => {
     const list = bVizData[e.lane] || [];
-    const src = list.find(c => !c.gen && ymd(c.end) === e.from && c.boards > 0);
+    // Mirror the generator: moves take from already-moved (split) pieces first,
+    // so original cohorts stay intact and only the traveling remainder cascades.
+    const cands = list.filter(c => !c.gen && ymd(c.end) === e.from && c.boards > 0);
+    const src = cands.find(c => c.split) || cands[cands.length - 1];
     if (!src) return;
     const mv = Math.min(src.boards, e.boards);
     src.boards -= mv;
     const [y2, m2, d2] = e.to.split('-').map(Number);
+    if (!src) return;
     list.push({ ponded: src.ponded, end: new Date(Date.UTC(y2, m2 - 1, d2)), boards: mv, name: src.name, split: true });
   });
   out.forEach(r => {
