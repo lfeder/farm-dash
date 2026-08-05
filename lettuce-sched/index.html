@@ -117,7 +117,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 13:15</span>
+  <span id="versionStamp">08-04 13:35</span>
 </div>
 
 <div id="content">
@@ -921,6 +921,10 @@ function builderGenerate() {
     : `<span style="color:#9a6a00">⚠ ${modeName}: ${mism} event days where on ≠ off — ${minFillTxt.length ? minFillTxt.join(' · ') : 'lane fill deviates from cap during the window'}.</span>`)
     + (replace ? `<br><span style="color:#b3402f;font-weight:600">Replace mode: delete each lane's existing sheet rows with pond date ≥ its start before pasting, or boards double-count.</span>` : '');
   const t = document.getElementById('bPreview');
+  // Blanks are cycles like any other: sort each lane's rows by pond date so the
+  // crew reads a complete chronological work list (add blanks / remove blanks
+  // are just rows with a pond date and a harvest date).
+  out.sort((a, b) => a.lane < b.lane ? -1 : a.lane > b.lane ? 1 : a.ponded - b.ponded);
   let lastLane = null;
   t.innerHTML = `<tr><th>Lane</th><th>Seed</th><th>Density</th><th>Rows</th><th>Boards</th><th>Seeding</th><th>On pond</th><th>Exp harvest</th><th>Days</th><th>Off that day</th><th>Fill after</th></tr>`
     + out.map(r => {
@@ -929,7 +933,7 @@ function builderGenerate() {
       const capL = (r.lane.startsWith('P1') ? 83 : 110) * laneWidth(r.lane);
       const fillCol = r.fill === capL ? '' : 'color:#b3402f;font-weight:700';
       const blankStyle = r.blank ? ' class="b-blankrow"' : '';
-      return `<tr${sep}${blankStyle}><td><b>${esc(r.lane)}</b></td><td>${r.blank ? '<i>BLANK boards</i>' : esc(r.seedName)}</td><td class="num">${r.dens || ''}</td><td class="num">${r.rows}</td><td class="num">${r.boards}</td><td>${r.blank ? '—' : fmtMD2(r.seed)}</td><td>${WD[r.ponded.getUTCDay()]} ${fmtMD2(r.ponded)}</td><td>${WD[r.harv.getUTCDay()]} ${fmtMD2(r.harv)}</td><td class="num">${r.days}</td><td class="num">${r.off}</td><td class="num" style="${fillCol}">${r.fill}</td></tr>`;
+      return `<tr${sep}${blankStyle}><td><b>${esc(r.lane)}</b></td><td>${r.blank ? `<i>BLANK — add ${fmtMD2(r.ponded)}, remove ${fmtMD2(r.harv)}</i>` : esc(r.seedName)}</td><td class="num">${r.dens || ''}</td><td class="num">${r.rows}</td><td class="num">${r.boards}</td><td>${r.blank ? '—' : fmtMD2(r.seed)}</td><td>${WD[r.ponded.getUTCDay()]} ${fmtMD2(r.ponded)}</td><td>${WD[r.harv.getUTCDay()]} ${fmtMD2(r.harv)}</td><td class="num">${r.days}</td><td class="num">${r.off}</td><td class="num" style="${fillCol}">${r.fill}</td></tr>`;
     }).join('');
   // TSV in grow_L_seeding column order: Pond, Side, Variety, SeedName, SeedsPerBoard, Boards, SeedingDate, PondDate, ExpHarvestDate
   t.dataset.tsv = tsv.join('\n');
