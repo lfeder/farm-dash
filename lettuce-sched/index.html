@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 19:05</span>
+  <span id="versionStamp">08-04 19:25</span>
 </div>
 
 <div id="content">
@@ -486,6 +486,20 @@ const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 let patterns = null;   // { pattern: {days:[4], seqs: {laneClass: [rows...]}} }
 let seedOptions = [];  // [{seed_name, variety}] — active seeds/mixes from prod inventory
 let lotOptions = {};   // { seed_name: [lot_number...] } — active lots from prod inventory
+let laneConfig = {};   // { lane: {pattern, seed, lot, density} } — saved per-lane builder params (Supabase)
+
+// Persist a lane's builder params so everyone sees the same setup next time.
+function saveLaneCfg(tr) {
+  const lane = tr.dataset.lane;
+  const body = JSON.stringify([{ lane, pattern: tr.querySelector('.bl-pat').value,
+    seed: tr.querySelector('.bl-seed').value, lot: tr.querySelector('.bl-lot').value,
+    density: +tr.querySelector('.bl-dens').value || null, updated_at: new Date().toISOString() }]);
+  fetch(`${SB.url}/rest/v1/lettuce_builder_lane_config?on_conflict=lane`, {
+    method: 'POST', body,
+    headers: { apikey: SB.key, Authorization: `Bearer ${SB.key}`, 'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates' },
+  }).catch(() => {});
+}
 
 async function sbGet(path) {
   const r = await fetch(`${SB.url}/rest/v1/${path}`, { headers: { apikey: SB.key, Authorization: `Bearer ${SB.key}` } });
@@ -495,15 +509,18 @@ async function sbGet(path) {
 
 async function loadPatterns() {
   if (patterns) return patterns;
-  const [ps, rs, seeds, lots] = await Promise.all([
+  const [ps, rs, seeds, lots, cfgs] = await Promise.all([
     sbGet('lettuce_harvest_pattern?select=*&order=pattern'),
     sbGet('lettuce_pattern_rows?select=*&order=pattern,lane_class,seq'),
     sbGet('lettuce_seed_options_v?select=seed_name,variety&order=seed_name'),
     sbGet('lettuce_seed_lot_options_v?select=seed_name,lot_number&order=seed_name,lot_number'),
+    sbGet('lettuce_builder_lane_config?select=*'),
   ]);
   seedOptions = seeds;
   lotOptions = {};
   lots.forEach(l => { (lotOptions[l.seed_name] = lotOptions[l.seed_name] || []).push(l.lot_number); });
+  laneConfig = {};
+  cfgs.forEach(c => { laneConfig[c.lane] = c; });
   patterns = {};
   ps.forEach(p => { patterns[p.pattern] = { days: SLOT_KEY.map(k => p[k]), seqs: {} }; });
   rs.forEach(r => { (patterns[r.pattern].seqs[r.lane_class] = patterns[r.pattern].seqs[r.lane_class] || []).push(r.rows); });
@@ -652,9 +669,11 @@ function builderInit() {
         P6AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P7AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
       };
+      const saved = laneConfig[lane];
       const def = DEFAULTS[lane];
       const guessDays = lastC ? Math.round((lastC.end - lastC.ponded) / DAY) : 21;
-      const guess = (def && patterns[def.pat] && def.pat)
+      const guess = (saved && patterns[saved.pattern] && saved.pattern)
+        || (def && patterns[def.pat] && def.pat)
         || Object.keys(patterns).find(p => patterns[p].days[0] === guessDays && patterns[p].seqs[laneClass(lane)]) || '21/21/21/21';
       const pondOf = lane.slice(0, 2);
       const flip = pondOf === 'P1' ? '' :
@@ -664,9 +683,9 @@ function builderInit() {
         + `<td>${flip}</td>`
         + `<td title="class ${laneClass(lane)} · ${laneWidth(lane)} boards/row"><b>${esc(lane)}</b></td>`
         + `<td class="bl-cfg"><select class="bl-pat">${patOpts(guess)}</select></td>`
-        + `<td class="bl-cfg">${seedSel(def ? def.seed : (lastC ? lastC.seedName : ''))}</td>`
+        + `<td class="bl-cfg">${seedSel((saved && saved.seed) || (def ? def.seed : (lastC ? lastC.seedName : '')))}</td>`
         + `<td class="bl-cfg"><select class="bl-lot" title="Active lots for this seed from inventory (invnt_lot)"></select></td>`
-        + `<td class="bl-cfg"><input class="bl-dens" type="number" style="width:60px" value="${lastC ? lastC.seedsPerBoard : 330}"></td>`
+        + `<td class="bl-cfg"><input class="bl-dens" type="number" style="width:60px" value="${(saved && saved.density) || (lastC ? lastC.seedsPerBoard : 330)}"></td>`
         + `</tr>`;
     }).join('');
   renderRef();
@@ -696,8 +715,12 @@ function builderInit() {
   t.querySelectorAll('tr[data-lane]').forEach(tr => {
     laneRowState(tr);
     fillLots(tr);
-    tr.querySelector('.bl-pat').addEventListener('change', () => laneRowState(tr));
-    tr.querySelector('.bl-seed').addEventListener('change', () => fillLots(tr));
+    const savedLot = (laneConfig[tr.dataset.lane] || {}).lot;
+    if (savedLot && [...tr.querySelector('.bl-lot').options].some(o => o.value === savedLot)) tr.querySelector('.bl-lot').value = savedLot;
+    tr.querySelector('.bl-pat').addEventListener('change', () => { laneRowState(tr); saveLaneCfg(tr); });
+    tr.querySelector('.bl-seed').addEventListener('change', () => { fillLots(tr); saveLaneCfg(tr); });
+    tr.querySelector('.bl-lot').addEventListener('change', () => saveLaneCfg(tr));
+    tr.querySelector('.bl-dens').addEventListener('change', () => saveLaneCfg(tr));
     const inc = tr.querySelector('.bl-inc');
     const toggle = () => tr.querySelectorAll('.bl-cfg').forEach(td => td.style.visibility = inc.checked ? '' : 'hidden');
     inc.addEventListener('change', toggle); toggle();
