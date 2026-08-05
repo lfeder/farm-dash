@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 18:25</span>
+  <span id="versionStamp">08-04 18:35</span>
 </div>
 
 <div id="content">
@@ -951,10 +951,6 @@ function builderGenerate() {
       + edits.map(e => `<tr><td><b>${esc(e.lane)}</b></td><td>${esc(e.cohort)}</td><td class="num">${Math.round(e.boards)}</td><td>${f(e.from)}</td><td>${f(e.to)}</td><td>${esc(e.kind)}</td></tr>`).join('');
     ed.style.display = '';
   } else ed.style.display = 'none';
-  document.getElementById('bBalance').innerHTML = (mism === 0
-    ? `<span style="color:#2f7d4f">✓ ${total} rows (${modeName}) — every on-pond day exactly replaces the boards harvesting that day; lanes stay full throughout.</span>`
-    : `<span style="color:#9a6a00">⚠ ${modeName}: ${mism} event days where on ≠ off — ${minFillTxt.length ? minFillTxt.join(' · ') : 'lane fill deviates from cap during the window'}.</span>`)
-    + (replace ? `<br><span style="color:#b3402f;font-weight:600">Replace mode: delete each lane's existing sheet rows with pond date ≥ its start before pasting, or boards double-count.</span>` : '');
   const t = document.getElementById('bPreview');
   // Blanks are cycles like any other: sort each lane's rows by pond date so the
   // crew reads a complete chronological work list (add blanks / remove blanks
