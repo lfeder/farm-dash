@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-05 00:50</span>
+  <span id="versionStamp">08-05 00:55</span>
 </div>
 
 <div id="content">
@@ -1168,6 +1168,7 @@ function printLabels() {
       .filter(c => !c.gen && c.ponded && c.ponded <= asof && c.end > asof)
       .sort((a, b) => a.end - b.end || a.ponded - b.ponded)
       .forEach(c => {
+        let kind = c.split ? 'SPLIT' : null;
         let changed = !!c.split;
         if (!changed) {
           const orig = cycles.filter(x => x.pond === pondP
@@ -1175,6 +1176,7 @@ function printLabels() {
             && x.ponded && ymd(x.ponded) === ymd(c.ponded) && x.end && ymd(x.end) === ymd(c.end))
             .reduce((s2, x) => s2 + x.boards, 0);
           changed = Math.round(orig) !== Math.round(c.boards);
+          if (changed) kind = 'CHANGED';
         }
         if (!changed) return;
         const src = srcOf(c) || {};
@@ -1183,7 +1185,7 @@ function printLabels() {
           cards.push({
             line1: `${lane}, S#:${src.seedsPerBoard || ''}, B#:${b2}`,
             line2: `S:${mmdd(seedD)}, P:${mmdd(c.ponded)}, H:${mmdd(c.end)}`,
-            line3: `${src.variety || ''}:${c.name || src.seedName || ''}${c.split ? ' (SPLIT)' : ''}`,
+            line3: `${src.variety || ''}:${c.name || src.seedName || ''} — ${kind}`,
             color: wdColor(seedD),
           });
         });
