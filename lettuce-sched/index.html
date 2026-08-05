@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-05 01:05</span>
+  <span id="versionStamp">08-05 01:15</span>
 </div>
 
 <div id="content">
@@ -336,7 +336,9 @@ function renderGantt(today) {
   // Always measured against REAL today, not the as-of date: rolling the view into
   // the future simulates those harvests, it doesn't make them late.
   const realToday = hstToday();
-  const late = cycles.filter(c => !c.harv && c.end && c.end <= realToday && c.ponded && c.ponded <= realToday)
+  // Strictly BEFORE today: today's cycles are cut mid-day (10am-3pm), so they
+  // only count as late once the harvest day is over.
+  const late = cycles.filter(c => !c.harv && c.end && c.end < realToday && c.ponded && c.ponded <= realToday)
     .sort((a, b) => a.end - b.end);
   const lw = document.getElementById('latewarn');
   if (late.length) {
