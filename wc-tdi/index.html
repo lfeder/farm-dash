@@ -324,7 +324,7 @@ async function loadSummary() {
   try { t = await DataSource.fetchTable('wc_summary', { mode: 'prod' }); }
   catch (e) { $('sumStatus').innerHTML = '<span style="color:#f5a">Summary load failed: ' + e + '</span>'; return; }
 
-  const rows = parseTable(t).map(r => {
+  let rows = parseTable(t).map(r => {
     const chk = parseDateV(r.Check);
     const iso = chk ? `${chk.y}-${String(chk.m).padStart(2, '0')}-${String(chk.d).padStart(2, '0')}` : '';
     return { y: num(r.Year), m: num(r.Month), check: chk, iso, code: r.Code, structure: r.Structure, base: num(r.Base), ot: num(r.OT), cost: num(r.TotalCost) };
