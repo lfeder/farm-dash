@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 21:55</span>
+  <span id="versionStamp">08-04 22:10</span>
 </div>
 
 <div id="content">
@@ -422,7 +422,7 @@ function renderGantt(today) {
       xr = GUT_W;                                       // pond starts left of the gutter zone
       // pond + near future (pondings within 14 days; farther plans not drawn),
       // soonest harvest first = rightmost.
-      const vis = list.filter(c => c.ponded && c.ponded.getTime() <= today.getTime() + 14 * DAY);
+      const vis = list.filter(c => c.ponded && c.ponded.getTime() <= today.getTime() + 7 * DAY);
       vis.forEach(c => {
         const r = c.boards / w;
         const notOnPond = !c.ponded || c.ponded > today; // future → fade
@@ -1060,7 +1060,7 @@ function renderBMap() {
     // faded near-future leftmost. All lanes share the harvest edge.
     const GUT_W = 130;
     const list = Object.values(merged)
-      .filter(c => c.ponded && c.ponded.getTime() <= asof.getTime() + 14 * DAY)
+      .filter(c => c.ponded && c.ponded.getTime() <= asof.getTime() + 7 * DAY)
       // soonest harvest first = rightmost; within a day, moved (left-behind)
       // pieces sit at the harvest edge, then oldest pond date.
       .sort((a, b) => (a.end - b.end) || ((b.split ? 1 : 0) - (a.split ? 1 : 0)) || (a.ponded - b.ponded));
@@ -1095,7 +1095,7 @@ function renderBMap() {
     const rr = Math.round(onRows);
     const lc = rr === capR ? '#2f7d4f' : '#b3402f';
     h += `<div class="g-row" style="min-height:24px">`
-      + `<div class="g-label" style="position:static;flex:0 0 90px"><span style="font-weight:600">${esc(lane)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
+      + `<div class="g-label" style="left:0;flex:0 0 90px;background:#fff"><span style="font-weight:600">${esc(lane)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
       + `<div class="g-track" style="height:24px;min-width:${Math.max(x, capR * PX) + 40}px">${blocks}</div></div>`;
   });
   el.innerHTML = h || '<div class="none">Generate first.</div>';
