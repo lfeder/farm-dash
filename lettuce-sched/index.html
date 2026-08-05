@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-05 01:15</span>
+  <span id="versionStamp">08-05 01:25</span>
 </div>
 
 <div id="content">
@@ -1078,7 +1078,7 @@ function renderBMap() {
   el.querySelectorAll('.g-track').forEach(tr2 => { tr2.style.minWidth = mw + 'px'; tr2.style.width = mw + 'px'; });
   el.scrollLeft = el.scrollWidth;    // open at the harvest edge (right)
 }
-function bLaneRow(lane, entries, asof, sub, compact, shift = 0, PXo = 6, GUTo = 130) {
+function bLaneRow(lane, entries, asof, sub, compact, shift = 0, PXo = 6, GUTo = 130, TWo = 0) {
   const PX = PXo;
   const w = laneWidth(lane);
   const capR = lane.startsWith('P1') ? 83 : 110;
@@ -1131,7 +1131,7 @@ function bLaneRow(lane, entries, asof, sub, compact, shift = 0, PXo = 6, GUTo = 
     const ht = compact ? 18 : 24;
     return `<div class="g-row" style="min-height:${ht}px${sub === 'plan' ? ';border-bottom:2px solid #c9b896;margin-bottom:14px' : ''}">`
       + `<div class="g-label" style="left:0;flex:0 0 90px;background:#fff"><span style="font-weight:600">${esc(lane)}${sub ? ` <span style=\"color:#999;font-weight:400;font-size:0.65rem\">${sub}</span>` : ''}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
-      + `<div class="g-track" style="height:${ht}px;min-width:${Math.max(x, capR * PX) + 8}px">${blocks}</div></div>`;
+      + `<div class="g-track" style="height:${ht}px;min-width:${TWo || (Math.max(x, capR * PX) + 8)}px">${blocks}</div></div>`;
   }
 }
 // Label sheet: one tag per CHANGED or NEW cycle (split pieces, reduced
@@ -1219,7 +1219,7 @@ function printMap() {
     sets.forEach(([data, sub]) => {
       // Walking sheet shows only what is ON the pond: no gutter, no future.
       const onPond = (data[lane] || []).filter(c => c.ponded && c.ponded <= asof && c.end > asof);
-      rowsH += bLaneRow(lane, onPond, asof, sub, true, 0, 8, 0);
+      rowsH += bLaneRow(lane, onPond, asof, sub, true, 0, 8, 0, 110 * 8 + 8);   // shared width -> right edges align (incl. P1)
     });
   });
   openPrintDoc(`<html><head><meta charset="utf-8"><title>Pond Map ${fmtMD2(asof)}</title><style>
