@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 18:35</span>
+  <span id="versionStamp">08-04 18:50</span>
 </div>
 
 <div id="content">
@@ -989,7 +989,14 @@ function renderBMap() {
     const w = laneWidth(lane);
     const capR = lane.startsWith('P1') ? 83 : 110;
     // On the pond at asof (solid) then future pondings (faded), harvest order.
-    const list = bVizData[lane].filter(c => c.boards > 0.5 && c.end > asof)
+    // Merge fragments (cascaded splits) sharing pond+harvest dates so the map
+    // shows one block per cohort-per-harvest-day.
+    const merged = {};
+    bVizData[lane].filter(c => c.boards > 0.5 && c.end > asof).forEach(c => {
+      const k = `${ymd(c.ponded)}|${ymd(c.end)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}`;
+      if (merged[k]) merged[k].boards += c.boards; else merged[k] = { ...c };
+    });
+    const list = Object.values(merged)
       .sort((a, b) => (a.end - b.end) || (a.ponded - b.ponded));
     let x = 0, blocks = '', onRows = 0, cumRows = 0, capPos = null;
     list.forEach(c => {
