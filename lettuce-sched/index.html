@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 18:15</span>
+  <span id="versionStamp">08-04 18:25</span>
 </div>
 
 <div id="content">
@@ -995,18 +995,22 @@ function renderBMap() {
     // On the pond at asof (solid) then future pondings (faded), harvest order.
     const list = bVizData[lane].filter(c => c.boards > 0.5 && c.end > asof)
       .sort((a, b) => (a.end - b.end) || (a.ponded - b.ponded));
-    let x = 0, blocks = '', onRows = 0;
+    let x = 0, blocks = '', onRows = 0, cumRows = 0, capPos = null;
     list.forEach(c => {
       const r = c.boards / w;
       const on = c.ponded && c.ponded <= asof;
       if (on) onRows += r;
       const bw = Math.max(4, r * PX);
+      // Cap line in tiled pixel coords (blocks carry 1px gaps + 4px minimums),
+      // so it lands exactly where cumulative rows cross capacity.
+      if (capPos === null && cumRows + r >= capR - 0.01) capPos = x + ((capR - cumRows) / r) * bw;
+      cumRows += r;
       // existing = green, generated (new plan) = blue, blanks = gray
       const bg = c.blank ? '#9e9e9e' : (c.gen ? '#2c7fb8' : '#5cab4a');
       blocks += `<div class="g-block${on ? '' : ' planned'}" style="left:${x}px;width:${bw}px;background:${bg}" title="${esc(c.name || '')} P:${fmtMD2(c.ponded)} H:${fmtMD2(c.end)} ${Math.round(c.boards)}bd">${Math.round(r)}</div>`;
       x += bw + 1;
     });
-    blocks += `<div class="g-cap" style="left:${capR * PX}px"></div>`;
+    blocks += `<div class="g-cap" style="left:${Math.round(capPos ?? capR * PX)}px"></div>`;
     const rr = Math.round(onRows);
     const lc = rr === capR ? '#2f7d4f' : '#b3402f';
     h += `<div class="g-row" style="min-height:24px">`
