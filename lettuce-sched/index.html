@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 22:30</span>
+  <span id="versionStamp">08-04 22:55</span>
 </div>
 
 <div id="content">
@@ -148,7 +148,7 @@
             <button id="bMapNext" class="step-btn">►</button>
             <span id="bMapDow" style="color:#888"></span>
             <span class="toggle" id="bMapSrc" style="margin-left:12px">
-              <button data-src="current" class="active">Current</button><button data-src="plan">Plan</button>
+              <button data-src="current" class="active">Current</button><button data-src="plan">Plan</button><button data-src="both">Both</button>
             </span>
             <button id="bLabels" class="step-btn" style="margin-left:12px" title="Print tags for changed/new cycles only">Print labels</button>
             <span style="margin-left:16px"><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#5cab4a;vertical-align:-1px"></span> existing</span>
@@ -997,7 +997,8 @@ function builderGenerate() {
   });
   const sw2 = document.getElementById('bStartWeek').value;
   document.getElementById('bMapDate').value = sw2;
-  document.querySelectorAll('#bMapSrc button').forEach(x => x.classList.toggle('active', x.dataset.src === 'plan'));
+  bMapMode = 'both';
+  document.querySelectorAll('#bMapSrc button').forEach(x => x.classList.toggle('active', x.dataset.src === 'both'));
   renderBMap();
   document.getElementById('bMapWrap').style.display = '';
   const modeName = { steady: 'steady pattern', match: 'match harvests', converge: 'converge', split: 'split harvests' }[mode];
@@ -1034,6 +1035,7 @@ function builderGenerate() {
 // ── Preview pond map: the proposed schedule (existing cycles with split edits
 // applied + generated rows) drawn like the Schedule tab, at a scrubable date.
 let bVizData = null;         // dataset the map is showing
+let bMapMode = 'current';    // 'current' | 'plan' | 'both'
 let bVizCurrent = null;      // as-is data (initViz)
 let bVizPlan = null;         // last generated plan
 function renderBMap() {
@@ -1044,16 +1046,32 @@ function renderBMap() {
   const [y, m, dd] = dv.split('-').map(Number);
   const asof = new Date(Date.UTC(y, m - 1, dd));
   document.getElementById('bMapDow').textContent = WD[asof.getUTCDay()];
-  const PX = 6;
   let h = '';
-  Object.keys(bVizData).sort().forEach(lane => {
-    const w = laneWidth(lane);
-    const capR = lane.startsWith('P1') ? 83 : 110;
-    // On the pond at asof (solid) then future pondings (faded), harvest order.
+  // "Both" = each lane as two aligned strips: current on top, plan below.
+  const sets = bMapMode === 'both' && bVizPlan
+    ? [[bVizCurrent, 'now'], [bVizPlan, 'plan']]
+    : [[bVizData, '']];
+  const lanes = [...new Set(sets.flatMap(([d2]) => Object.keys(d2 || {})))].sort();
+  lanes.forEach(lane => {
+    sets.forEach(([data, sub]) => {
+      h += bLaneRow(lane, data[lane] || [], asof, sub, sets.length > 1);
+    });
+  });
+  el.innerHTML = h || '<div class="none">Generate first.</div>';
+  let mw = 0;
+  el.querySelectorAll('.g-track').forEach(tr2 => { mw = Math.max(mw, parseInt(tr2.style.minWidth) || 0); });
+  el.querySelectorAll('.g-track').forEach(tr2 => { tr2.style.minWidth = mw + 'px'; tr2.style.width = mw + 'px'; });
+  el.scrollLeft = el.scrollWidth;    // open at the harvest edge (right)
+}
+function bLaneRow(lane, entries, asof, sub, compact) {
+  const PX = 6;
+  const w = laneWidth(lane);
+  const capR = lane.startsWith('P1') ? 83 : 110;
+  {
     // Merge fragments (cascaded splits) sharing pond+harvest dates so the map
     // shows one block per cohort-per-harvest-day.
     const merged = {};
-    bVizData[lane].filter(c => c.boards > 0.5 && c.end > asof).forEach(c => {
+    entries.filter(c => c.boards > 0.5 && c.end > asof).forEach(c => {
       const k = `${ymd(c.ponded)}|${ymd(c.end)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
       if (merged[k]) merged[k].boards += c.boards; else merged[k] = { ...c };
     });
@@ -1067,7 +1085,7 @@ function renderBMap() {
       .sort((a, b) => (a.end - b.end) || ((b.split ? 1 : 0) - (a.split ? 1 : 0)) || (a.ponded - b.ponded));
     let xr = 0, blocks = '', onRows = 0, cumRows = 0, capPos = null;
     const cutM = {};
-    bVizData[lane].filter(c => c.boards > 0.5 && ymd(c.end) === ymd(asof)).forEach(c => {
+    entries.filter(c => c.boards > 0.5 && ymd(c.end) === ymd(asof)).forEach(c => {
       const k = `${ymd(c.ponded)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
       if (cutM[k]) cutM[k].boards += c.boards; else cutM[k] = { ...c };
     });
@@ -1095,15 +1113,11 @@ function renderBMap() {
     const x = xr;
     const rr = Math.round(onRows);
     const lc = rr === capR ? '#2f7d4f' : '#b3402f';
-    h += `<div class="g-row" style="min-height:24px">`
-      + `<div class="g-label" style="left:0;flex:0 0 90px;background:#fff"><span style="font-weight:600">${esc(lane)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
-      + `<div class="g-track" style="height:24px;min-width:${Math.max(x, capR * PX) + 40}px">${blocks}</div></div>`;
-  });
-  el.innerHTML = h || '<div class="none">Generate first.</div>';
-  let mw = 0;
-  el.querySelectorAll('.g-track').forEach(tr2 => { mw = Math.max(mw, parseInt(tr2.style.minWidth) || 0); });
-  el.querySelectorAll('.g-track').forEach(tr2 => { tr2.style.minWidth = mw + 'px'; tr2.style.width = mw + 'px'; });
-  el.scrollLeft = el.scrollWidth;    // open at the harvest edge (right)
+    const ht = compact ? 18 : 24;
+    return `<div class="g-row" style="min-height:${ht}px${sub === 'plan' ? ';border-bottom:2px solid #c9b896' : ''}">`
+      + `<div class="g-label" style="left:0;flex:0 0 90px;background:#fff"><span style="font-weight:600">${esc(lane)}${sub ? ` <span style=\"color:#999;font-weight:400;font-size:0.65rem\">${sub}</span>` : ''}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
+      + `<div class="g-track" style="height:${ht}px;min-width:${Math.max(x, capR * PX) + 40}px">${blocks}</div></div>`;
+  }
 }
 // Label sheet: one tag per CHANGED or NEW cycle (split pieces, reduced
 // originals, generated rows, blanks). Untouched cycles print nothing.
@@ -1156,10 +1170,10 @@ document.getElementById('bLabels').addEventListener('click', printLabels);
 document.getElementById('bMapDate').addEventListener('change', renderBMap);
 document.getElementById('bMapSrc').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  const src = b.dataset.src === 'plan' ? bVizPlan : bVizCurrent;
-  if (!src) return;                               // no plan generated yet
+  if (b.dataset.src !== 'current' && !bVizPlan) return;   // no plan generated yet
+  bMapMode = b.dataset.src;
+  bVizData = bMapMode === 'plan' ? bVizPlan : bVizCurrent;
   document.querySelectorAll('#bMapSrc button').forEach(x => x.classList.toggle('active', x === b));
-  bVizData = src;
   renderBMap();
 });
 document.getElementById('bMapPrev').addEventListener('click', () => {
