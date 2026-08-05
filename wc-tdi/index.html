@@ -363,6 +363,13 @@ function renderSummaryPivot() {
     mB += dB; mO += dO;
     h += `<tr class="roll"><td class="lbl"></td><td class="lbl">${sumDateLabel(iso)} total</td><td></td><td>${fmt(dB)}</td><td>${fmt(dO)}</td></tr>`;
   });
+  const byCodeMonth = {}; inMonth.forEach(r => { (byCodeMonth[r.code] = byCodeMonth[r.code] || { b: 0, o: 0 }); byCodeMonth[r.code].b += r.base; byCodeMonth[r.code].o += r.ot; });
+  let firstTot = true;
+  Object.keys(byCodeMonth).sort().forEach(c => {
+    const v = byCodeMonth[c];
+    h += `<tr class="roll"><td class="lbl">${firstTot ? sumMonthLabel(selMonth) + ' total' : ''}</td><td></td><td class="lbl">${c}</td><td>${fmt(v.b)}</td><td>${fmt(v.o)}</td></tr>`;
+    firstTot = false;
+  });
   h += `<tr class="tot"><td class="lbl">${sumMonthLabel(selMonth)} total</td><td></td><td></td><td>${fmt(mB)}</td><td>${fmt(mO)}</td></tr></tbody></table>`;
   $('sumPivot').innerHTML = h;
 }
