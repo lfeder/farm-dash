@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-05 02:10</span>
+  <span id="versionStamp">08-05 02:20</span>
 </div>
 
 <div id="content">
@@ -1155,16 +1155,6 @@ function printLabels() {
   const asof = new Date(Date.UTC(y3, m3 - 1, d3));
   const wdColor = d2 => { const wd2 = d2.getUTCDay(); return (wd2 === 5 || wd2 === 0) ? '#00B0F0' : (wd2 === 6 || wd2 === 1) ? '#FFFF00' : 'white'; };
   const mmdd = d2 => String(d2.getUTCMonth() + 1).padStart(2, '0') + String(d2.getUTCDate()).padStart(2, '0');
-  // Chunk on WHOLE ROWS (app caps labels at 90 boards; we keep that cap but
-  // split at row boundaries so B# is a multiple of the lane width and R# is whole).
-  const chunkBoards = (tot, w3) => {
-    const totR = Math.round(tot / w3);
-    const capRows = Math.max(1, Math.floor(90 / w3));
-    if (totR <= capRows) return [tot];
-    const n2 = Math.ceil(totR / capRows);
-    const base = Math.floor(totR / n2), rem = totR % n2;
-    return Array.from({ length: n2 }, (_, i2) => (base + (i2 < rem ? 1 : 0)) * w3);
-  };
   const cards = [];
   Object.keys(bVizPlan).sort().forEach(lane => {
     const pondP = lane.slice(0, 2), sideP = lane.slice(2);
@@ -1194,13 +1184,12 @@ function printLabels() {
         const src = srcOf(c) || {};
         const seedD = src.seed || new Date(c.ponded.getTime() - 2 * DAY);
         const w2 = laneWidth(lane);
-        chunkBoards(Math.round(c.boards), w2).forEach(b2 => {
-          cards.push({
-            line1: `${lane}, S#:${src.seedsPerBoard || ''}, B#:${b2}, R#:${Math.round(b2 / w2 * 10) / 10}`,
-            line2: `S:${mmdd(seedD)}, P:${mmdd(c.ponded)}, H:${mmdd(c.end)}`,
-            line3: `${src.variety || ''}:${c.name || src.seedName || ''}`,
-            kind,
-          });
+        const b2 = Math.round(c.boards);
+        cards.push({
+          line1: `${lane}, S#:${src.seedsPerBoard || ''}, B#:${b2}, R#:${Math.round(b2 / w2 * 10) / 10}`,
+          line2: `S:${mmdd(seedD)}, P:${mmdd(c.ponded)}, H:${mmdd(c.end)}`,
+          line3: `${src.variety || ''}:${c.name || src.seedName || ''}`,
+          kind,
         });
       });
   });
