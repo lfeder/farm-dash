@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-05 00:05</span>
+  <span id="versionStamp">08-05 00:15</span>
 </div>
 
 <div id="content">
@@ -1129,7 +1129,7 @@ function bLaneRow(lane, entries, asof, sub, compact, shift = 0) {
     const ht = compact ? 18 : 24;
     return `<div class="g-row" style="min-height:${ht}px${sub === 'plan' ? ';border-bottom:2px solid #c9b896;margin-bottom:14px' : ''}">`
       + `<div class="g-label" style="left:0;flex:0 0 90px;background:#fff"><span style="font-weight:600">${esc(lane)}${sub ? ` <span style=\"color:#999;font-weight:400;font-size:0.65rem\">${sub}</span>` : ''}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
-      + `<div class="g-track" style="height:${ht}px;min-width:${Math.max(x, capR * PX) + 40}px">${blocks}</div></div>`;
+      + `<div class="g-track" style="height:${ht}px;min-width:${Math.max(x, capR * PX) + 8}px">${blocks}</div></div>`;
   }
 }
 // Label sheet: one tag per CHANGED or NEW cycle (split pieces, reduced
