@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 22:10</span>
+  <span id="versionStamp">08-04 22:30</span>
 </div>
 
 <div id="content">
@@ -150,6 +150,7 @@
             <span class="toggle" id="bMapSrc" style="margin-left:12px">
               <button data-src="current" class="active">Current</button><button data-src="plan">Plan</button>
             </span>
+            <button id="bLabels" class="step-btn" style="margin-left:12px" title="Print tags for changed/new cycles only">Print labels</button>
             <span style="margin-left:16px"><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#5cab4a;vertical-align:-1px"></span> existing</span>
             <span><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#1e5e2e;vertical-align:-1px"></span> moved</span>
             <span><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#2c7fb8;vertical-align:-1px"></span> new</span>
@@ -1104,6 +1105,54 @@ function renderBMap() {
   el.querySelectorAll('.g-track').forEach(tr2 => { tr2.style.minWidth = mw + 'px'; tr2.style.width = mw + 'px'; });
   el.scrollLeft = el.scrollWidth;    // open at the harvest edge (right)
 }
+// Label sheet: one tag per CHANGED or NEW cycle (split pieces, reduced
+// originals, generated rows, blanks). Untouched cycles print nothing.
+function printLabels() {
+  if (!bVizPlan) { alert('Generate a plan first.'); return; }
+  const tags = [];
+  Object.keys(bVizPlan).sort().forEach(lane => {
+    const w = laneWidth(lane);
+    // merge fragments like the map does
+    const merged = {};
+    bVizPlan[lane].filter(c => c.boards > 0.5).forEach(c => {
+      const k = `${ymd(c.ponded)}|${ymd(c.end)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
+      if (merged[k]) merged[k].boards += c.boards; else merged[k] = { ...c };
+    });
+    Object.values(merged).sort((a, b) => a.ponded - b.ponded || a.end - b.end).forEach(c => {
+      let kind = null;
+      if (c.blank) kind = 'BLANK';
+      else if (c.gen) kind = 'NEW';
+      else if (c.split) kind = 'SPLIT';
+      else {
+        // original: label only if its board count changed vs the source data
+        const pondP = lane.slice(0, 2), sideP = lane.slice(2);
+        const orig = cycles.filter(x => x.pond === pondP
+          && (x.side === sideP || (sideP === 'AB' ? ['A', 'B', 'AB'].includes(x.side) : x.side === 'AB'))
+          && x.ponded && ymd(x.ponded) === ymd(c.ponded) && x.end && ymd(x.end) === ymd(c.end))
+          .reduce((s2, x) => s2 + x.boards, 0);
+        if (Math.round(orig) !== Math.round(c.boards)) kind = 'CHANGED';
+      }
+      if (kind) tags.push({ lane, kind, name: c.name || '', boards: Math.round(c.boards),
+        rows: Math.round(c.boards / w * 10) / 10, ponded: c.ponded, end: c.end });
+    });
+  });
+  if (!tags.length) { alert('No changed cycles — nothing to print.'); return; }
+  const wdw = window.open('', '_blank');
+  wdw.document.write(`<html><head><title>Cycle labels</title><style>
+    body{font-family:-apple-system,sans-serif;margin:16px}
+    .tag{display:inline-block;width:220px;border:2px solid #333;border-radius:8px;margin:6px;padding:10px 12px;vertical-align:top;page-break-inside:avoid}
+    .tag .lane{font-size:1.5rem;font-weight:800}
+    .tag .kind{float:right;font-size:0.7rem;font-weight:700;border:1px solid #333;border-radius:4px;padding:1px 5px}
+    .tag .seed{font-size:1rem;font-weight:600;margin:4px 0}
+    .tag .nums{font-size:0.85rem;line-height:1.5}
+  </style></head><body>` + tags.map(t =>
+    `<div class="tag"><span class="kind">${t.kind}</span><div class="lane">${esc(t.lane)}</div>
+     <div class="seed">${esc(t.name)}</div>
+     <div class="nums">${t.boards} boards · ${t.rows} rows<br>Pond: ${WD[t.ponded.getUTCDay()]} ${fmtMD2(t.ponded)}<br>Harvest: ${WD[t.end.getUTCDay()]} ${fmtMD2(t.end)}</div></div>`).join('')
+    + `<scr` + `ipt>window.print()</scr` + `ipt></body></html>`);
+  wdw.document.close();
+}
+document.getElementById('bLabels').addEventListener('click', printLabels);
 document.getElementById('bMapDate').addEventListener('change', renderBMap);
 document.getElementById('bMapSrc').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
