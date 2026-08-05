@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 19:25</span>
+  <span id="versionStamp">08-04 19:40</span>
 </div>
 
 <div id="content">
@@ -151,6 +151,7 @@
               <button data-src="current" class="active">Current</button><button data-src="plan">Plan</button>
             </span>
             <span style="margin-left:16px"><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#5cab4a;vertical-align:-1px"></span> existing</span>
+            <span><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#1e5e2e;vertical-align:-1px"></span> moved</span>
             <span><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#2c7fb8;vertical-align:-1px"></span> new</span>
             <span><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#9e9e9e;vertical-align:-1px"></span> blanks</span>
           </div>
@@ -958,7 +959,7 @@ function builderGenerate() {
     const mv = Math.min(src.boards, e.boards);
     src.boards -= mv;
     const [y2, m2, d2] = e.to.split('-').map(Number);
-    list.push({ ponded: src.ponded, end: new Date(Date.UTC(y2, m2 - 1, d2)), boards: mv, name: src.name + ' (split)' });
+    list.push({ ponded: src.ponded, end: new Date(Date.UTC(y2, m2 - 1, d2)), boards: mv, name: src.name, split: true });
   });
   out.forEach(r => {
     (bVizData[r.lane] = bVizData[r.lane] || []).push({ ponded: r.ponded, end: r.harv, boards: r.boards, name: r.blank ? 'BLANK' : r.seedName, gen: true, blank: r.blank });
@@ -1022,7 +1023,7 @@ function renderBMap() {
     // shows one block per cohort-per-harvest-day.
     const merged = {};
     bVizData[lane].filter(c => c.boards > 0.5 && c.end > asof).forEach(c => {
-      const k = `${ymd(c.ponded)}|${ymd(c.end)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}`;
+      const k = `${ymd(c.ponded)}|${ymd(c.end)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
       if (merged[k]) merged[k].boards += c.boards; else merged[k] = { ...c };
     });
     const list = Object.values(merged)
@@ -1037,9 +1038,9 @@ function renderBMap() {
       // so it lands exactly where cumulative rows cross capacity.
       if (capPos === null && cumRows + r >= capR - 0.01) capPos = x + ((capR - cumRows) / r) * bw;
       cumRows += r;
-      // existing = green, generated (new plan) = blue, blanks = gray
-      const bg = c.blank ? '#9e9e9e' : (c.gen ? '#2c7fb8' : '#5cab4a');
-      blocks += `<div class="g-block${on ? '' : ' planned'}" style="left:${x}px;width:${bw}px;background:${bg}" title="${esc(c.name || '')} P:${fmtMD2(c.ponded)} H:${fmtMD2(c.end)} ${Math.round(c.boards)}bd">${Math.round(r)}</div>`;
+      // existing = green, moved by a split = dark green, new = blue, blanks = gray
+      const bg = c.blank ? '#9e9e9e' : c.split ? '#1e5e2e' : (c.gen ? '#2c7fb8' : '#5cab4a');
+      blocks += `<div class="g-block${on ? '' : ' planned'}" style="left:${x}px;width:${bw}px;background:${bg}" title="${esc(c.name || '')}${c.split ? ' — moved by split' : ''} P:${fmtMD2(c.ponded)} H:${fmtMD2(c.end)} ${Math.round(c.boards)}bd">${Math.round(r)}</div>`;
       x += bw + 1;
     });
     blocks += `<div class="g-cap" style="left:${Math.round(capPos ?? capR * PX)}px"></div>`;
