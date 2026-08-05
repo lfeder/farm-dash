@@ -999,9 +999,14 @@ const PHOTO_BASE = DataSource.SUPABASE_PROJECTS.prod.url + '/storage/v1';
 // photo_path already carries the bucket ('images/grow_lettuce_seed_batch/x.jpg').
 // Grids go through the render endpoint — the originals are 2–4 MB phone shots,
 // far too heavy to drop four (or twenty) of into a page. Zoom gets the original.
-function photoUrl(path, width) {
+//
+// Both dimensions are always sent: width alone does NOT preserve aspect ratio
+// here — a 3024x4032 shot comes back 480x4032 (squashed, and still 280 kB).
+// width+height+resize=cover crops to the 4:3 the tiles are laid out for and
+// drops the same thumbnail to ~39 kB.
+function photoUrl(path, width, height) {
   return width
-    ? `${PHOTO_BASE}/render/image/public/${path}?width=${width}&quality=72`
+    ? `${PHOTO_BASE}/render/image/public/${path}?width=${width}&height=${height}&resize=cover&quality=72`
     : `${PHOTO_BASE}/object/public/${path}`;
 }
 
@@ -1044,7 +1049,7 @@ function renderGallery() {
     tile.setAttribute('aria-label', `${g.label} — expand ${g.photos.length} photo${g.photos.length === 1 ? '' : 's'}`);
     tile.innerHTML =
       `<div class="gal-thumb">` +
-        `<img src="${photoUrl(hero.path, 480)}" alt="${escapeHtml(g.label)} harvest" loading="lazy">` +
+        `<img src="${photoUrl(hero.path, 480, 360)}" alt="${escapeHtml(g.label)} harvest" loading="lazy">` +
         `<span class="gal-count">${g.photos.length}</span>` +
       `</div>` +
       `<div class="gal-meta">` +
@@ -1075,7 +1080,7 @@ function openGalleryModal(groupId) {
     cell.className = 'modal-cell';
     cell.type = 'button';
     cell.innerHTML =
-      `<img src="${photoUrl(p.path, 640)}" alt="${escapeHtml(p.batch || g.label)}" loading="lazy">` +
+      `<img src="${photoUrl(p.path, 640, 480)}" alt="${escapeHtml(p.batch || g.label)}" loading="lazy">` +
       `<div class="modal-cap">${escapeHtml(p.cultivar || '')}${p.cultivar && p.batch ? ' — ' : ''}${escapeHtml(p.batch)}</div>`;
     cell.addEventListener('click', () => openZoom(i));
     grid.appendChild(cell);
