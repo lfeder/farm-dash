@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 23:15</span>
+  <span id="versionStamp">08-04 23:30</span>
 </div>
 
 <div id="content">
@@ -1054,9 +1054,19 @@ function renderBMap() {
     ? [[bVizCurrent, 'now'], [bVizPlan, 'plan']]
     : [[bVizData, '']];
   const lanes = [...new Set(sets.flatMap(([d2]) => Object.keys(d2 || {})))].sort();
+  const onRows2 = (entries, w2) => entries.filter(c => c.boards > 0.5 && c.end > asof && c.ponded && c.ponded <= asof)
+    .reduce((s2, c) => s2 + c.boards / w2, 0);
   lanes.forEach(lane => {
+    // In Both view, shift the thinner strip left by the fill difference so the
+    // shared cycles line up column-for-column past the left-behind pieces.
+    let shiftNow = 0, shiftPlan = 0;
+    if (sets.length > 1) {
+      const w2 = laneWidth(lane);
+      const diff = onRows2((bVizPlan || {})[lane] || [], w2) - onRows2((bVizCurrent || {})[lane] || [], w2);
+      if (diff > 0) shiftNow = diff * 6; else shiftPlan = -diff * 6;
+    }
     sets.forEach(([data, sub]) => {
-      h += bLaneRow(lane, data[lane] || [], asof, sub, sets.length > 1);
+      h += bLaneRow(lane, data[lane] || [], asof, sub, sets.length > 1, sub === 'now' ? shiftNow : shiftPlan);
     });
   });
   el.innerHTML = h || '<div class="none">Generate first.</div>';
@@ -1065,7 +1075,7 @@ function renderBMap() {
   el.querySelectorAll('.g-track').forEach(tr2 => { tr2.style.minWidth = mw + 'px'; tr2.style.width = mw + 'px'; });
   el.scrollLeft = el.scrollWidth;    // open at the harvest edge (right)
 }
-function bLaneRow(lane, entries, asof, sub, compact) {
+function bLaneRow(lane, entries, asof, sub, compact, shift = 0) {
   const PX = 6;
   const w = laneWidth(lane);
   const capR = lane.startsWith('P1') ? 83 : 110;
@@ -1085,7 +1095,7 @@ function bLaneRow(lane, entries, asof, sub, compact) {
       // soonest harvest first = rightmost; within a day, moved (left-behind)
       // pieces sit at the harvest edge, then oldest pond date.
       .sort((a, b) => (a.end - b.end) || ((b.split ? 1 : 0) - (a.split ? 1 : 0)) || (a.ponded - b.ponded));
-    let xr = 0, blocks = '', onRows = 0, cumRows = 0, capPos = null;
+    let xr = shift, blocks = '', onRows = 0, cumRows = 0, capPos = null;
     const cutM = {};
     entries.filter(c => c.boards > 0.5 && ymd(c.end) === ymd(asof)).forEach(c => {
       const k = `${ymd(c.ponded)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
@@ -1098,7 +1108,7 @@ function bLaneRow(lane, entries, asof, sub, compact) {
       blocks += `<div class="g-block" style="right:${xr}px;width:${bw}px;background:${bg};opacity:0.55" title="harvested ${fmtMD2(asof)} · ${esc(c.name || '')} P:${fmtMD2(c.ponded)} ${Math.round(c.boards)}bd">${Math.round(r)}</div>`;
       xr += bw + 1;
     });
-    xr = GUT_W;
+    xr = GUT_W + shift;
     list.forEach(c => {
       const r = c.boards / w;
       const on = c.ponded && c.ponded <= asof;
