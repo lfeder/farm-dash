@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 23:05</span>
+  <span id="versionStamp">08-04 23:15</span>
 </div>
 
 <div id="content">
@@ -1124,7 +1124,8 @@ function bLaneRow(lane, entries, asof, sub, compact) {
 // Label sheet: one tag per CHANGED or NEW cycle (split pieces, reduced
 // originals, generated rows, blanks). Untouched cycles print nothing.
 function printLabels() {
-  if (!bVizPlan) { alert('Generate a plan first.'); return; }
+  const btn = document.getElementById('bLabels');
+  if (!bVizPlan) { btn.textContent = 'Generate first'; setTimeout(() => btn.textContent = 'Print labels', 1500); return; }
   const tags = [];
   Object.keys(bVizPlan).sort().forEach(lane => {
     const w = laneWidth(lane);
@@ -1152,7 +1153,7 @@ function printLabels() {
         rows: Math.round(c.boards / w * 10) / 10, ponded: c.ponded, end: c.end });
     });
   });
-  if (!tags.length) { alert('No changed cycles — nothing to print.'); return; }
+  if (!tags.length) { btn.textContent = 'No changes'; setTimeout(() => btn.textContent = 'Print labels', 1500); return; }
   const wdw = window.open('', '_blank');
   wdw.document.write(`<html><head><title>Cycle labels</title><style>
     body{font-family:-apple-system,sans-serif;margin:16px}
