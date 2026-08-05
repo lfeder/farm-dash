@@ -117,7 +117,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 16:40</span>
+  <span id="versionStamp">08-04 16:55</span>
 </div>
 
 <div id="content">
@@ -646,11 +646,10 @@ function builderInit() {
     return `<select class="bl-seed" title="Active seeds & mixes from production inventory">${extra}`
       + seedOptions.map(s => `<option value="${esc(s.seed_name)}"${s.seed_name === cur ? ' selected' : ''}>${esc(s.seed_name)} (${esc(s.variety)})</option>`).join('') + `</select>`;
   };
-  t.innerHTML = `<tr><th></th><th>Lane</th><th>Pattern</th><th>Seed (inventory)</th><th>Lot</th><th>Density</th><th>Start</th><th>Phase (next event)</th><th>Last events</th></tr>`
+  t.innerHTML = `<tr><th></th><th>Lane</th><th>Pattern</th><th>Seed (inventory)</th><th>Lot</th><th>Density</th><th>Start</th><th>Phase (next event)</th></tr>`
     + lanes.map(lane => {
       const ev = laneEvents(lane);
       const lastC = cycles.filter(c => (c.pond + c.side) === lane && c.ponded).sort((a, b) => a.ponded - b.ponded).pop();
-      const hist = ev.slice(-4).map(e => `${WD[e.dow]} ${fmtMD(e.date)}=${e.rows}`).join(', ');
       // Lane defaults per Lenny's 08/04 plan; lanes not listed fall back to a
       // guess from the newest cycle length. (P1AB pattern still undecided:
       // 21/__/21/__ vs 17/__/18/__ — defaulting to 21/__/21/__.)
@@ -677,7 +676,6 @@ function builderInit() {
         + `<td class="bl-cfg"><input class="bl-dens" type="number" style="width:60px" value="${lastC ? lastC.seedsPerBoard : 330}"></td>`
         + `<td class="bl-cfg"><select class="bl-start"></select></td>`
         + `<td class="bl-cfg"><select class="bl-phase"></select><div class="bl-note" style="font-size:0.68rem;color:#9a6a00"></div></td>`
-        + `<td class="bl-cfg" style="font-size:0.7rem;color:#777">${hist || '—'}</td>`
         + `</tr>`;
     }).join('');
   renderRef();
