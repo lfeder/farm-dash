@@ -89,7 +89,7 @@
 </div>
 
 <div class="panel" data-panel="qb">
-  <div class="sub">By structure, every pay period this year · wages include OT (not broken out) · same basis as Wage Summary</div>
+  <div class="sub">Total HRB cost by structure (wages + employer taxes, benefits, admin fees), every pay period this year</div>
   <div id="qbStatus" style="color:#8aa;padding:16px 0">Loading…</div>
   <div id="qbMain" style="overflow:auto"></div>
 </div>
@@ -327,13 +327,14 @@ async function loadSummary() {
   const rows = parseTable(t).map(r => {
     const chk = parseDateV(r.Check);
     const iso = chk ? `${chk.y}-${String(chk.m).padStart(2, '0')}-${String(chk.d).padStart(2, '0')}` : '';
-    return { y: num(r.Year), m: num(r.Month), check: chk, iso, code: r.Code, structure: r.Structure, base: num(r.Base), ot: num(r.OT) };
-  }).filter(r => {
-    const c = (r.code || '').trim().toUpperCase();
-    return r.check && c !== '' && c !== 'N/A' && c !== 'UNCLASSIFIED';
-  });
+    return { y: num(r.Year), m: num(r.Month), check: chk, iso, code: r.Code, structure: r.Structure, base: num(r.Base), ot: num(r.OT), cost: num(r.TotalCost) };
+  }).filter(r => r.check);
 
-  SUM_ALL = rows;
+  SUM_ALL = rows;   // QB tab: all classes (total cost covers everyone)
+  rows = rows.filter(r => {
+    const c = (r.code || '').trim().toUpperCase();
+    return c !== '' && c !== 'N/A' && c !== 'UNCLASSIFIED';
+  });
   // 6 most recent calendar months present.
   const months = [...new Set(rows.map(sumMonthKey))].sort((a, b) => b.localeCompare(a)).slice(0, 6);
   const keep = new Set(months);
@@ -389,8 +390,7 @@ function renderQB() {
   const byDate = {};
   rows.forEach(r => {
     const d = (byDate[r.iso] = byDate[r.iso] || { h: 0, s: 0 });
-    const w = r.base + r.ot;
-    if ((r.structure || '').toLowerCase() === 'hourly') d.h += w; else d.s += w;
+    if ((r.structure || '').toLowerCase() === 'hourly') d.h += r.cost; else d.s += r.cost;
   });
   const dates = Object.keys(byDate).sort();
   let h = `<div class="muted" style="margin-bottom:4px">${year} pay periods</div>`;
