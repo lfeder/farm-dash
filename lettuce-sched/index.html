@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 20:45</span>
+  <span id="versionStamp">08-04 21:10</span>
 </div>
 
 <div id="content">
@@ -405,51 +405,44 @@ function renderGantt(today) {
 
     let firstInPond = true;
     rows.forEach(({ side, w, list, h: rowH }) => {
-      // Reversed layout: seeding (future, faded) on the LEFT → harvest on the
-      // RIGHT. Rightmost solid block = next to be cut. Tile the reversed list
-      // (latest harvest first); the cap line marks the seeding edge — where
-      // rows-remaining-to-the-right equals capacity.
-      let x = 0, blocks = '', totalRows = 0, prevDays = null, cumRows = 0, capPos = null;
-      // Show only the near future on the left (pondings within 14 days);
-      // farther-out plans are not drawn, keeping the pond anchored in view.
-      const rev = list.filter(c => c.ponded && c.ponded.getTime() <= today.getTime() + 14 * DAY)
-        .slice().reverse();
-      const allRows = rev.reduce((s, c) => s + c.boards / w, 0);
-      rev.forEach(c => {
+      // Right-anchored layout: everything tiles from the RIGHT edge, so every
+      // lane's harvest edge lines up. Far right = harvested-today gutter, then
+      // the pond (rightmost solid = next to cut), faded near-future to the left.
+      // GUT_W reserves a fixed gutter so pond edges align across lanes.
+      const GUT_W = 130;
+      let xr = 0, blocks = '', totalRows = 0, prevDays = null, cumRows = 0, capPos = null;
+      // gutter: that day's cut cycles, one block each
+      const cut = cycles.filter(c => c.pond === pond && c.side === side && dEq(c.end, today));
+      cut.forEach(c => {
         const r = c.boards / w;
-        const notOnPond = !c.ponded || c.ponded > today; // no pond date yet, or future → fade
+        const bw = Math.max(4, r * ROW_PX);
+        blocks += `<div class="g-block" style="right:${xr}px;width:${bw}px;background:${varietyColor(c.variety || c.seedName)};opacity:0.55" title="harvested ${fmtMD2(c.end)} · S:${fmtMD2(c.seed)} · ${Math.round(c.boards)}bd"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days">${Math.round((c.end - (c.ponded || c.seed)) / DAY)}</span></div>`;
+        xr += bw + 1;
+      });
+      xr = GUT_W;                                       // pond starts left of the gutter zone
+      // pond + near future (pondings within 14 days; farther plans not drawn),
+      // soonest harvest first = rightmost.
+      const vis = list.filter(c => c.ponded && c.ponded.getTime() <= today.getTime() + 14 * DAY);
+      vis.forEach(c => {
+        const r = c.boards / w;
+        const notOnPond = !c.ponded || c.ponded > today; // future → fade
         const faded = notOnPond ? ' planned' : '';
         if (!notOnPond) totalRows += r;                // fill readout = on-pond only
         const bw = Math.max(4, r * ROW_PX);
         const col = varietyColor(c.variety || c.seedName);
-        const pondDays = Math.round((c.end - (c.ponded || c.seed)) / DAY); // days on pond (pond date → harvest)
-        // day-number color: red if overdue (>28), else grey if it jumps >2 from the prior cycle
-        // (drop the dark halo on colored numbers so the color reads clean)
+        const pondDays = Math.round((c.end - (c.ponded || c.seed)) / DAY);
         let dayStyle = '';
         if (pondDays > 28) dayStyle = ' style="color:#ff5252;text-shadow:none"';
         else if (prevDays != null && Math.abs(pondDays - prevDays) > 2) dayStyle = ' style="color:#333;text-shadow:none"';
         prevDays = pondDays;
-        // Seeding-edge (cap) line: the point where rows to the RIGHT = capR.
-        const fromRight = allRows - cumRows;           // rows at/right of this block's left edge
-        if (capPos === null && fromRight >= capR - 0.01 && fromRight - r <= capR + 0.01)
-          capPos = x + ((fromRight - capR) / r) * bw;
+        // Seeding-edge (cap) line where cumulative rows from the right cross capacity.
+        if (capPos === null && cumRows + r >= capR - 0.01) capPos = xr + ((capR - cumRows) / r) * bw;
         cumRows += r;
-        blocks += `<div class="g-block${faded}" style="left:${x}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days"${dayStyle}>${pondDays}</span></div>`;
-        x += bw + 1;
+        blocks += `<div class="g-block${faded}" style="right:${xr}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days"${dayStyle}>${pondDays}</span></div>`;
+        xr += bw + 1;
       });
-      blocks += `<div class="g-cap" style="left:${Math.round(capPos ?? 0)}px"></div>`;
-      // Harvested-today gutter: that day's cut cycles, one block each, past the
-      // pond's right (harvest) edge.
-      const cut = cycles.filter(c => c.pond === pond && c.side === side && dEq(c.end, today));
-      if (cut.length) {
-        x += 14;
-        cut.forEach(c => {
-          const r = c.boards / w;
-          const bw = Math.max(4, r * ROW_PX);
-          blocks += `<div class="g-block" style="left:${x}px;width:${bw}px;background:${varietyColor(c.variety || c.seedName)};opacity:0.55" title="harvested ${fmtMD2(c.end)} · S:${fmtMD2(c.seed)} · ${Math.round(c.boards)}bd"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days">${Math.round((c.end - (c.ponded || c.seed)) / DAY)}</span></div>`;
-          x += bw + 1;
-        });
-      }
+      blocks += `<div class="g-cap" style="right:${Math.round(capPos ?? xr)}px"></div>`;
+      const x = xr;                                     // total track width used
       const rr = Math.round(totalRows);
       const lc = rr === capR ? '#2f7d4f' : '#b3402f'; // green only if exactly full, else red
       const row = document.createElement('div'); row.className = 'g-row';
@@ -482,6 +475,7 @@ function renderGantt(today) {
 
   const at = document.getElementById('axisTrack');
   if (at) at.style.minWidth = maxTrackW + 'px';
+  g.scrollLeft = g.scrollWidth;      // open at the harvest edge (right)
 }
 
 function renderLegend() {
@@ -1052,45 +1046,40 @@ function renderBMap() {
       const k = `${ymd(c.ponded)}|${ymd(c.end)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
       if (merged[k]) merged[k].boards += c.boards; else merged[k] = { ...c };
     });
-    // Reversed layout: seeding/faded LEFT → harvest RIGHT (latest harvest first).
+    // Right-anchored: gutter (that day's cut) at far right, pond left of it,
+    // faded near-future leftmost. All lanes share the harvest edge.
+    const GUT_W = 130;
     const list = Object.values(merged)
       .filter(c => c.ponded && c.ponded.getTime() <= asof.getTime() + 14 * DAY)
-      .sort((a, b) => (b.end - a.end) || (b.ponded - a.ponded));
-    const allRows = list.reduce((s, c) => s + c.boards / w, 0);
-    let x = 0, blocks = '', onRows = 0, cumRows = 0, capPos = null;
-    list.forEach(c => {
-      const r = c.boards / w;
-      const on = c.ponded && c.ponded <= asof;
-      if (on) onRows += r;
-      const bw = Math.max(4, r * PX);
-      // Seeding-edge (cap) line: the point where rows to the RIGHT = capR.
-      const fromRight = allRows - cumRows;
-      if (capPos === null && fromRight >= capR - 0.01 && fromRight - r <= capR + 0.01)
-        capPos = x + ((fromRight - capR) / r) * bw;
-      cumRows += r;
-      // existing = green, moved by a split = dark green, new = blue, blanks = gray
-      const bg = c.blank ? '#9e9e9e' : c.split ? '#1e5e2e' : (c.gen ? '#2c7fb8' : '#5cab4a');
-      blocks += `<div class="g-block${on ? '' : ' planned'}" style="left:${x}px;width:${bw}px;background:${bg}" title="${esc(c.name || '')}${c.split ? ' — moved by split' : ''} P:${fmtMD2(c.ponded)} H:${fmtMD2(c.end)} ${Math.round(c.boards)}bd">${Math.round(r)}</div>`;
-      x += bw + 1;
-    });
-    blocks += `<div class="g-cap" style="left:${Math.round(capPos ?? 0)}px"></div>`;
-    // Harvested-that-day gutter, one block per cycle, past the harvest edge.
+      .sort((a, b) => (a.end - b.end) || (a.ponded - b.ponded));   // soonest harvest first = rightmost
+    let xr = 0, blocks = '', onRows = 0, cumRows = 0, capPos = null;
     const cutM = {};
     bVizData[lane].filter(c => c.boards > 0.5 && ymd(c.end) === ymd(asof)).forEach(c => {
       const k = `${ymd(c.ponded)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
       if (cutM[k]) cutM[k].boards += c.boards; else cutM[k] = { ...c };
     });
-    const cut = Object.values(cutM).sort((a, b) => a.ponded - b.ponded);
-    if (cut.length) {
-      x += 14;
-      cut.forEach(c => {
-        const r = c.boards / w;
-        const bw = Math.max(4, r * PX);
-        const bg = c.blank ? '#9e9e9e' : c.split ? '#1e5e2e' : (c.gen ? '#2c7fb8' : '#5cab4a');
-        blocks += `<div class="g-block" style="left:${x}px;width:${bw}px;background:${bg};opacity:0.55" title="harvested ${fmtMD2(asof)} · ${esc(c.name || '')} P:${fmtMD2(c.ponded)} ${Math.round(c.boards)}bd">${Math.round(r)}</div>`;
-        x += bw + 1;
-      });
-    }
+    Object.values(cutM).sort((a, b) => a.ponded - b.ponded).forEach(c => {
+      const r = c.boards / w;
+      const bw = Math.max(4, r * PX);
+      const bg = c.blank ? '#9e9e9e' : c.split ? '#1e5e2e' : (c.gen ? '#2c7fb8' : '#5cab4a');
+      blocks += `<div class="g-block" style="right:${xr}px;width:${bw}px;background:${bg};opacity:0.55" title="harvested ${fmtMD2(asof)} · ${esc(c.name || '')} P:${fmtMD2(c.ponded)} ${Math.round(c.boards)}bd">${Math.round(r)}</div>`;
+      xr += bw + 1;
+    });
+    xr = GUT_W;
+    list.forEach(c => {
+      const r = c.boards / w;
+      const on = c.ponded && c.ponded <= asof;
+      if (on) onRows += r;
+      const bw = Math.max(4, r * PX);
+      if (capPos === null && cumRows + r >= capR - 0.01) capPos = xr + ((capR - cumRows) / r) * bw;
+      cumRows += r;
+      // existing = green, moved by a split = dark green, new = blue, blanks = gray
+      const bg = c.blank ? '#9e9e9e' : c.split ? '#1e5e2e' : (c.gen ? '#2c7fb8' : '#5cab4a');
+      blocks += `<div class="g-block${on ? '' : ' planned'}" style="right:${xr}px;width:${bw}px;background:${bg}" title="${esc(c.name || '')}${c.split ? ' — moved by split' : ''} P:${fmtMD2(c.ponded)} H:${fmtMD2(c.end)} ${Math.round(c.boards)}bd">${Math.round(r)}</div>`;
+      xr += bw + 1;
+    });
+    blocks += `<div class="g-cap" style="right:${Math.round(capPos ?? xr)}px"></div>`;
+    const x = xr;
     const rr = Math.round(onRows);
     const lc = rr === capR ? '#2f7d4f' : '#b3402f';
     h += `<div class="g-row" style="min-height:24px">`
@@ -1098,6 +1087,7 @@ function renderBMap() {
       + `<div class="g-track" style="height:24px;min-width:${Math.max(x, capR * PX) + 40}px">${blocks}</div></div>`;
   });
   el.innerHTML = h || '<div class="none">Generate first.</div>';
+  el.scrollLeft = el.scrollWidth;    // open at the harvest edge (right)
 }
 document.getElementById('bMapDate').addEventListener('change', renderBMap);
 document.getElementById('bMapSrc').addEventListener('click', e => {
