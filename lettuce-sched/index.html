@@ -117,7 +117,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 16:10</span>
+  <span id="versionStamp">08-04 16:40</span>
 </div>
 
 <div id="content">
@@ -149,12 +149,7 @@
         <div class="b-note">Start = first new pond date (defaults to the working day after the lane's last scheduled event).
         Phase = position in the pattern's rows sequence for that first event — inferred from the lane's recent history where it matches; pick manually after a pattern change.</div>
         <div id="bPreviewWrap" style="display:none;">
-          <div class="section-title" style="margin-top:14px">Generated rows <button id="bCopy" class="step-btn">Copy as TSV (Pond·Side·Variety·Seed·Lot·Density·Boards·Seeding·Pond·ExpHarvest)</button></div>
           <div id="bBalance" class="b-note"></div>
-          <div id="bEdits" style="display:none;">
-            <div class="section-title" style="margin-top:10px;font-size:0.9rem">Harvest split edits — apply to EXISTING rows</div>
-            <table class="b-table" id="bEditsTable"></table>
-          </div>
           <div id="bMapWrap" style="display:none;">
             <div class="section-title" style="margin-top:14px">Preview pond map — as of
               <button id="bMapPrev" class="step-btn">◄</button>
@@ -162,10 +157,15 @@
               <button id="bMapNext" class="step-btn">►</button>
               <span id="bMapDow" style="color:#888;font-size:0.8rem"></span>
             </div>
-            <div class="b-note">Existing cycles (with the split edits applied) + the generated rows. Solid = on pond at this date, faded = not yet on, gray = blanks. Black line = capacity.</div>
+            <div class="b-note">Existing cycles (split edits applied) = green · generated rows = blue · blanks = gray. Solid = on pond at this date, faded = not yet on. Black line = capacity.</div>
             <div id="bMap" style="background:#fff;border:1px solid #ddd;border-radius:8px;overflow-x:auto"></div>
           </div>
-          <table class="b-table" id="bPreview"></table>
+          <details style="margin-top:12px"><summary class="section-title" style="display:list-item;cursor:pointer;font-size:0.9rem">Generated rows <button id="bCopy" class="step-btn" onclick="event.preventDefault();event.stopPropagation();navigator.clipboard.writeText(document.getElementById('bPreview').dataset.tsv||'')">Copy as TSV</button></summary>
+            <table class="b-table" id="bPreview"></table>
+          </details>
+          <details id="bEdits" open style="display:none;margin-top:8px"><summary class="section-title" style="display:list-item;cursor:pointer;font-size:0.9rem">Harvest split edits — apply to EXISTING rows</summary>
+            <table class="b-table" id="bEditsTable"></table>
+          </details>
         </div>
       </div>
     </div>
@@ -713,9 +713,8 @@ function builderInit() {
   });
   // Property assignment (not addEventListener) so rebuilds don't stack handlers.
   document.getElementById('bGen').onclick = builderGenerate;
-  document.getElementById('bCopy').onclick = () => {
-    navigator.clipboard.writeText(document.getElementById('bPreview').dataset.tsv || '');
-  };
+  // Replace toggle changes what the default start means — refresh lane defaults.
+  document.getElementById('bReplace').onchange = () => t.querySelectorAll('tr[data-lane]').forEach(laneRowState);
 }
 
 // Fill one lane row's phase picker + default start from its pattern & history.
@@ -741,12 +740,17 @@ function laneRowState(tr) {
     note.textContent = 'history ≠ pattern — set phase manually';
     note.style.color = '#9a6a00';
   }
-  // Default start: first Sunday after the lane's last scheduled event (Sundays only).
-  const lastD = ev.length ? ev[ev.length - 1].date : hstToday();
-  let d = new Date(lastD.getTime() + DAY);
-  while (d.getUTCDay() !== 0) d = new Date(d.getTime() + DAY);
+  // Default start: with Replace on, planned rows will be deleted, so start next
+  // Sunday (the global pick). Otherwise first Sunday after the last scheduled event.
   const sel = tr.querySelector('.bl-start');
-  if ([...sel.options].some(o => o.value === ymd(d))) sel.value = ymd(d);
+  if (document.getElementById('bReplace').checked) {
+    sel.value = document.getElementById('bStartWeek').value || sel.value;
+  } else {
+    const lastD = ev.length ? ev[ev.length - 1].date : hstToday();
+    let d = new Date(lastD.getTime() + DAY);
+    while (d.getUTCDay() !== 0) d = new Date(d.getTime() + DAY);
+    if ([...sel.options].some(o => o.value === ymd(d))) sel.value = ymd(d);
+  }
 }
 
 // Generate for every included lane over the shared weeks horizon.
