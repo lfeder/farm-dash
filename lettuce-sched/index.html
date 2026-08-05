@@ -117,7 +117,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 16:55</span>
+  <span id="versionStamp">08-04 17:05</span>
 </div>
 
 <div id="content">
@@ -146,8 +146,7 @@
         </div>
         <div id="bModes" class="b-note"></div>
         <table class="b-table" id="bLanes"></table>
-        <div class="b-note">Start = first new pond date (defaults to the working day after the lane's last scheduled event).
-        Phase = position in the pattern's rows sequence for that first event — inferred from the lane's recent history where it matches; pick manually after a pattern change.</div>
+        <div class="b-note">All included lanes start at the global Start week (Sunday). Phase = position in the pattern's rows sequence for that first event — inferred from the lane's recent history where it matches; pick manually after a pattern change.</div>
         <div id="bPreviewWrap" style="display:none;">
           <div id="bBalance" class="b-note"></div>
           <div id="bMapWrap" style="display:none;">
@@ -646,7 +645,7 @@ function builderInit() {
     return `<select class="bl-seed" title="Active seeds & mixes from production inventory">${extra}`
       + seedOptions.map(s => `<option value="${esc(s.seed_name)}"${s.seed_name === cur ? ' selected' : ''}>${esc(s.seed_name)} (${esc(s.variety)})</option>`).join('') + `</select>`;
   };
-  t.innerHTML = `<tr><th></th><th>Lane</th><th>Pattern</th><th>Seed (inventory)</th><th>Lot</th><th>Density</th><th>Start</th><th>Phase (next event)</th></tr>`
+  t.innerHTML = `<tr><th></th><th>Lane</th><th>Pattern</th><th>Seed (inventory)</th><th>Lot</th><th>Density</th><th>Phase (next event)</th></tr>`
     + lanes.map(lane => {
       const ev = laneEvents(lane);
       const lastC = cycles.filter(c => (c.pond + c.side) === lane && c.ponded).sort((a, b) => a.ponded - b.ponded).pop();
@@ -674,7 +673,6 @@ function builderInit() {
         + `<td class="bl-cfg">${seedSel(def ? def.seed : (lastC ? lastC.seedName : ''))}</td>`
         + `<td class="bl-cfg"><select class="bl-lot" title="Active lots for this seed from inventory (invnt_lot)"></select></td>`
         + `<td class="bl-cfg"><input class="bl-dens" type="number" style="width:60px" value="${lastC ? lastC.seedsPerBoard : 330}"></td>`
-        + `<td class="bl-cfg"><select class="bl-start"></select></td>`
         + `<td class="bl-cfg"><select class="bl-phase"></select><div class="bl-note" style="font-size:0.68rem;color:#9a6a00"></div></td>`
         + `</tr>`;
     }).join('');
@@ -688,10 +686,6 @@ function builderInit() {
   const sunOpts = sundays.map(s => `<option value="${ymd(s)}">Sun ${fmtMD2(s)}</option>`).join('');
   const sw = document.getElementById('bStartWeek');
   sw.innerHTML = sunOpts;
-  t.querySelectorAll('tr[data-lane] .bl-start').forEach(sel => { sel.innerHTML = sunOpts; });
-  sw.onchange = () => {
-    t.querySelectorAll('tr[data-lane] .bl-start').forEach(sel => { sel.value = sw.value; });
-  };
   // Lot picker follows the seed selection: active lots for that seed, or blank.
   const fillLots = tr => {
     const seed = tr.querySelector('.bl-seed').value;
@@ -738,17 +732,6 @@ function laneRowState(tr) {
     note.textContent = 'history ≠ pattern — set phase manually';
     note.style.color = '#9a6a00';
   }
-  // Default start: with Replace on, planned rows will be deleted, so start next
-  // Sunday (the global pick). Otherwise first Sunday after the last scheduled event.
-  const sel = tr.querySelector('.bl-start');
-  if (document.getElementById('bReplace').checked) {
-    sel.value = document.getElementById('bStartWeek').value || sel.value;
-  } else {
-    const lastD = ev.length ? ev[ev.length - 1].date : hstToday();
-    let d = new Date(lastD.getTime() + DAY);
-    while (d.getUTCDay() !== 0) d = new Date(d.getTime() + DAY);
-    if ([...sel.options].some(o => o.value === ymd(d))) sel.value = ymd(d);
-  }
 }
 
 // Generate for every included lane over the shared weeks horizon.
@@ -788,7 +771,7 @@ function builderGenerate() {
     const variety = (seedOptions.find(s => s.seed_name === seedName) || {}).variety || 'MS';
     const seedLot = tr.querySelector('.bl-lot').value;
     const dens = +tr.querySelector('.bl-dens').value || 330;
-    const sv = tr.querySelector('.bl-start').value;
+    const sv = document.getElementById('bStartWeek').value;
     const [y, m, dd] = sv.split('-').map(Number);
     let d = new Date(Date.UTC(y, m - 1, dd));
     const startT = d.getTime();
