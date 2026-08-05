@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 23:30</span>
+  <span id="versionStamp">08-04 23:45</span>
 </div>
 
 <div id="content">
@@ -389,9 +389,9 @@ function renderGantt(today) {
       const simFuture = today > hstToday();
       const offBy = c => c.harv || (simFuture ? c.end : null);
       const list = cycles.filter(c => c.pond === pond && c.side === side && !(offBy(c) && offBy(c) <= today))
-        // Soonest harvest first (leftmost); same-day harvests sort by pond
-        // date (earliest ponded first), so sheet row order never matters.
-        .sort((a, b) => a.end - b.end || (a.ponded || a.seed) - (b.ponded || b.seed));
+        // PHYSICAL pond order: earliest ponded closest to the harvest edge;
+        // within a cohort, sooner harvest = front edge.
+        .sort((a, b) => ((a.ponded || a.seed) - (b.ponded || b.seed)) || (a.end - b.end));
       return list.length ? { side, w, list } : null; // drop empty sides (e.g. P1B)
     }).filter(Boolean);
     if (!rows.length) return;
@@ -1092,9 +1092,9 @@ function bLaneRow(lane, entries, asof, sub, compact, shift = 0) {
     const GUT_W = 130;
     const list = Object.values(merged)
       .filter(c => c.ponded && c.ponded.getTime() <= asof.getTime() + 7 * DAY)
-      // soonest harvest first = rightmost; within a day, moved (left-behind)
-      // pieces sit at the harvest edge, then oldest pond date.
-      .sort((a, b) => (a.end - b.end) || ((b.split ? 1 : 0) - (a.split ? 1 : 0)) || (a.ponded - b.ponded));
+      // PHYSICAL pond order: oldest pond date = rightmost (next off). Within a
+      // cohort, the piece harvesting sooner is its front edge (further right).
+      .sort((a, b) => (a.ponded - b.ponded) || (a.end - b.end) || ((b.split ? 1 : 0) - (a.split ? 1 : 0)));
     let xr = shift, blocks = '', onRows = 0, cumRows = 0, capPos = null;
     const cutM = {};
     entries.filter(c => c.boards > 0.5 && ymd(c.end) === ymd(asof)).forEach(c => {
