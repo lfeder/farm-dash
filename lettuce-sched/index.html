@@ -117,7 +117,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-04 17:05</span>
+  <span id="versionStamp">08-04 17:20</span>
 </div>
 
 <div id="content">
@@ -657,6 +657,8 @@ function builderInit() {
         P2B: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P3A: { pat: '28/28/28/28', seed: '3310' },
         P3B: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
+        P4A: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
+        P4B: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P4AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P5AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P6AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
@@ -686,6 +688,7 @@ function builderInit() {
   const sunOpts = sundays.map(s => `<option value="${ymd(s)}">Sun ${fmtMD2(s)}</option>`).join('');
   const sw = document.getElementById('bStartWeek');
   sw.innerHTML = sunOpts;
+  sw.onchange = () => t.querySelectorAll('tr[data-lane]').forEach(laneRowState);   // phase window follows start
   // Lot picker follows the seed selection: active lots for that seed, or blank.
   const fillLots = tr => {
     const seed = tr.querySelector('.bl-seed').value;
@@ -716,7 +719,11 @@ function laneRowState(tr) {
   const seq = (patterns[pat] || {}).seqs?.[laneClass(lane)];
   const selPh = tr.querySelector('.bl-phase');
   const note = tr.querySelector('.bl-note');
-  const ev = laneEvents(lane);
+  // Infer phase from events BEFORE the start week only — with Replace on, the
+  // planned rows from start onward are being deleted and must not anchor phase.
+  const startV = document.getElementById('bStartWeek').value;
+  let ev = laneEvents(lane);
+  if (startV) ev = ev.filter(e => ymd(e.date) < startV);
   if (!seq) {
     selPh.innerHTML = ''; note.textContent = `no ${pat} sequence for class ${laneClass(lane)}`;
     tr.querySelector('.bl-inc').checked = false;
