@@ -889,12 +889,15 @@ function renderLettuceTable() {
   // GH total per pond+variety (summed across sides) — the basis for the >25%
   // mismatch flag against PH.
   const ghByKey = {};
-  // GH lb figure is max_lb (potential lb/board if cut for weight; the crew
-  // cuts for quality) — lb_per_board stopped being recorded with the app
-  // switch-over, so GH totals are boards × max_lb.
+  // GH lb figure: max_lb (potential lb/board if cut for weight; the crew cuts
+  // for quality) from 08/05/26 onward — lb_per_board stopped being recorded at
+  // the app switch-over. Earlier harvests only have lb_per_board, so use it
+  // for pre-08/05 dates. GH total = boards × the chosen figure.
+  const ghLb = r => (r._y * 10000 + r._m * 100 + r._d >= 20260805)
+    ? (r.MaxLb || 0) : (r.PoundsPerBoard || 0);
   dayRows.forEach(r => {
     const k = key(r.Pond, r.SeedName);
-    ghByKey[k] = (ghByKey[k] || 0) + (Math.round(r.BoardsPerPond) || 0) * (r.MaxLb || 0);
+    ghByKey[k] = (ghByKey[k] || 0) + (Math.round(r.BoardsPerPond) || 0) * ghLb(r);
   });
 
   const phSeen = new Set();
@@ -905,7 +908,7 @@ function renderLettuceTable() {
 
   dayRows.forEach(r => {
     const boards = Math.round(r.BoardsPerPond) || 0;
-    const lbBoard = r.MaxLb || 0;
+    const lbBoard = ghLb(r);
     const total = boards * lbBoard;
     totBoards += boards;
     totLbs += total;
