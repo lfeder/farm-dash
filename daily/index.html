@@ -1256,7 +1256,10 @@ async function loadData() {
     // food-safety -> sheets (only live source today).
     DataSource.fetchTable('invoices_daily', { mode: 'prod' }),
     DataSource.fetchTable('cuke_harvest_daily', { mode: 'sheets' }),
-    DataSource.fetchTable('lettuce_harvest', { mode: 'sheets' }),
+    // Lettuce GH weights moved sheets -> prod (grow_lettuce_gh_harvest_v over
+    // grow_lettuce_seed_batch) when field entry switched to the app ~07/13/26.
+    DataSource.fetchTable('lettuce_harvest',
+      { mode: 'prod', filters: { org_id: 'hawaii_farming' } }),
     swallow(DataSource.fetchTable('fsafe_emp', { mode: 'sheets' }), 'fsafe_emp'),
     swallow(DataSource.fetchTable('fsafe_ca', { mode: 'sheets' }), 'fsafe_ca'),
     swallow(DataSource.fetchTable('lettuce_pack_orders', { mode: 'prod' }), 'lettuce_pack_orders'),
