@@ -906,10 +906,24 @@ function renderLettuceTable() {
   // PH-only ponds (no GH row yet) interleave in pond order instead of trailing.
   const outRows = [];
 
+  // One row per lane (pond+side+variety): a lane can carry several batches
+  // (e.g. two P4:A Astro seedings, or a double-entered harvest) — sum boards
+  // and pounds; the lb column is the board-weighted average.
+  const lanes = new Map();
   dayRows.forEach(r => {
+    const lk = normPond(r.Pond) + '|' + String(r.Side || '').trim().toUpperCase() + '|' + normVar(r.SeedName);
+    const lane = lanes.get(lk) || { r, boards: 0, total: 0 };
     const boards = Math.round(r.BoardsPerPond) || 0;
-    const lbBoard = ghLb(r);
-    const total = boards * lbBoard;
+    lane.boards += boards;
+    lane.total += boards * ghLb(r);
+    lanes.set(lk, lane);
+  });
+
+  lanes.forEach(lane => {
+    const r = lane.r;
+    const boards = lane.boards;
+    const total = lane.total;
+    const lbBoard = boards ? total / boards : 0;
     totBoards += boards;
     totLbs += total;
 
