@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-06 14:05</span>
+  <span id="versionStamp">08-06 15:10</span>
 </div>
 
 <div id="content">
@@ -380,7 +380,16 @@ function renderGantt(today) {
     const capX = capR * ROW_PX;
     const pondH = pond === 'P1' ? POND_H / 2 : POND_H;
 
-    const sides = [...new Set(cycles.filter(c => c.pond === pond).map(c => c.side))].sort();
+    // AB lanes list above their A/B halves (transition ordering: merged lane first).
+    const sideOrd = s => ({ AB: 0, A: 1, B: 2, C: 3 }[(s || '').trim().toUpperCase()] ?? 4);
+    const sides = [...new Set(cycles.filter(c => c.pond === pond).map(c => c.side))]
+      .sort((a, b) => sideOrd(a) - sideOrd(b) || String(a).localeCompare(String(b)));
+    // Pond-level harvest/pond board totals for the as-of day: a per-side
+    // harvest-vs-pond mismatch is fine when the POND balances (e.g. P4 harvests
+    // off old A/B rows while new pondings land on the merged AB lane).
+    const pondCycles = cycles.filter(c => c.pond === pond);
+    const pondBalanced = Math.round(pondCycles.filter(c => dEq(c.end, today)).reduce((s, c) => s + c.boards, 0))
+      === Math.round(pondCycles.filter(c => dEq(c.ponded, today)).reduce((s, c) => s + c.boards, 0));
     // Gather only sides that actually have cycles, then allocate heights.
     const rows = sides.map(side => {
       const w = sideWidth(pond, side);
@@ -464,7 +473,7 @@ function renderGantt(today) {
       const nS = Math.round(all.filter(c => dEq(c.seed, today)).reduce((s, c) => s + c.boards, 0));
       tH += nH; tP += nP; tS += nS;
       const cc = (v, cls, red) => `<div class="c-cell ${cls}${v ? '' : ' c-zero'}${red ? ' c-mismatch' : ''}">${v}</div>`;
-      row.innerHTML = cc(nH, 'c-harv') + cc(nP, 'c-pond', nP !== nH) + cc(nS, 'c-seed')
+      row.innerHTML = cc(nH, 'c-harv') + cc(nP, 'c-pond', nP !== nH && !pondBalanced) + cc(nS, 'c-seed')
         + `<div class="g-label"><span style="color:#444;font-weight:600">${esc(pond + side)}</span><span class="cap" style="color:${lc};font-weight:600">${rr}</span></div>`
         + `<div class="g-track" style="height:${rowH}px;min-width:${trackW}px">${blocks}</div>`;
       g.appendChild(row);
