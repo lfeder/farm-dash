@@ -16,6 +16,9 @@
   #versionStamp { margin-left: auto; font-size: 0.7rem; color: #fff; opacity: 0.8; }
   #content { max-width: 1240px; margin: 0 auto; padding: 10px 24px; }
   #content.wide { max-width: none; }  /* Pond view: use the full window width */
+  /* Builder map: tracks size to content (no flex-grow) so right-anchored
+     blocks don't leave a white band on the left edge. */
+  #bMap .g-track { flex: 0 0 auto; }
 
   /* Summary banner */
   .summary { display: flex; gap: 8px; align-items: stretch; margin-bottom: 16px; flex-wrap: wrap; }
@@ -131,7 +134,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-06 17:55</span>
+  <span id="versionStamp">08-06 18:10</span>
 </div>
 
 <div id="content">
@@ -465,7 +468,11 @@ function renderGantt(today) {
       // GUT_W (function-level) reserves a fixed gutter so pond edges align across lanes.
       let xr = 0, totalRows = 0, prevDays = null, cumRows = 0, capPos = null;
       // mask: the gutter zone sits visually OFF the pond — cover row/pond borders
-      let blocks = `<div style="position:absolute;right:0;width:${GUT_W - 8}px;top:-4px;bottom:-2px;background:#f5f0eb"></div>`;
+      // Pond view: white mask over the whole gutter zone (and the row/pond
+      // border tails) so no lines extend past the pond's right edge.
+      let blocks = PV
+        ? `<div style="position:absolute;right:0;width:${GUT_W - 2}px;top:-4px;bottom:-4px;background:#fff"></div>`
+        : `<div style="position:absolute;right:0;width:${GUT_W - 8}px;top:-4px;bottom:-2px;background:#f5f0eb"></div>`;
       // gutter: that day's cut cycles, one block each
       const cut = cycles.filter(c => c.pond === pond && c.side === side).concat(abHalf(side))
         .filter(c => dEq(c.end, today));
@@ -511,6 +518,8 @@ function renderGantt(today) {
       // Pond view: the cap line is the pond's fixed left edge — straight across
       // all lanes (P2–P7 share capR=110) even when a lane is underfull.
       blocks += `<div class="g-cap" style="right:${Math.round(PV ? GUT_W + capX : (capPos ?? xr))}px"></div>`;
+      // Pond view: matching thick line on the pond's RIGHT (harvest) edge.
+      if (PV) blocks += `<div class="g-cap" style="right:${GUT_W}px"></div>`;
       if (PV) {
         // Germ room: seeded but not yet on pond, tiled left of the pond edge
         // (soonest-to-pond nearest the pond). Same faded style as planned.
@@ -559,6 +568,10 @@ function renderGantt(today) {
   g.appendChild(foot);
 
   const at = document.getElementById('axisTrack');
+  // Pond view: FIXED track width from the geometry (gutter + 110-row pond +
+  // gap + germ reserve), never from content — the pond must not shift
+  // horizontally when the germ room fills or empties.
+  if (PV) maxTrackW = GUT_W + (110 + GERM_RES) * ROW_PX + 26 + 12;
   if (at) at.style.minWidth = maxTrackW + 'px';
   // Right-anchored blocks only align if every track is the SAME width.
   g.querySelectorAll('.g-track').forEach(tr2 => { tr2.style.minWidth = maxTrackW + 'px'; tr2.style.width = maxTrackW + 'px'; });
