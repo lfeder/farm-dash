@@ -114,11 +114,14 @@
     <span class="toggle" id="labelToggle">
       <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button>
     </span>
+    <span class="toggle" id="viewToggle">
+      <button data-view="all" class="active">All</button><button data-view="pond">Pond</button>
+    </span>
     <span class="toggle" id="pageTabs" style="margin-left:24px">
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-06 15:55</span>
+  <span id="versionStamp">08-06 16:20</span>
 </div>
 
 <div id="content">
@@ -202,6 +205,7 @@ const VARIETY_FALLBACK = ['#f0a030','#9b59b6','#16a085','#e67e22','#2c7fb8','#8e
 
 let cycles = [];
 let asOf = hstToday();   // "run as of" date; drives the whole view (default today)
+let pondView = false;    // Pond view: on-pond only, bigger scale, germ room left of the cap edge
 
 function parseUsDate(v) {
   if (!v) return null;
@@ -314,7 +318,8 @@ function render() {
 // ── Pond rows: one row per pond/side, cycles tiled by board size in harvest
 // order (next-to-harvest on the left). A pond header shows current fill vs cap.
 function renderGantt(today) {
-  const ROW_PX = 6;                                    // px per row
+  const PV = pondView;                                 // Pond view: on-pond only + germ room
+  const ROW_PX = PV ? 11 : 6;                          // px per row (Pond view fills the page)
   const capRows = p => (p === 'P1' ? 83 : 110);        // rows that fill a side
   // Each side runs the full length of rows, at its own board-width.
   // A=10; B=9 on P2-3, 10 elsewhere; C=1; AB (P5-7)=20. P1 is one 10-wide side.
@@ -366,14 +371,14 @@ function renderGantt(today) {
     + `<div class="c-cell c-pond" title="Boards going on pond on this date">Pond</div>`
     + `<div class="c-cell c-seed" title="Boards seeding on this date">Seed</div>`
     + `<div class="g-label"><span></span><span class="cap">#rows</span></div>`
-    + `<div class="g-track" id="axisTrack"><span class="ax-harv">◄ Seedling</span><span class="ax-seed" style="left:auto;right:8px">Harvest ►</span></div>`;
+    + `<div class="g-track" id="axisTrack"><span class="ax-harv">${PV ? '◄ Germ room' : '◄ Seedling'}</span><span class="ax-seed" style="left:auto;right:8px">Harvest ►</span></div>`;
   g.appendChild(head);
   let maxTrackW = 0, tH = 0, tP = 0, tS = 0;
 
   // Pond total height is fixed so every full pond is the same size: P2-P7 = POND_H
   // (total width 20/row), P1 = POND_H/2 (width 10/row). Within a pond the height is
   // split across its populated sides ∝ board-width, with a readable floor per side.
-  const POND_H = 60, MIN_SIDE = 12;
+  const POND_H = PV ? 84 : 60, MIN_SIDE = 12;
 
   ponds.forEach((pond, pi) => {
     const capR = capRows(pond);
@@ -451,8 +456,9 @@ function renderGantt(today) {
           .reduce((s, c) => s + Math.max(4, (c.boards / o.w) * ROW_PX) + 1, 0)));
       xr = GUT_W + laneShift;                           // pond starts left of the gutter zone
       // pond + near future (pondings within 14 days; farther plans not drawn),
-      // soonest harvest first = rightmost.
-      const vis = list.filter(c => c.ponded && c.ponded.getTime() <= today.getTime() + 7 * DAY);
+      // soonest harvest first = rightmost. Pond view: on-pond ONLY — future
+      // seedings are excluded (the germ room strip covers seeded-not-ponded).
+      const vis = list.filter(c => c.ponded && (PV ? c.ponded <= today : c.ponded.getTime() <= today.getTime() + 7 * DAY));
       vis.forEach(c => {
         const r = c.boards / w;
         const notOnPond = !c.ponded || c.ponded > today; // future → fade
@@ -471,7 +477,23 @@ function renderGantt(today) {
         blocks += `<div class="g-block${faded}" style="right:${xr}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days"${dayStyle}>${pondDays}</span></div>`;
         xr += bw + 1;
       });
-      blocks += `<div class="g-cap" style="right:${Math.round(capPos ?? xr)}px"></div>`;
+      // Pond view: the cap line is the pond's fixed left edge — straight across
+      // all lanes (P2–P7 share capR=110) even when a lane is underfull.
+      blocks += `<div class="g-cap" style="right:${Math.round(capPos ?? (PV ? GUT_W + capX : xr))}px"></div>`;
+      if (PV) {
+        // Germ room: seeded but not yet on pond, tiled left of the pond edge
+        // (soonest-to-pond nearest the pond). Same faded style as planned.
+        const germ = list.filter(c => c.seed && c.seed <= today && (!c.ponded || c.ponded > today))
+          .sort((a, b) => ((a.ponded || a.end) - (b.ponded || b.end)));
+        let xg = GUT_W + capX + 26;
+        germ.forEach(c => {
+          const r = c.boards / w;
+          const bw = Math.max(4, r * ROW_PX);
+          blocks += `<div class="g-block planned" style="right:${xg}px;width:${bw}px;background:${varietyColor(c.variety || c.seedName)}" title="germ · S:${fmtMD2(c.seed)}, P:${fmtMD2(c.ponded)}, H:${fmtMD2(c.end)}, ${Math.round(c.boards)}bd"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days">${Math.round((today - c.seed) / DAY)}</span></div>`;
+          xg += bw + 1;
+        });
+        xr = Math.max(xr, xg);
+      }
       const x = xr;                                     // total track width used
       const rr = Math.round(totalRows);
       const lc = rr === capR ? '#2f7d4f' : '#b3402f'; // green only if exactly full, else red
@@ -517,6 +539,12 @@ function renderLegend() {
 }
 
 // Rows/Days toggle: flips a class on #gantt so CSS swaps which label shows.
+document.getElementById('viewToggle').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#viewToggle button').forEach(x => x.classList.toggle('active', x === b));
+  pondView = b.dataset.view === 'pond';
+  render();
+});
 document.getElementById('labelToggle').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   document.querySelectorAll('#labelToggle button').forEach(x => x.classList.toggle('active', x === b));
