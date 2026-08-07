@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-05 02:20</span>
+  <span id="versionStamp">08-06 14:05</span>
 </div>
 
 <div id="content">
@@ -1083,11 +1083,13 @@ function bLaneRow(lane, entries, asof, sub, compact, shift = 0, PXo = 6, GUTo = 
   const w = laneWidth(lane);
   const capR = lane.startsWith('P1') ? 83 : 110;
   {
-    // Merge fragments (cascaded splits) sharing pond+harvest dates so the map
-    // shows one block per cohort-per-harvest-day.
+    // Merge fragments (cascaded splits) sharing pond+harvest dates AND seed so
+    // the map shows one block per cohort-per-harvest-day. Seed is part of the
+    // key: a 2-row Esmee trial next to a 12-row Astro cohort must stay two
+    // blocks — Maju relabels by seed, and a merged block hides the trial rows.
     const merged = {};
     entries.filter(c => c.boards > 0.5 && c.end > asof).forEach(c => {
-      const k = `${ymd(c.ponded)}|${ymd(c.end)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
+      const k = `${ymd(c.ponded)}|${ymd(c.end)}|${c.name || ''}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
       if (merged[k]) merged[k].boards += c.boards; else merged[k] = { ...c };
     });
     // Right-anchored: gutter (that day's cut) at far right, pond left of it,
@@ -1101,7 +1103,7 @@ function bLaneRow(lane, entries, asof, sub, compact, shift = 0, PXo = 6, GUTo = 
     let xr = shift, blocks = '', onRows = 0, cumRows = 0, capPos = null;
     const cutM = {};
     entries.filter(c => c.boards > 0.5 && ymd(c.end) === ymd(asof)).forEach(c => {
-      const k = `${ymd(c.ponded)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
+      const k = `${ymd(c.ponded)}|${c.name || ''}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
       if (cutM[k]) cutM[k].boards += c.boards; else cutM[k] = { ...c };
     });
     Object.values(cutM).sort((a, b) => a.ponded - b.ponded).forEach(c => {
@@ -1162,8 +1164,10 @@ function printLabels() {
       && (x.side === sideP || (sideP === 'AB' ? ['A', 'B', 'AB'].includes(x.side) : x.side === 'AB'))
       && x.ponded && ymd(x.ponded) === ymd(c.ponded));
     const merged = {};
+    // Seed in the merge key (same rule as the map): a label must never combine
+    // different seeds' boards under one seed name.
     bVizPlan[lane].filter(c => c.boards > 0.5).forEach(c => {
-      const k = `${ymd(c.ponded)}|${ymd(c.end)}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
+      const k = `${ymd(c.ponded)}|${ymd(c.end)}|${c.name || ''}|${c.gen ? 'g' : ''}${c.blank ? 'b' : ''}${c.split ? 's' : ''}`;
       if (merged[k]) merged[k].boards += c.boards; else merged[k] = { ...c };
     });
     Object.values(merged)
@@ -1175,7 +1179,8 @@ function printLabels() {
         if (!changed) {
           const orig = cycles.filter(x => x.pond === pondP
             && (x.side === sideP || (sideP === 'AB' ? ['A', 'B', 'AB'].includes(x.side) : x.side === 'AB'))
-            && x.ponded && ymd(x.ponded) === ymd(c.ponded) && x.end && ymd(x.end) === ymd(c.end))
+            && x.ponded && ymd(x.ponded) === ymd(c.ponded) && x.end && ymd(x.end) === ymd(c.end)
+            && (x.seedName || x.variety) === c.name)
             .reduce((s2, x) => s2 + x.boards, 0);
           changed = Math.round(orig) !== Math.round(c.boards);
           if (changed) kind = 'CHANGED';
