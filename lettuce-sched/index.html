@@ -32,6 +32,12 @@
   /* Gantt */
   .section-title { font-size: 1.05rem; font-weight: 600; color: #333; margin: 8px 0 6px; }
   #gantt { background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow-x: auto; }
+  /* Pond view: shrink-wrap the card to its content (no slack between the left
+     table and the germ strip) and use a consistent, thicker pond frame. */
+  #gantt.pond-view { width: max-content; max-width: 100%; border: 3px solid #c9b896; }
+  #gantt.pond-view .g-head { border-bottom: 3px solid #c9b896; }
+  #gantt.pond-view .g-foot { border-top: 3px solid #c9b896; }
+  #gantt.pond-view .g-row.pond-start { border-top: 3px solid #c9b896; }
   .g-row { display: flex; align-items: stretch; border-bottom: 1px solid #eee; min-height: 13px; background: #fff; }
   .g-row:last-child { border-bottom: none; }
   .g-row.pond-start { border-top: 3px solid #c9b896; }
@@ -125,7 +131,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-06 17:25</span>
+  <span id="versionStamp">08-06 17:45</span>
 </div>
 
 <div id="content">
@@ -371,6 +377,7 @@ function renderGantt(today) {
 
   const g = document.getElementById('gantt');
   g.innerHTML = '';
+  g.classList.toggle('pond-view', PV);
   const dEq = (a, b) => a && b && a.getTime() === b.getTime();   // same calendar day
 
   // Header: counts-column labels + harvest→seedling direction over the sim track.
@@ -507,7 +514,9 @@ function renderGantt(today) {
         // (soonest-to-pond nearest the pond). Same faded style as planned.
         const germ = list.filter(c => c.seed && c.seed <= today && (!c.ponded || c.ponded > today))
           .sort((a, b) => ((a.ponded || a.end) - (b.ponded || b.end)));
-        let xg = GUT_W + capX + 26;
+        // Germ strip anchored at the SAME column for every lane (the 110-row
+        // line), so P1's germ room lines up with the rest despite its shorter pond.
+        let xg = GUT_W + 110 * ROW_PX + 26;
         germ.forEach(c => {
           const r = c.boards / w;
           const bw = Math.max(4, r * ROW_PX);
