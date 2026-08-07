@@ -321,9 +321,10 @@ function render() {
 function renderGantt(today) {
   const PV = pondView;                                 // Pond view: on-pond only + germ room
   // Pond view sizes itself to the viewport: pond (110 rows) + gutter + germ
-  // strip must fit the track area with no horizontal scroll. All view: fixed 6.
-  const availTrack = (document.getElementById('gantt').clientWidth || 1400) - 330; // minus count cols + lane label
-  const ROW_PX = PV ? Math.max(4, Math.min(11, Math.floor((availTrack - 130 - 26 - 150) / 110))) : 6;
+  // strip must fit the track area with no horizontal scroll. The germ reserve
+  // is measured from the actual germ-room contents (not a fixed pad), so the
+  // strip hugs the left table instead of leaving dead space. All view: fixed 6.
+  const GUT_W = PV ? 170 : 130;   // wider gutter in Pond view: clear gap pond → harvested
   const capRows = p => (p === 'P1' ? 83 : 110);        // rows that fill a side
   // Each side runs the full length of rows, at its own board-width.
   // A=10; B=9 on P2-3, 10 elsewhere; C=1; AB (P5-7)=20. P1 is one 10-wide side.
@@ -337,6 +338,19 @@ function renderGantt(today) {
     return 20;
   };
   const ponds = [...new Set(cycles.map(c => c.pond))].sort();
+  const availTrack = (document.getElementById('gantt').clientWidth || 1400) - 330; // minus count cols + lane label
+  let germMaxRows = 0;
+  if (PV) {
+    const bySide = {};
+    cycles.forEach(c => {
+      if (c.seed && c.seed <= today && (!c.ponded || c.ponded > today) && !(c.harv && c.harv <= today)) {
+        const k = c.pond + '|' + c.side;
+        bySide[k] = (bySide[k] || 0) + c.boards / sideWidth(c.pond, c.side);
+      }
+    });
+    germMaxRows = Math.ceil(Math.max(0, ...Object.values(bySide), 0));
+  }
+  const ROW_PX = PV ? Math.max(4, Math.min(14, Math.floor((availTrack - GUT_W - 26 - 12) / (110 + germMaxRows)))) : 6;
 
   // Late-harvest checker: cycles whose expected harvest is on/before the as-of
   // date but have no actual harvest recorded. The off-pond filter hides these,
