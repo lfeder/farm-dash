@@ -462,8 +462,7 @@ function renderGantt(today) {
       // Right-anchored layout: everything tiles from the RIGHT edge, so every
       // lane's harvest edge lines up. Far right = harvested-today gutter, then
       // the pond (rightmost solid = next to cut), faded near-future to the left.
-      // GUT_W reserves a fixed gutter so pond edges align across lanes.
-      const GUT_W = 130;
+      // GUT_W (function-level) reserves a fixed gutter so pond edges align across lanes.
       let xr = 0, totalRows = 0, prevDays = null, cumRows = 0, capPos = null;
       // mask: the gutter zone sits visually OFF the pond — cover row/pond borders
       let blocks = `<div style="position:absolute;right:0;width:${GUT_W - 8}px;top:-4px;bottom:-2px;background:#f5f0eb"></div>`;
