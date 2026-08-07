@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-06 15:25</span>
+  <span id="versionStamp">08-06 15:40</span>
 </div>
 
 <div id="content">
@@ -406,12 +406,13 @@ function renderGantt(today) {
       return list.length ? { side, w, list } : null; // drop empty sides (e.g. P1B)
     }).filter(Boolean);
     if (!rows.length) return;
-    // Physical queue position: a side-lane with nothing on the pond yet (all
-    // future, e.g. the new P4AB during the A/B→AB transition) tiles BEHIND the
-    // sibling lanes' on-pond blocks — its first block starts where theirs end.
+    // Physical queue position during an A/B↔AB transition: an AB lane shares
+    // its physical space with the A and B strips (A/B/C don't overlap each
+    // other). FIFO by pond date — a lane's whole strip tiles BEHIND any
+    // sibling on-pond blocks that were ponded EARLIER than its own earliest
+    // cycle, and slides toward the harvest edge as those harvest off.
     rows.forEach(r => {
-      r.solidPx = r.list.filter(c => c.ponded && c.ponded <= today)
-        .reduce((s, c) => s + Math.max(4, (c.boards / r.w) * ROW_PX) + 1, 0);
+      r.minPond = Math.min(...r.list.map(c => (c.ponded || c.seed) ? (c.ponded || c.seed).getTime() : Infinity));
     });
     const sumW = rows.reduce((s, r) => s + r.w, 0);
     const extra = Math.max(0, pondH - MIN_SIDE * rows.length); // shared on top of the floor
@@ -440,9 +441,14 @@ function renderGantt(today) {
         blocks += `<div class="g-block" style="right:${xr}px;width:${bw}px;background:${varietyColor(c.variety || c.seedName)};opacity:0.55" title="harvested ${fmtMD2(c.end)} · S:${fmtMD2(c.seed)} · ${Math.round(c.boards)}bd"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days">${Math.round((c.end - (c.ponded || c.seed)) / DAY)}</span></div>`;
         xr += bw + 1;
       });
-      // Nothing on pond in this lane → start behind the widest sibling lane.
-      const laneShift = list.some(c => c.ponded && c.ponded <= today) ? 0
-        : Math.max(0, ...rows.filter(o => o.side !== side).map(o => o.solidPx || 0));
+      const sideU = (side || '').trim().toUpperCase();
+      const shareSides = sideU === 'AB' ? ['A', 'B'] : (sideU === 'A' || sideU === 'B') ? ['AB'] : [];
+      const me = rows.find(o => o.side === side);
+      const laneShift = Math.max(0, ...rows
+        .filter(o => shareSides.includes((o.side || '').trim().toUpperCase()))
+        .map(o => o.list
+          .filter(c => c.ponded && c.ponded <= today && c.ponded.getTime() < me.minPond)
+          .reduce((s, c) => s + Math.max(4, (c.boards / o.w) * ROW_PX) + 1, 0)));
       xr = GUT_W + laneShift;                           // pond starts left of the gutter zone
       // pond + near future (pondings within 14 days; farther plans not drawn),
       // soonest harvest first = rightmost.
