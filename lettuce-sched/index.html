@@ -121,7 +121,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-06 16:20</span>
+  <span id="versionStamp">08-06 16:35</span>
 </div>
 
 <div id="content">
@@ -475,11 +475,13 @@ function renderGantt(today) {
         if (capPos === null && cumRows + r >= capR - 0.01) capPos = xr + ((capR - cumRows) / r) * bw;
         cumRows += r;
         blocks += `<div class="g-block${faded}" style="right:${xr}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days"${dayStyle}>${pondDays}</span></div>`;
-        xr += bw + 1;
+        // Pond view: no inter-block gap, so a full lane ends exactly on the cap
+        // line and the pond's left edge is straight across lanes.
+        xr += bw + (PV ? 0 : 1);
       });
       // Pond view: the cap line is the pond's fixed left edge — straight across
       // all lanes (P2–P7 share capR=110) even when a lane is underfull.
-      blocks += `<div class="g-cap" style="right:${Math.round(capPos ?? (PV ? GUT_W + capX : xr))}px"></div>`;
+      blocks += `<div class="g-cap" style="right:${Math.round(PV ? GUT_W + capX : (capPos ?? xr))}px"></div>`;
       if (PV) {
         // Germ room: seeded but not yet on pond, tiled left of the pond edge
         // (soonest-to-pond nearest the pond). Same faded style as planned.
