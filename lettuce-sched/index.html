@@ -122,7 +122,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-06 16:50</span>
+  <span id="versionStamp">08-06 17:05</span>
 </div>
 
 <div id="content">
@@ -389,10 +389,20 @@ function renderGantt(today) {
     const capX = capR * ROW_PX;
     const pondH = pond === 'P1' ? POND_H / 2 : POND_H;
 
-    // AB lanes list above their A/B halves (transition ordering: merged lane first).
     const sideOrd = s => ({ AB: 0, A: 1, B: 2, C: 3 }[(s || '').trim().toUpperCase()] ?? 4);
-    const sides = [...new Set(cycles.filter(c => c.pond === pond).map(c => c.side))]
+    let sides = [...new Set(cycles.filter(c => c.pond === pond).map(c => c.side))]
       .sort((a, b) => sideOrd(a) - sideOrd(b) || String(a).localeCompare(String(b)));
+    // A/B↔AB transition: when a pond has BOTH an AB lane and A/B lanes, don't
+    // draw a separate AB row — fold each AB cohort into the A and B rows as a
+    // half-boards block, so the pond reads as two physical rows with the AB
+    // cohorts queued behind (or ahead of) the per-side ones by pond date.
+    const foldAB = sides.some(s => (s || '').trim().toUpperCase() === 'AB')
+      && sides.some(s => ['A', 'B'].includes((s || '').trim().toUpperCase()));
+    if (foldAB) sides = [...new Set(sides.filter(s => (s || '').trim().toUpperCase() !== 'AB').concat(['A', 'B']))]
+      .sort((a, b) => sideOrd(a) - sideOrd(b) || String(a).localeCompare(String(b)));
+    // Half-board clones of the pond's AB cycles, attributed to side `s`.
+    const abHalf = s => !foldAB ? [] : cycles.filter(c => c.pond === pond && (c.side || '').trim().toUpperCase() === 'AB')
+      .map(c => ({ ...c, side: s, boards: c.boards / 2 }));
     // Pond-level harvest/pond board totals for the as-of day: a per-side
     // harvest-vs-pond mismatch is fine when the POND balances (e.g. P4 harvests
     // off old A/B rows while new pondings land on the merged AB lane).
@@ -408,7 +418,8 @@ function renderGantt(today) {
       // gutter); anything that slips past its day untouched is caught by the
       // late banner, not by lingering on the map.
       const offBy = c => c.harv || c.end;
-      const list = cycles.filter(c => c.pond === pond && c.side === side && !(offBy(c) && offBy(c) <= today))
+      const list = cycles.filter(c => c.pond === pond && c.side === side).concat(abHalf(side))
+        .filter(c => !(offBy(c) && offBy(c) <= today))
         // PHYSICAL pond order: earliest ponded closest to the harvest edge;
         // within a cohort, sooner harvest = front edge.
         .sort((a, b) => ((a.ponded || a.seed) - (b.ponded || b.seed)) || (a.end - b.end));
@@ -443,7 +454,8 @@ function renderGantt(today) {
       // mask: the gutter zone sits visually OFF the pond — cover row/pond borders
       let blocks = `<div style="position:absolute;right:0;width:${GUT_W - 8}px;top:-4px;bottom:-2px;background:#f5f0eb"></div>`;
       // gutter: that day's cut cycles, one block each
-      const cut = cycles.filter(c => c.pond === pond && c.side === side && dEq(c.end, today));
+      const cut = cycles.filter(c => c.pond === pond && c.side === side).concat(abHalf(side))
+        .filter(c => dEq(c.end, today));
       cut.forEach(c => {
         const r = c.boards / w;
         const bw = Math.max(4, r * ROW_PX);
@@ -511,7 +523,7 @@ function renderGantt(today) {
       const trackW = Math.max(x, capX) + 40;
       maxTrackW = Math.max(maxTrackW, trackW);
       // Counts (boards) for this pond/side falling on the as-of date.
-      const all = cycles.filter(c => c.pond === pond && c.side === side);
+      const all = cycles.filter(c => c.pond === pond && c.side === side).concat(abHalf(side));
       const nH = Math.round(all.filter(c => dEq(c.end, today)).reduce((s, c) => s + c.boards, 0)); // actual harvest if present, else expected
       const nP = Math.round(all.filter(c => dEq(c.ponded, today)).reduce((s, c) => s + c.boards, 0));
       const nS = Math.round(all.filter(c => dEq(c.seed, today)).reduce((s, c) => s + c.boards, 0));
