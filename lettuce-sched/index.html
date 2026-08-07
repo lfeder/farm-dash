@@ -131,7 +131,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-06 17:45</span>
+  <span id="versionStamp">08-06 17:55</span>
 </div>
 
 <div id="content">
@@ -343,7 +343,9 @@ function renderGantt(today) {
     return 20;
   };
   const ponds = [...new Set(cycles.map(c => c.pond))].sort();
-  const availTrack = (document.getElementById('gantt').clientWidth || 1400) - 330; // minus count cols + lane label
+  // Measure the stable outer container, NOT #gantt: the pond-view card
+  // shrink-wraps to content, so reading its own width feeds back each render.
+  const availTrack = ((document.getElementById('content') || {}).clientWidth || 1400) - 48 - 330; // minus padding + count cols + lane label
   // Fixed germ reserve (rows): the pond's left/right edges must NOT move as the
   // as-of date changes, so the scale never depends on that day's germ contents.
   const GERM_RES = 20;
