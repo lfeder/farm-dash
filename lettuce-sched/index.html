@@ -118,7 +118,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-06 15:10</span>
+  <span id="versionStamp">08-06 15:25</span>
 </div>
 
 <div id="content">
@@ -406,6 +406,13 @@ function renderGantt(today) {
       return list.length ? { side, w, list } : null; // drop empty sides (e.g. P1B)
     }).filter(Boolean);
     if (!rows.length) return;
+    // Physical queue position: a side-lane with nothing on the pond yet (all
+    // future, e.g. the new P4AB during the A/B→AB transition) tiles BEHIND the
+    // sibling lanes' on-pond blocks — its first block starts where theirs end.
+    rows.forEach(r => {
+      r.solidPx = r.list.filter(c => c.ponded && c.ponded <= today)
+        .reduce((s, c) => s + Math.max(4, (c.boards / r.w) * ROW_PX) + 1, 0);
+    });
     const sumW = rows.reduce((s, r) => s + r.w, 0);
     const extra = Math.max(0, pondH - MIN_SIDE * rows.length); // shared on top of the floor
     let used = 0;
@@ -433,7 +440,10 @@ function renderGantt(today) {
         blocks += `<div class="g-block" style="right:${xr}px;width:${bw}px;background:${varietyColor(c.variety || c.seedName)};opacity:0.55" title="harvested ${fmtMD2(c.end)} · S:${fmtMD2(c.seed)} · ${Math.round(c.boards)}bd"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days">${Math.round((c.end - (c.ponded || c.seed)) / DAY)}</span></div>`;
         xr += bw + 1;
       });
-      xr = GUT_W;                                       // pond starts left of the gutter zone
+      // Nothing on pond in this lane → start behind the widest sibling lane.
+      const laneShift = list.some(c => c.ponded && c.ponded <= today) ? 0
+        : Math.max(0, ...rows.filter(o => o.side !== side).map(o => o.solidPx || 0));
+      xr = GUT_W + laneShift;                           // pond starts left of the gutter zone
       // pond + near future (pondings within 14 days; farther plans not drawn),
       // soonest harvest first = rightmost.
       const vis = list.filter(c => c.ponded && c.ponded.getTime() <= today.getTime() + 7 * DAY);
