@@ -35,7 +35,13 @@
 
 <div id="content">
   <div id="filters">
-    <div class="row"><span class="label">Year</span><span id="f-year"></span></div>
+    <div class="row">
+      <span class="label">Year</span><span id="f-year"></span>
+      <select id="yearBasis" style="margin-left:10px;padding:3px 6px;font-size:0.78rem;border:1px solid #bbb;border-radius:3px;background:#fff;">
+        <option value="seed">= seed year</option>
+        <option value="harvest">= harvest year</option>
+      </select>
+    </div>
     <div class="row"><span class="label">Month</span><span id="f-month"></span></div>
     <div class="row"><span class="label">GH</span><span id="f-gh"></span></div>
     <div class="row"><span class="label">Variety</span><span id="f-variety"></span></div>
@@ -55,6 +61,7 @@
         <option value="variety">Variety</option>
         <option value="seedYear">Seed Year</option>
         <option value="seedMonth">Seed Month</option>
+        <option value="harvestYear">Harvest Year</option>
         <option value="grade">Grade</option>
       </select>
     </span>
@@ -62,6 +69,7 @@
     <select id="xMode">
       <option value="age">Plant age (weeks)</option>
       <option value="calendar">Calendar date</option>
+      <option value="doy">Day of year (YoY overlay)</option>
     </select>
     <span id="stat-controls" style="display:none">
       <label>Combine:</label>
@@ -149,13 +157,27 @@ function fmtEpochDay(e) {
   return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}/${String(d.getUTCFullYear()).slice(-2)}`;
 }
 
+function yearOfEpoch(e) { return new Date(e * MS_DAY).getUTCFullYear(); }
+function monthOfEpoch(e) { return new Date(e * MS_DAY).getUTCMonth() + 1; }
+// Day-of-year, 1..366. Leap years shift Mar+ by one day vs non-leap; that's
+// under a day of alignment error on a YoY overlay, so we don't correct it.
+function doyOfEpoch(e) {
+  const d = new Date(e * MS_DAY);
+  return Math.round((e - Math.round(Date.UTC(d.getUTCFullYear(), 0, 1) / MS_DAY))) + 1;
+}
+function fmtDoy(n) {
+  const d = new Date(Date.UTC(2001, 0, 1) + (Math.round(n) - 1) * MS_DAY); // 2001 = non-leap
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+}
+
 // Current control state (read fresh on each render).
 function opts() {
   return {
-    xMode:  document.getElementById('xMode').value,     // 'age' | 'calendar'
+    xMode:  document.getElementById('xMode').value,     // 'age' | 'calendar' | 'doy'
     stat:   document.getElementById('statMode').value,  // 'mean' | 'sum'
     dayMode:document.getElementById('dayMode').value,   // 'all'  | 'pick'
     smooth: +document.getElementById('smooth').value,   // 1 | 7
+    basis:  document.getElementById('yearBasis').value, // 'seed' | 'harvest'
   };
 }
 
@@ -224,7 +246,8 @@ function buildCycles(rows, varietyFilter, gradeFilter) {
     const cid = `${String(sy).slice(-2)}${String(sm).padStart(2,'0')}-${r.Greenhouse}`;
     let c = map.get(cid);
     if (!c) {
-      c = { cycle_id: cid, seedYear: sy, seedMonth: sm, gh: r.Greenhouse, days: new Map(), dates: new Map() };
+      c = { cycle_id: cid, seedYear: sy, seedMonth: sm, gh: r.Greenhouse,
+            seedEpoch: toEpochDay(r.SeedingDate), days: new Map(), dates: new Map() };
       map.set(cid, c);
     }
     c.days.set(day, (c.days.get(day) || 0) + lb);
@@ -237,10 +260,14 @@ function buildCycles(rows, varietyFilter, gradeFilter) {
 }
 
 // ── Apply cycle-level filters (year/month/gh) ──
-function filterCycles(allCycles) {
+function filterCycles(allCycles, basis) {
   return allCycles.filter(c => {
-    if (filters.year.size && !filters.year.has(c.seedYear)) return false;
-    if (filters.month.size && !filters.month.has(c.seedMonth)) return false;
+    // On the harvest basis, year/month are applied per harvest-day instead
+    // (see stepPassesDateFilter) — a cycle seeded in Dec still counts here.
+    if (basis !== 'harvest') {
+      if (filters.year.size && !filters.year.has(c.seedYear)) return false;
+      if (filters.month.size && !filters.month.has(c.seedMonth)) return false;
+    }
     if (filters.gh.size && !filters.gh.has(c.gh)) return false;
     return true;
   });
@@ -250,61 +277,83 @@ function filterCycles(allCycles) {
 // Per-cycle bucket map for the active x-mode, plus the span to zero-fill over.
 // 'age' buckets on days-since-seed (span 0..maxDay); 'calendar' buckets on
 // harvest date in epoch-days (span first..last harvest for that cycle).
-function cycleBuckets(c, xMode) {
-  const src = xMode === 'calendar' ? c.dates : c.days;
-  const keys = [...src.keys()];
-  if (!keys.length) return null;
-  const lo = xMode === 'calendar' ? Math.min(...keys) : 0;
-  const hi = Math.max(...keys);
-  return { src, lo, hi };
+// Walk one cycle day by day, zero-filling its span. Each step yields the
+// pounds plus BOTH coordinates (age-day and calendar epoch-day), so grouping,
+// x-bucketing and harvest-basis filtering can each pick what they need.
+function* walkCycle(c, xMode) {
+  if (xMode === 'age') {
+    const keys = [...c.days.keys()];
+    if (!keys.length) return;
+    const hi = Math.max(...keys);
+    for (let d = 0; d <= hi; d++) yield { lb: c.days.get(d) || 0, day: d, e: c.seedEpoch + d };
+  } else {
+    const keys = [...c.dates.keys()];
+    if (!keys.length) return;
+    const lo = Math.min(...keys), hi = Math.max(...keys);
+    for (let e = lo; e <= hi; e++) yield { lb: c.dates.get(e) || 0, day: e - c.seedEpoch, e };
+  }
 }
-function toX(k, xMode) { return xMode === 'calendar' ? k : dayToWeek(k); }
+function bucketOf(step, xMode) {
+  if (xMode === 'age') return step.day;
+  if (xMode === 'doy') return doyOfEpoch(step.e);
+  return step.e;
+}
+function toX(k, xMode) { return xMode === 'age' ? dayToWeek(k) : k; }
+
+// Year/month filters apply to the cycle's seed date or to each individual
+// harvest day, depending on the Year basis toggle.
+function stepPassesDateFilter(step, o) {
+  if (o.basis !== 'harvest') return true;
+  if (filters.year.size && !filters.year.has(yearOfEpoch(step.e))) return false;
+  if (filters.month.size && !filters.month.has(monthOfEpoch(step.e))) return false;
+  return true;
+}
 
 function cycleSeriesIndividual(filtered, o) {
   return filtered.map(c => {
-    const b = cycleBuckets(c, o.xMode);
-    if (!b) return null;
-    const keys = [...b.src.keys()].sort((a, z) => a - z)
-      .filter(k => o.dayMode !== 'pick' || b.src.get(k) > 0);
-    const dataDaily = smoothSeries(keys.map(k => ({ x: toX(k, o.xMode), y: b.src.get(k) })), o.smooth);
+    const pts = [];
+    for (const step of walkCycle(c, o.xMode)) {
+      if (!stepPassesDateFilter(step, o)) continue;
+      if (o.dayMode === 'pick' && step.lb <= 0) continue;
+      pts.push({ x: toX(bucketOf(step, o.xMode), o.xMode), y: step.lb });
+    }
+    if (!pts.length) return null;
+    pts.sort((a, b) => a.x - b.x);
     let cum = 0;
-    const dataCum = keys.map(k => ({ x: toX(k, o.xMode), y: (cum += b.src.get(k)) }));
-    return { id: c.cycle_id, color: colorFor(c.cycle_id), dataDaily, dataCum };
+    const dataCum = pts.map(p => ({ x: p.x, y: (cum += p.y) }));
+    return { id: c.cycle_id, color: colorFor(c.cycle_id), dataDaily: smoothSeries(pts, o.smooth), dataCum };
   }).filter(Boolean);
 }
 
+// group key -> bucket -> { sum, nAll, nPick }. nAll counts every cycle alive in
+// that bucket (zero-filled); nPick counts only cycles that actually picked.
 function cycleSeriesAggregate(filtered, groupKey, o) {
   const groups = new Map();
   for (const c of filtered) {
-    const k = c[groupKey];
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(c);
+    for (const step of walkCycle(c, o.xMode)) {
+      if (!stepPassesDateFilter(step, o)) continue;
+      // Harvest Year is a property of the DAY, not of the cycle — which is why
+      // it has to be resolved here rather than read off `c`.
+      const gk = String(groupKey === 'harvestYear' ? yearOfEpoch(step.e) : c[groupKey]);
+      let totals = groups.get(gk);
+      if (!totals) { totals = new Map(); groups.set(gk, totals); }
+      const b = bucketOf(step, o.xMode);
+      const t = totals.get(b) || { sum: 0, nAll: 0, nPick: 0 };
+      t.sum += step.lb; t.nAll += 1; if (step.lb > 0) t.nPick += 1;
+      totals.set(b, t);
+    }
   }
   const out = [];
-  for (const [k, list] of [...groups.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])))) {
-    // bucket -> { sum, nAll, nPick }. nAll counts every cycle alive in that
-    // bucket (zero-filled); nPick counts only cycles that actually picked.
-    const totals = new Map();
-    for (const c of list) {
-      const b = cycleBuckets(c, o.xMode);
-      if (!b) continue;
-      for (let d = b.lo; d <= b.hi; d++) {
-        const lb = b.src.get(d) || 0;
-        const t = totals.get(d) || { sum: 0, nAll: 0, nPick: 0 };
-        t.sum += lb; t.nAll += 1; if (lb > 0) t.nPick += 1;
-        totals.set(d, t);
-      }
-    }
-    const keys = [...totals.keys()].sort((a,b)=>a-b);
-    const valueAt = (d) => {
-      const t = totals.get(d);
+  for (const [k, totals] of [...groups.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])))) {
+    const valueAt = (t) => {
       if (o.stat === 'sum') return t.sum;               // farm-wide total for that bucket
       const n = o.dayMode === 'pick' ? t.nPick : t.nAll; // mean per cycle
       return n ? t.sum / n : 0;
     };
-    const raw = keys
+    const raw = [...totals.keys()].sort((a,b)=>a-b)
       .filter(d => o.dayMode !== 'pick' || totals.get(d).nPick > 0)
-      .map(d => ({ x: toX(d, o.xMode), y: valueAt(d) }));
+      .map(d => ({ x: toX(d, o.xMode), y: valueAt(totals.get(d)) }));
+    if (!raw.length) continue;
     let cum = 0;
     const dataCum = raw.map(p => ({ x: p.x, y: (cum += p.y) }));
     out.push({ id: String(k), color: colorFor(String(k)), dataDaily: smoothSeries(raw, o.smooth), dataCum });
@@ -332,8 +381,10 @@ function makeChart(ctx, label) {
             label: (ctx) => `${ctx.dataset.label}: ${Math.round(ctx.parsed.y).toLocaleString()} lb`,
             title: (items) => {
               if (!items.length) return '';
-              const x = items[0].parsed.x;
-              return opts().xMode === 'calendar' ? fmtEpochDay(Math.round(x)) : `Week ${x.toFixed(1)}`;
+              const x = items[0].parsed.x, m = opts().xMode;
+              if (m === 'calendar') return fmtEpochDay(Math.round(x));
+              if (m === 'doy') return fmtDoy(x);
+              return `Week ${x.toFixed(1)}`;
             },
           },
         },
@@ -344,7 +395,12 @@ function makeChart(ctx, label) {
           title: { display: true, text: 'Weeks in greenhouse', font: { size: 11 } },
           ticks: {
             font: { size: 11 },
-            callback: (v) => opts().xMode === 'calendar' ? fmtEpochDay(Math.round(v)) : v,
+            callback: (v) => {
+              const m = opts().xMode;
+              if (m === 'calendar') return fmtEpochDay(Math.round(v));
+              if (m === 'doy') return fmtDoy(v);
+              return v;
+            },
             maxRotation: 0, autoSkipPadding: 24,
           },
         },
@@ -368,7 +424,9 @@ function renderCharts(series, o) {
   if (!dailyChart) dailyChart = makeChart(document.getElementById('dailyChart').getContext('2d'), 'Pounds');
   if (!cumChart)   cumChart   = makeChart(document.getElementById('cumChart').getContext('2d'),   'Cumulative pounds');
 
-  const xTitle = o.xMode === 'calendar' ? 'Harvest date' : 'Weeks in greenhouse';
+  const xTitle = o.xMode === 'calendar' ? 'Harvest date'
+               : o.xMode === 'doy' ? 'Day of year'
+               : 'Weeks in greenhouse';
   dailyChart.options.scales.x.title.text = xTitle;
   cumChart.options.scales.x.title.text   = xTitle;
   const perCycle = (view === 'aggregate' && o.stat === 'mean') ? ' (mean per cycle)' : '';
@@ -396,11 +454,18 @@ function render() {
   document.getElementById('stat-controls').style.display = (view === 'aggregate') ? '' : 'none';
   // Rebuild cycles with current variety/grade filters (row-level).
   const all = buildCycles(rows, filters.variety, filters.grade);
-  const filtered = filterCycles(all);
+  const filtered = filterCycles(all, o.basis);
 
   let note = `${filtered.length} cycles`;
   if (view === 'aggregate' && o.stat === 'sum' && o.xMode === 'age') {
     note += ' — total by plant age (cycles are stacked in age, not calendar time)';
+  }
+  const gbNow = document.getElementById('groupBy').value;
+  if (view === 'aggregate' && gbNow === 'seedYear' && o.xMode !== 'age') {
+    note += ' — seed-year cohorts overlap in calendar time; total output is the SUM of the lines';
+  }
+  if (o.xMode === 'doy' && gbNow !== 'harvestYear') {
+    note += ' — tip: group by Harvest Year for a true YoY overlay';
   }
   document.getElementById('status').textContent = note;
 
@@ -463,7 +528,13 @@ function parseDateStr(s) {
 
 // Re-render after ensuring required years are loaded.
 async function ensureAndRender() {
-  const wantYears = filters.year.size ? [...filters.year] : YEAR_RANGE;
+  const picked = filters.year.size ? [...filters.year] : YEAR_RANGE;
+  // Harvest basis: a cycle seeded late in year Y-1 harvests into year Y, so
+  // the prior seed-year has to be on hand or the Jan-Mar of Y comes up short.
+  const basis = document.getElementById('yearBasis').value;
+  const wantYears = basis === 'harvest'
+    ? [...new Set(picked.flatMap(y => [y - 1, y]))].filter(y => y >= YEAR_RANGE[0])
+    : picked;
   try {
     if (wantYears.some(y => !loadedYears.has(y))) {
       await fetchYears(wantYears);
@@ -506,6 +577,8 @@ for (let y = 2019; y <= CURRENT_YEAR; y++) YEAR_RANGE.push(y);
     ['groupBy','xMode','statMode','dayMode','smooth'].forEach(id => {
       document.getElementById(id).onchange = render;
     });
+    // Switching basis can require seed-years we haven't fetched yet.
+    document.getElementById('yearBasis').onchange = ensureAndRender;
 
     render();
   } catch (e) {
