@@ -237,15 +237,24 @@ function refreshChipState(containerId, key) {
 // A cycle is one seeding event in one GH (seed-month + GH). Variety and
 // grade rows within that cycle are SUMMED, not split into separate cycles.
 // Variety/Grade filters operate at the row level (applied here).
+let badAgeLb = 0; // pounds whose seed lineage is broken (see below); reported in status
 function buildCycles(rows, varietyFilter, gradeFilter) {
   const map = new Map();
+  badAgeLb = 0;
   for (const r of rows) {
     if (!r.SeedingDate || !r.Greenhouse) continue;
     if (varietyFilter.size && !varietyFilter.has(r.Variety)) continue;
     if (gradeFilter.size && !gradeFilter.has(r.Grade)) continue;
     const sy = r.SeedingDate.y, sm = r.SeedingDate.m;
     const day = r.DaysSinceSeed;
-    if (day == null || day < 0 || day > 200) continue;
+    // ~0.5% of rows are dated BEFORE their own seeding date (days_since_seed
+    // down to -15): the tail of an old crop linked to the next seed batch.
+    // Bad lineage, but real pounds — so they're excluded from the plant-age
+    // curve (negative age is meaningless) while still counting on calendar
+    // and day-of-year charts, which don't depend on seeding at all.
+    const ageOk = day != null && day >= 0 && day <= 200;
+    if (!ageOk) badAgeLb += (+r.GreenhouseNetWeight || 0);
+    if (!ageOk && !r.HarvestDate) continue;
     const lb = +r.GreenhouseNetWeight || 0;
     const cid = `${String(sy).slice(-2)}${String(sm).padStart(2,'0')}-${r.Greenhouse}`;
     let c = map.get(cid);
@@ -254,7 +263,7 @@ function buildCycles(rows, varietyFilter, gradeFilter) {
             seedEpoch: toEpochDay(r.SeedingDate), days: new Map(), dates: new Map() };
       map.set(cid, c);
     }
-    c.days.set(day, (c.days.get(day) || 0) + lb);
+    if (ageOk) c.days.set(day, (c.days.get(day) || 0) + lb);
     if (r.HarvestDate) {
       const e = toEpochDay(r.HarvestDate);
       c.dates.set(e, (c.dates.get(e) || 0) + lb);
@@ -463,6 +472,11 @@ function render() {
   let note = `${filtered.length} cycles`;
   if (view === 'aggregate' && o.stat === 'sum' && o.xMode === 'age') {
     note += ' — total by plant age (cycles are stacked in age, not calendar time)';
+  }
+  if (badAgeLb > 0) {
+    note += o.xMode === 'age'
+      ? ` — ${Math.round(badAgeLb).toLocaleString()} lb excluded (harvest dated before its own seeding)`
+      : ` — incl. ${Math.round(badAgeLb).toLocaleString()} lb with broken seed lineage`;
   }
   const gbNow = document.getElementById('groupBy').value;
   if (view === 'aggregate' && gbNow === 'seedYear' && o.xMode !== 'age') {
