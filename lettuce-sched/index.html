@@ -134,7 +134,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-07 02:23</span>
+  <span id="versionStamp">08-07 18:36</span>
 </div>
 
 <div id="content">
@@ -618,7 +618,8 @@ function saveLaneCfg(tr) {
   const lane = tr.dataset.lane;
   const body = JSON.stringify([{ lane, pattern: tr.querySelector('.bl-pat').value,
     seed: tr.querySelector('.bl-seed').value, lot: tr.querySelector('.bl-lot').value,
-    density: +tr.querySelector('.bl-dens').value || null, updated_at: new Date().toISOString() }]);
+    density: +tr.querySelector('.bl-dens').value || null,
+    germ_days: +tr.querySelector('.bl-germ').value || 2, updated_at: new Date().toISOString() }]);
   fetch(`${SB.url}/rest/v1/lettuce_builder_lane_config?on_conflict=lane`, {
     method: 'POST', body,
     headers: { apikey: SB.key, Authorization: `Bearer ${SB.key}`, 'Content-Type': 'application/json',
@@ -775,7 +776,7 @@ function builderInit() {
     return `<select class="bl-seed" title="Active seeds & mixes from production inventory">${extra}`
       + seedOptions.map(s => `<option value="${esc(s.seed_name)}"${s.seed_name === cur ? ' selected' : ''}>${esc(s.seed_name)} (${esc(s.variety)})</option>`).join('') + `</select>`;
   };
-  t.innerHTML = `<tr><th></th><th></th><th>Lane</th><th>Pattern</th><th>Seed</th><th>Lot</th><th>Density</th></tr>`
+  t.innerHTML = `<tr><th></th><th></th><th>Lane</th><th>Pattern</th><th>Seed</th><th>Lot</th><th>Density</th><th title="Days from seeding to ponding">Germ</th></tr>`
     + lanes.map(lane => {
       const ev = laneEvents(lane);
       const lastC = cycles.filter(c => (c.pond + c.side) === lane && c.ponded).sort((a, b) => a.ponded - b.ponded).pop();
@@ -811,6 +812,7 @@ function builderInit() {
         + `<td class="bl-cfg">${seedSel((saved && saved.seed) || (def ? def.seed : (lastC ? lastC.seedName : '')))}</td>`
         + `<td class="bl-cfg"><select class="bl-lot" title="Active lots for this seed from inventory (invnt_lot)"></select></td>`
         + `<td class="bl-cfg"><input class="bl-dens" type="number" style="width:60px" value="${(saved && saved.density) || (lastC ? lastC.seedsPerBoard : 330)}"></td>`
+        + `<td class="bl-cfg"><input class="bl-germ" type="number" min="0" max="7" style="width:44px" title="Days from seeding to ponding" value="${(saved && saved.germ_days) || (lane === 'P1AB' ? 1 : 2)}"></td>`
         + `</tr>`;
     }).join('');
   renderRef();
@@ -846,6 +848,7 @@ function builderInit() {
     tr.querySelector('.bl-seed').addEventListener('change', () => { fillLots(tr); saveLaneCfg(tr); });
     tr.querySelector('.bl-lot').addEventListener('change', () => saveLaneCfg(tr));
     tr.querySelector('.bl-dens').addEventListener('change', () => saveLaneCfg(tr));
+    tr.querySelector('.bl-germ').addEventListener('change', () => saveLaneCfg(tr));
     const inc = tr.querySelector('.bl-inc');
     const toggle = () => tr.querySelectorAll('.bl-cfg').forEach(td => td.style.visibility = inc.checked ? '' : 'hidden');
     inc.addEventListener('change', toggle); toggle();
@@ -922,6 +925,7 @@ function builderGenerate() {
     const variety = (seedOptions.find(s => s.seed_name === seedName) || {}).variety || 'MS';
     const seedLot = tr.querySelector('.bl-lot').value;
     const dens = +tr.querySelector('.bl-dens').value || 330;
+    const germDays = +tr.querySelector('.bl-germ').value || 2;   // seeding → ponding gap (GA=1, others 2)
     const sv = document.getElementById('bStartWeek').value;
     const [y, m, dd] = sv.split('-').map(Number);
     let d = new Date(Date.UTC(y, m - 1, dd));
@@ -968,9 +972,9 @@ function builderGenerate() {
       (offC[ymd(harv)] = offC[ymd(harv)] || []).push({ label: (blank ? 'BLANK' : 'new') + ` ponded ${fmtMD(d)}`, b, gen: true, p: ymd(d) });
       out.push({ lane, pond: pondP, side: sideP, rows: Math.round(b / w * 10) / 10, boards: Math.round(b),
         seedName: blank ? 'BLANK' : seedName, dens: blank ? 0 : dens, blank,
-        seed: new Date(d.getTime() - 2 * DAY), ponded: new Date(d.getTime()), harv, days, off: 0, fill: 0 });
+        seed: new Date(d.getTime() - germDays * DAY), ponded: new Date(d.getTime()), harv, days, off: 0, fill: 0 });
       tsv.push([pondP, sideP, blank ? 'BLANK' : variety, blank ? 'BLANK' : seedName, blank ? '' : seedLot,
-        blank ? 0 : dens, Math.round(b), fmtUS(new Date(d.getTime() - 2 * DAY)), fmtUS(d), fmtUS(harv)].join('\t'));
+        blank ? 0 : dens, Math.round(b), fmtUS(new Date(d.getTime() - germDays * DAY)), fmtUS(d), fmtUS(harv)].join('\t'));
       return Math.round(b);
     };
     while (d < end) {
