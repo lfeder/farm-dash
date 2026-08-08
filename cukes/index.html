@@ -58,6 +58,28 @@
         <option value="grade">Grade</option>
       </select>
     </span>
+    <label>X axis:</label>
+    <select id="xMode">
+      <option value="age">Plant age (weeks)</option>
+      <option value="calendar">Calendar date</option>
+    </select>
+    <span id="stat-controls" style="display:none">
+      <label>Combine:</label>
+      <select id="statMode">
+        <option value="mean">Mean per cycle</option>
+        <option value="sum">Total (all cycles)</option>
+      </select>
+    </span>
+    <label>Days:</label>
+    <select id="dayMode">
+      <option value="all">All days</option>
+      <option value="pick">Pick days only</option>
+    </select>
+    <label>Smooth:</label>
+    <select id="smooth">
+      <option value="1">Raw</option>
+      <option value="7">7-day avg</option>
+    </select>
     <span id="status" class="status">Loading…</span>
   </div>
 
@@ -118,6 +140,37 @@ function resetColors() { seriesColorMap.clear(); }
 const PLANT_DAY = 14; // plants moved to GH 14 days after seeding
 function dayToWeek(d) { return (d - PLANT_DAY) / 7; }
 
+// Calendar x-values are epoch-days (integers) so the linear scale stays simple.
+const MS_DAY = 86400000;
+function toEpochDay(dt) { return Math.round(Date.UTC(dt.y, dt.m - 1, dt.d) / MS_DAY); }
+function fmtEpochDay(e) {
+  const d = new Date(e * MS_DAY);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}/${String(d.getUTCFullYear()).slice(-2)}`;
+}
+
+// Current control state (read fresh on each render).
+function opts() {
+  return {
+    xMode:  document.getElementById('xMode').value,     // 'age' | 'calendar'
+    stat:   document.getElementById('statMode').value,  // 'mean' | 'sum'
+    dayMode:document.getElementById('dayMode').value,   // 'all'  | 'pick'
+    smooth: +document.getElementById('smooth').value,   // 1 | 7
+  };
+}
+
+// Centered rolling mean over a per-day series. Window is in points, and both
+// x-modes are one point per calendar day, so 7 == one week either way.
+function smoothSeries(pts, win) {
+  if (win <= 1) return pts;
+  const half = Math.floor(win / 2);
+  return pts.map((p, i) => {
+    let sum = 0, n = 0;
+    for (let j = Math.max(0, i - half); j <= Math.min(pts.length - 1, i + half); j++) { sum += pts[j].y; n++; }
+    return { x: p.x, y: sum / n };
+  });
+}
+
 // ── Filter chip rendering ──
 function renderChips(containerId, key, values, formatLabel) {
   const c = document.getElementById(containerId);
@@ -171,10 +224,14 @@ function buildCycles(rows, varietyFilter, gradeFilter) {
     const cid = `${String(sy).slice(-2)}${String(sm).padStart(2,'0')}-${r.Greenhouse}`;
     let c = map.get(cid);
     if (!c) {
-      c = { cycle_id: cid, seedYear: sy, seedMonth: sm, gh: r.Greenhouse, days: new Map() };
+      c = { cycle_id: cid, seedYear: sy, seedMonth: sm, gh: r.Greenhouse, days: new Map(), dates: new Map() };
       map.set(cid, c);
     }
     c.days.set(day, (c.days.get(day) || 0) + lb);
+    if (r.HarvestDate) {
+      const e = toEpochDay(r.HarvestDate);
+      c.dates.set(e, (c.dates.get(e) || 0) + lb);
+    }
   }
   return [...map.values()];
 }
@@ -190,17 +247,33 @@ function filterCycles(allCycles) {
 }
 
 // ── Series builders ──
-function cycleSeriesIndividual(filtered) {
+// Per-cycle bucket map for the active x-mode, plus the span to zero-fill over.
+// 'age' buckets on days-since-seed (span 0..maxDay); 'calendar' buckets on
+// harvest date in epoch-days (span first..last harvest for that cycle).
+function cycleBuckets(c, xMode) {
+  const src = xMode === 'calendar' ? c.dates : c.days;
+  const keys = [...src.keys()];
+  if (!keys.length) return null;
+  const lo = xMode === 'calendar' ? Math.min(...keys) : 0;
+  const hi = Math.max(...keys);
+  return { src, lo, hi };
+}
+function toX(k, xMode) { return xMode === 'calendar' ? k : dayToWeek(k); }
+
+function cycleSeriesIndividual(filtered, o) {
   return filtered.map(c => {
-    const days = [...c.days.keys()].sort((a,b)=>a-b);
+    const b = cycleBuckets(c, o.xMode);
+    if (!b) return null;
+    const keys = [...b.src.keys()].sort((a, z) => a - z)
+      .filter(k => o.dayMode !== 'pick' || b.src.get(k) > 0);
+    const dataDaily = smoothSeries(keys.map(k => ({ x: toX(k, o.xMode), y: b.src.get(k) })), o.smooth);
     let cum = 0;
-    const dataDaily = days.map(d => ({ x: dayToWeek(d), y: c.days.get(d) }));
-    const dataCum = days.map(d => ({ x: dayToWeek(d), y: (cum += c.days.get(d)) }));
+    const dataCum = keys.map(k => ({ x: toX(k, o.xMode), y: (cum += b.src.get(k)) }));
     return { id: c.cycle_id, color: colorFor(c.cycle_id), dataDaily, dataCum };
-  });
+  }).filter(Boolean);
 }
 
-function cycleSeriesAggregate(filtered, groupKey) {
+function cycleSeriesAggregate(filtered, groupKey, o) {
   const groups = new Map();
   for (const c of filtered) {
     const k = c[groupKey];
@@ -209,24 +282,32 @@ function cycleSeriesAggregate(filtered, groupKey) {
   }
   const out = [];
   for (const [k, list] of [...groups.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])))) {
-    const dayTotals = new Map();
+    // bucket -> { sum, nAll, nPick }. nAll counts every cycle alive in that
+    // bucket (zero-filled); nPick counts only cycles that actually picked.
+    const totals = new Map();
     for (const c of list) {
-      const maxDay = Math.max(...c.days.keys());
-      for (let d = 0; d <= maxDay; d++) {
-        const lb = c.days.get(d) || 0;
-        const t = dayTotals.get(d) || { sum: 0, n: 0 };
-        t.sum += lb; t.n += 1;
-        dayTotals.set(d, t);
+      const b = cycleBuckets(c, o.xMode);
+      if (!b) continue;
+      for (let d = b.lo; d <= b.hi; d++) {
+        const lb = b.src.get(d) || 0;
+        const t = totals.get(d) || { sum: 0, nAll: 0, nPick: 0 };
+        t.sum += lb; t.nAll += 1; if (lb > 0) t.nPick += 1;
+        totals.set(d, t);
       }
     }
-    const sortedDays = [...dayTotals.keys()].sort((a,b)=>a-b);
+    const keys = [...totals.keys()].sort((a,b)=>a-b);
+    const valueAt = (d) => {
+      const t = totals.get(d);
+      if (o.stat === 'sum') return t.sum;               // farm-wide total for that bucket
+      const n = o.dayMode === 'pick' ? t.nPick : t.nAll; // mean per cycle
+      return n ? t.sum / n : 0;
+    };
+    const raw = keys
+      .filter(d => o.dayMode !== 'pick' || totals.get(d).nPick > 0)
+      .map(d => ({ x: toX(d, o.xMode), y: valueAt(d) }));
     let cum = 0;
-    const dataDaily = sortedDays.map(d => {
-      const t = dayTotals.get(d);
-      return { x: dayToWeek(d), y: t.sum / t.n };
-    });
-    const dataCum = sortedDays.map((d,i) => { cum += dataDaily[i].y; return { x: dayToWeek(d), y: cum }; });
-    out.push({ id: String(k), color: colorFor(String(k)), dataDaily, dataCum });
+    const dataCum = raw.map(p => ({ x: p.x, y: (cum += p.y) }));
+    out.push({ id: String(k), color: colorFor(String(k)), dataDaily: smoothSeries(raw, o.smooth), dataCum });
   }
   return out;
 }
@@ -249,12 +330,24 @@ function makeChart(ctx, label) {
           itemSort: (a, b) => (Number(b.parsed && b.parsed.y) || 0) - (Number(a.parsed && a.parsed.y) || 0),
           callbacks: {
             label: (ctx) => `${ctx.dataset.label}: ${Math.round(ctx.parsed.y).toLocaleString()} lb`,
-            title: (items) => items.length ? `Week ${items[0].parsed.x.toFixed(1)}` : '',
+            title: (items) => {
+              if (!items.length) return '';
+              const x = items[0].parsed.x;
+              return opts().xMode === 'calendar' ? fmtEpochDay(Math.round(x)) : `Week ${x.toFixed(1)}`;
+            },
           },
         },
       },
       scales: {
-        x: { type: 'linear', title: { display: true, text: 'Weeks in greenhouse', font: { size: 11 } }, ticks: { font: { size: 11 } } },
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'Weeks in greenhouse', font: { size: 11 } },
+          ticks: {
+            font: { size: 11 },
+            callback: (v) => opts().xMode === 'calendar' ? fmtEpochDay(Math.round(v)) : v,
+            maxRotation: 0, autoSkipPadding: 24,
+          },
+        },
         y: { title: { display: true, text: label, font: { size: 11 } }, ticks: { font: { size: 11 } } },
       },
       elements: { point: { radius: 0 }, line: { borderWidth: 1.2, tension: 0.2 } },
@@ -262,7 +355,7 @@ function makeChart(ctx, label) {
   });
 }
 
-function renderCharts(series) {
+function renderCharts(series, o) {
   const showLegend = series.length <= 20; // hide spaghetti legend
   const buildDatasets = (key) => series.map(s => ({
     label: s.id,
@@ -274,6 +367,13 @@ function renderCharts(series) {
 
   if (!dailyChart) dailyChart = makeChart(document.getElementById('dailyChart').getContext('2d'), 'Pounds');
   if (!cumChart)   cumChart   = makeChart(document.getElementById('cumChart').getContext('2d'),   'Cumulative pounds');
+
+  const xTitle = o.xMode === 'calendar' ? 'Harvest date' : 'Weeks in greenhouse';
+  dailyChart.options.scales.x.title.text = xTitle;
+  cumChart.options.scales.x.title.text   = xTitle;
+  const perCycle = (view === 'aggregate' && o.stat === 'mean') ? ' (mean per cycle)' : '';
+  dailyChart.options.scales.y.title.text = 'Pounds' + perCycle;
+  cumChart.options.scales.y.title.text   = 'Cumulative pounds' + perCycle;
 
   dailyChart.data.datasets = buildDatasets('dataDaily');
   cumChart.data.datasets   = buildDatasets('dataCum');
@@ -292,18 +392,26 @@ function renderCharts(series) {
 // ── Main render ──
 function render() {
   resetColors();
+  const o = opts();
+  document.getElementById('stat-controls').style.display = (view === 'aggregate') ? '' : 'none';
   // Rebuild cycles with current variety/grade filters (row-level).
   const all = buildCycles(rows, filters.variety, filters.grade);
   const filtered = filterCycles(all);
-  document.getElementById('status').textContent = `${filtered.length} cycles`;
+
+  let note = `${filtered.length} cycles`;
+  if (view === 'aggregate' && o.stat === 'sum' && o.xMode === 'age') {
+    note += ' — total by plant age (cycles are stacked in age, not calendar time)';
+  }
+  document.getElementById('status').textContent = note;
+
   let series;
   if (view === 'individual') {
-    series = cycleSeriesIndividual(filtered);
+    series = cycleSeriesIndividual(filtered, o);
   } else {
     const gb = document.getElementById('groupBy').value;
-    series = cycleSeriesAggregate(filtered, gb);
+    series = cycleSeriesAggregate(filtered, gb, o);
   }
-  renderCharts(series);
+  renderCharts(series, o);
 }
 
 // Fetch rows for a set of seed-years directly via Supabase client.
@@ -395,7 +503,9 @@ for (let y = 2019; y <= CURRENT_YEAR; y++) YEAR_RANGE.push(y);
         render();
       };
     });
-    document.getElementById('groupBy').onchange = render;
+    ['groupBy','xMode','statMode','dayMode','smooth'].forEach(id => {
+      document.getElementById(id).onchange = render;
+    });
 
     render();
   } catch (e) {
