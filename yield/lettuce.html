@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lettuce Yields</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="../lib/data-source.js?v=20260727b"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
+  #header { background: #4a8c5c; padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; }
+  #header h1 { font-size: 1.25rem; color: #fff; font-weight: 700; }
+  #content { padding: 12px 20px 24px; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .row .label { font-size: 0.75rem; color: #666; width: 58px; flex-shrink: 0; }
+  .chip { padding: 4px 10px; font-size: 0.78rem; border: 1px solid #c0b8ae; background: #fff; color: #555;
+          cursor: pointer; border-radius: 4px; user-select: none; white-space: nowrap; }
+  .chip.active { background: #4a8c5c; color: #fff; border-color: #4a8c5c; }
+  .chip.all { font-weight: 600; }
+  .chip .x { margin-left: 6px; opacity: 0.65; font-weight: 700; }
+  .seed-search { padding: 4px 8px; font-size: 0.78rem; border: 1px solid #bbb; border-radius: 4px;
+                 background: #fff; min-width: 210px; }
+  .chart-box { background: #fff; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; border: 1px solid #ddd; }
+  .chart-box h3 { font-size: 0.85rem; font-weight: 600; color: #333; margin-bottom: 4px; }
+  .chart-wrap { position: relative; height: 260px; }
+  .status { font-size: 0.78rem; color: #888; padding: 4px 0; }
+  .note { font-size: 0.7rem; color: #999; margin-left: 6px; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Lettuce Pounds Per Day</h1>
+  <span style="font-size:0.7rem;color:#fff;" id="versionStamp"></span>
+</div>
+
+<div id="content">
+  <div class="row">
+    <span class="label">Metric</span><span id="f-metric"></span>
+    <span class="note" id="metricNote"></span>
+  </div>
+  <div class="row"><span class="label">Year</span><span id="f-year"></span></div>
+  <div class="row"><span class="label">Pond</span><span id="f-pond"></span></div>
+  <div class="row">
+    <span class="label">Seed</span><span id="f-seed"></span>
+    <input class="seed-search" id="seedSearch" list="seedList" placeholder="Search or select seed name">
+    <datalist id="seedList"></datalist>
+  </div>
+  <div class="status" id="status">Loading…</div>
+
+  <div class="chart-box">
+    <h3 id="t1">By Year, summed by Seed and Pond (lb/day)</h3>
+    <div class="chart-wrap"><canvas id="c1"></canvas></div>
+  </div>
+  <div class="chart-box">
+    <h3 id="t2">By Seed, summed by Pond (lb/bd)</h3>
+    <div class="chart-wrap"><canvas id="c2"></canvas></div>
+  </div>
+  <div class="chart-box">
+    <h3 id="t3">By Pond, summed by Seed (lb/bd)</h3>
+    <div class="chart-wrap"><canvas id="c3"></canvas></div>
+  </div>
+</div>
+
+<script>
+// ── Assumptions worth confirming ──────────────────────────────────────────
+// BOARD_SF: growing area of one raft board. Nothing in the DB records pond or
+// board area, so lb/sf and kg/sm depend entirely on this number. Change it here
+// (one place) once the real figure is known.
+const BOARD_SF = 8;              // 2ft x 4ft raft
+const KG_PER_M2_PER_LB_SF = 4.88243;
+// The four current major production seeds, selected on load.
+const PRESET_SEEDS = ['3310', 'Astro', 'Mixed Version 2.0', 'Watercress'];
+
+// ── State ──
+let rows = [];
+let allSeeds = [];
+let filters = { year: new Set(), pond: new Set(), seed: new Set(PRESET_SEEDS) };
+let metric = 'raw';              // raw | annualized | lbsf | kgsm
+let charts = {};
+
+const PALETTE = [
+  '#e6194B','#3cb44b','#4363d8','#f58231','#911eb4','#42d4f4',
+  '#f032e6','#9A6324','#800000','#808000','#000075','#a9a9a9',
+  '#469990','#bfef45','#ffe119','#fabed4','#aaffc3','#dcbeff',
+];
+const colorMap = new Map();
+function colorFor(key) {
+  if (!colorMap.has(key)) colorMap.set(key, PALETTE[colorMap.size % PALETTE.length]);
+  return colorMap.get(key);
+}
+
+// ── Week bucket: 0-52, aligned across years so the lines overlay ──
+const MS_DAY = 86400000;
+function weekOf(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const doy = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 1)) / MS_DAY) + 1;
+  return Math.min(52, Math.floor((doy - 1) / 7));
+}
+function yearOf(dateStr) { return +dateStr.slice(0, 4); }
+function yy(y) { return String(y).slice(-2); }
+function seedAbbrev(s) { return String(s).slice(0, 4); }
+
+// ── Chips ──
+function renderChips(containerId, key, values, opts = {}) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  if (!opts.noAll) {
+    const all = document.createElement('span');
+    all.className = 'chip all';
+    all.textContent = 'All';
+    all.onclick = () => { filters[key].clear(); refreshChips(); render(); };
+    c.appendChild(all);
+  }
+  values.forEach(v => {
+    const el = document.createElement('span');
+    el.className = 'chip';
+    el.dataset.value = String(v);
+    el.textContent = String(v);
+    if (opts.removable) {
+      const x = document.createElement('span');
+      x.className = 'x';
+      x.textContent = '×';
+      x.onclick = (e) => { e.stopPropagation(); removeSeedChip(String(v)); };
+      el.appendChild(x);
+    }
+    el.onclick = () => {
+      if (filters[key].has(String(v))) filters[key].delete(String(v));
+      else filters[key].add(String(v));
+      refreshChips(); render();
+    };
+    c.appendChild(el);
+  });
+  refreshChips();
+}
+function refreshChips() {
+  [['f-year','year'], ['f-pond','pond'], ['f-seed','seed']].forEach(([id, key]) => {
+    const c = document.getElementById(id);
+    if (!c) return;
+    const allOn = filters[key].size === 0;
+    c.querySelectorAll('.chip').forEach(el => {
+      if (el.classList.contains('all')) { el.classList.toggle('active', allOn); return; }
+      el.classList.toggle('active', !allOn && filters[key].has(el.dataset.value));
+    });
+  });
+  const m = document.getElementById('f-metric');
+  m.querySelectorAll('.chip').forEach(el => el.classList.toggle('active', el.dataset.value === metric));
+}
+
+// Seed chips are the 4 presets plus anything added from the search box.
+let seedChips = [...PRESET_SEEDS];
+function renderSeedChips() { renderChips('f-seed', 'seed', seedChips, { removable: true }); }
+function addSeedChip(name) {
+  if (!name || !allSeeds.includes(name)) return;
+  if (!seedChips.includes(name)) seedChips.push(name);
+  filters.seed.add(name);
+  renderSeedChips(); render();
+}
+function removeSeedChip(name) {
+  seedChips = seedChips.filter(s => s !== name);
+  filters.seed.delete(name);
+  renderSeedChips(); render();
+}
+
+// ── Metric transforms ──
+// lb/day charts scale by time; lb/bd charts convert area. Annualized is a rate
+// (x365) so it only means something on the lb/day chart.
+function applyMetric(value, kind) {
+  if (value == null) return null;
+  if (kind === 'perday') {
+    if (metric === 'annualized') return value * 365;
+    if (metric === 'lbsf')       return value * 365 / BOARD_SF;
+    if (metric === 'kgsm')       return value * 365 / BOARD_SF * KG_PER_M2_PER_LB_SF;
+    return value;
+  }
+  // per board
+  if (metric === 'lbsf') return value / BOARD_SF;
+  if (metric === 'kgsm') return value / BOARD_SF * KG_PER_M2_PER_LB_SF;
+  return value;   // raw + annualized leave lb/bd alone
+}
+function unitLabel(kind) {
+  if (kind === 'perday') {
+    if (metric === 'annualized') return 'lb/yr';
+    if (metric === 'lbsf')       return 'lb/sf/yr';
+    if (metric === 'kgsm')       return 'kg/m²/yr';
+    return 'lb/day';
+  }
+  if (metric === 'lbsf') return 'lb/sf';
+  if (metric === 'kgsm') return 'kg/m²';
+  return 'lb/bd';
+}
+
+// ── Aggregation ──
+function activeRows() {
+  return rows.filter(r =>
+    (!filters.year.size || filters.year.has(String(r.year))) &&
+    (!filters.pond.size || filters.pond.has(r.pond)) &&
+    (!filters.seed.size || filters.seed.has(r.seed)));
+}
+
+// lb per harvest DAY: total pounds in the week over the number of days actually
+// picked that week (not /7 — they don't harvest every day).
+function seriesPerDay(list) {
+  const acc = new Map();   // year -> week -> {lb, days:Set}
+  for (const r of list) {
+    if (r.lb == null) continue;
+    if (!acc.has(r.year)) acc.set(r.year, new Map());
+    const wk = acc.get(r.year);
+    const t = wk.get(r.week) || { lb: 0, days: new Set() };
+    t.lb += r.lb; t.days.add(r.date);
+    wk.set(r.week, t);
+  }
+  const out = [];
+  for (const [year, wk] of [...acc.entries()].sort((a, b) => a[0] - b[0])) {
+    const data = [...wk.keys()].sort((a, b) => a - b)
+      .map(w => ({ x: w, y: applyMetric(wk.get(w).lb / wk.get(w).days.size, 'perday') }));
+    out.push({ id: String(year), color: colorFor('Y' + year), data });
+  }
+  return out;
+}
+
+// lb per board, weighted: total pounds / total boards (never an average of averages).
+function seriesPerBoard(list, groupField) {
+  const acc = new Map();   // "yy-key" -> week -> {lb, boards}
+  for (const r of list) {
+    if (r.lb == null || !r.boards) continue;
+    const key = yy(r.year) + '-' + (groupField === 'seed' ? seedAbbrev(r.seed) : r.pond);
+    if (!acc.has(key)) acc.set(key, new Map());
+    const wk = acc.get(key);
+    const t = wk.get(r.week) || { lb: 0, boards: 0 };
+    t.lb += r.lb; t.boards += r.boards;
+    wk.set(r.week, t);
+  }
+  const out = [];
+  for (const [key, wk] of [...acc.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const data = [...wk.keys()].sort((a, b) => a - b)
+      .map(w => ({ x: w, y: applyMetric(wk.get(w).lb / wk.get(w).boards, 'perboard') }));
+    out.push({ id: key, color: colorFor(key), data });
+  }
+  return out;
+}
+
+// ── Charts ──
+function makeChart(id, yLabel) {
+  return new Chart(document.getElementById(id).getContext('2d'), {
+    type: 'line',
+    data: { datasets: [] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      plugins: {
+        legend: { display: true, position: 'top',
+          labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, pointStyle: 'circle', font: { size: 9 } } },
+        tooltip: { mode: 'nearest', intersect: false,
+          itemSort: (a, b) => (Number(b.parsed?.y) || 0) - (Number(a.parsed?.y) || 0),
+          callbacks: {
+            title: items => items.length ? 'Week ' + items[0].parsed.x : '',
+            label: ctx => `${ctx.dataset.label}: ${(+ctx.parsed.y).toLocaleString(undefined,
+              { maximumFractionDigits: (+ctx.parsed.y) < 100 ? 2 : 0 })}`,
+          } },
+      },
+      scales: {
+        x: { type: 'linear', min: 0, max: 52,
+             title: { display: true, text: 'Week of year', font: { size: 10 } },
+             ticks: { font: { size: 10 }, stepSize: 1, autoSkipPadding: 12, maxRotation: 0 } },
+        y: { beginAtZero: true, title: { display: true, text: yLabel, font: { size: 10 } },
+             ticks: { font: { size: 10 } } },
+      },
+      elements: { point: { radius: 0 }, line: { borderWidth: 1.2, tension: 0.2 } },
+    },
+  });
+}
+
+function draw(chart, series, yLabel) {
+  chart.data.datasets = series.map(s => ({
+    label: s.id, data: s.data, borderColor: s.color, backgroundColor: s.color, showLine: true,
+  }));
+  chart.options.scales.y.title.text = yLabel;
+  chart.options.plugins.legend.display = series.length <= 40;
+  chart.update();
+}
+
+function render() {
+  const list = activeRows();
+  const perDay = unitLabel('perday'), perBd = unitLabel('perboard');
+  document.getElementById('t1').textContent = `By Year, summed by Seed and Pond (${perDay})`;
+  document.getElementById('t2').textContent = `By Seed, summed by Pond (${perBd})`;
+  document.getElementById('t3').textContent = `By Pond, summed by Seed (${perBd})`;
+
+  draw(charts.c1, seriesPerDay(list), perDay);
+  draw(charts.c2, seriesPerBoard(list, 'seed'), perBd);
+  draw(charts.c3, seriesPerBoard(list, 'pond'), perBd);
+
+  const lb = list.reduce((s, r) => s + (r.lb || 0), 0);
+  const seedTxt = filters.seed.size ? `${filters.seed.size} seed${filters.seed.size > 1 ? 's' : ''}` : 'all seeds';
+  document.getElementById('status').textContent =
+    `${list.length.toLocaleString()} harvest rows · ${Math.round(lb).toLocaleString()} lb · ${seedTxt}`;
+  document.getElementById('metricNote').textContent =
+    (metric === 'lbsf' || metric === 'kgsm') ? `assumes ${BOARD_SF} sf per board` : '';
+}
+
+// ── Load ──
+async function load() {
+  const client = await DataSource.getClient();
+  const PAGE = 1000;
+  let page = 0;
+  while (true) {
+    const { data, error } = await client
+      .from('grow_lettuce_gh_harvest_v')
+      .select('id,harvest_date,pond,seed_name,boards_per_pond,pounds_per_board,greenhouse_net_weight')
+      .not('greenhouse_net_weight', 'is', null)   // estimate-only rows carry max_lb but no actuals
+      .order('id', { ascending: true })
+      .range(page * PAGE, (page + 1) * PAGE - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    for (const r of data) {
+      if (!r.harvest_date || !r.pond || !r.seed_name) continue;
+      rows.push({
+        date: r.harvest_date,
+        year: yearOf(r.harvest_date),
+        week: weekOf(r.harvest_date),
+        pond: r.pond,
+        seed: r.seed_name,
+        boards: +r.boards_per_pond || 0,
+        lb: r.greenhouse_net_weight == null ? null : +r.greenhouse_net_weight,
+      });
+    }
+    if (data.length < PAGE) break;
+    page++;
+  }
+}
+
+(async () => {
+  try {
+    charts.c1 = makeChart('c1', 'lb/day');
+    charts.c2 = makeChart('c2', 'lb/bd');
+    charts.c3 = makeChart('c3', 'lb/bd');
+
+    renderChips('f-metric', 'metric', [], { noAll: true });
+    const mEl = document.getElementById('f-metric');
+    [['raw','Raw'], ['annualized','Annualized'], ['lbsf','Annual lb/sf'], ['kgsm','Annual kg/sm']]
+      .forEach(([val, lab]) => {
+        const el = document.createElement('span');
+        el.className = 'chip'; el.dataset.value = val; el.textContent = lab;
+        el.onclick = () => { metric = val; refreshChips(); render(); };
+        mEl.appendChild(el);
+      });
+
+    await load();
+
+    const years = [...new Set(rows.map(r => r.year))].sort();
+    const ponds = [...new Set(rows.map(r => r.pond))].sort();
+    allSeeds = [...new Set(rows.map(r => r.seed))].sort();
+
+    renderChips('f-year', 'year', years);
+    renderChips('f-pond', 'pond', ponds);
+    // Only keep presets that actually exist in the data.
+    seedChips = PRESET_SEEDS.filter(s => allSeeds.includes(s));
+    filters.seed = new Set(seedChips);
+    renderSeedChips();
+
+    const dl = document.getElementById('seedList');
+    allSeeds.forEach(s => { const o = document.createElement('option'); o.value = s; dl.appendChild(o); });
+    const search = document.getElementById('seedSearch');
+    search.addEventListener('change', () => { addSeedChip(search.value); search.value = ''; });
+
+    refreshChips();
+    render();
+  } catch (e) {
+    console.error(e);
+    document.getElementById('status').textContent = 'Error: ' + (e.message || e);
+  }
+})();
+
+fetch('lettuce.html', { method: 'HEAD' }).then(r => {
+  const d = new Date(r.headers.get('last-modified'));
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('versionStamp').textContent =
+    `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}).catch(() => {});
+</script>
+</body>
+</html>
