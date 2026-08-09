@@ -127,17 +127,14 @@
     <span class="toggle" id="labelToggle">
       <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button>
     </span>
-    <span class="toggle" id="viewToggle">
-      <button data-view="all" class="active">All</button><button data-view="pond">Pond</button>
-    </span>
     <span class="toggle" id="pageTabs" style="margin-left:24px">
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-09 15:55</span>
+  <span id="versionStamp">08-09 16:17</span>
 </div>
 
-<div id="content">
+<div id="content" class="wide">
   <div id="loading">Loading schedule…</div>
   <div id="main" style="display:none;">
     <div id="filterwarn" style="display:none;"></div>
@@ -214,7 +211,9 @@ const VARIETY_FALLBACK = ['#f0a030','#9b59b6','#16a085','#e67e22','#2c7fb8','#8e
 
 let cycles = [];
 let asOf = hstToday();   // "run as of" date; drives the whole view (default today)
-let pondView = false;    // Pond view: on-pond only, bigger scale, germ room left of the cap edge
+// Pond view is the only view: on-pond only, bigger scale, germ room left of the cap edge.
+// (The old All/Pond toggle was removed 2026-08-09 — All was never used.)
+const pondView = true;
 
 function parseUsDate(v) {
   if (!v) return null;
@@ -584,15 +583,8 @@ function renderLegend() {
     + '<span style="color:#999">· faded = not yet on pond · solid = on pond · block # = rows or days on pond (toggle)</span>';
 }
 
-// Rows/Days toggle: flips a class on #gantt so CSS swaps which label shows.
-document.getElementById('viewToggle').addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return;
-  document.querySelectorAll('#viewToggle button').forEach(x => x.classList.toggle('active', x === b));
-  pondView = b.dataset.view === 'pond';
-  document.getElementById('content').classList.toggle('wide', pondView);
-  render();
-});
-window.addEventListener('resize', () => { if (pondView && cycles.length) render(); });
+// Pond view scales to the window, so re-render on resize.
+window.addEventListener('resize', () => { if (cycles.length) render(); });
 document.getElementById('labelToggle').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   document.querySelectorAll('#labelToggle button').forEach(x => x.classList.toggle('active', x === b));
