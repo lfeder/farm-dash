@@ -64,12 +64,17 @@
 </div>
 
 <script>
-// ── Assumptions worth confirming ──────────────────────────────────────────
-// BOARD_SF: growing area of one raft board. Nothing in the DB records pond or
-// board area, so lb/sf and kg/sm depend entirely on this number. Change it here
-// (one place) once the real figure is known.
-const BOARD_SF = 8;              // 2ft x 4ft raft
+// ── Constants ─────────────────────────────────────────────────────────────
+const BOARD_SF = 6;                  // growing area of one raft board
+const HARVEST_DAYS_PER_WEEK = 4;     // we pick 4 days a week...
+const HARVESTS_PER_YEAR = HARVEST_DAYS_PER_WEEK * 52;   // ...so 208, not 365
 const KG_PER_M2_PER_LB_SF = 4.88243;
+// Area productivity annualises per CYCLE, not per calendar day: a board position
+// turns over every days-on-pond, so it yields lb_per_board x (365/days) a year.
+// days-on-pond = harvest_date - transplant_date, which varies a lot by seed
+// (Watercress ~17d, Mixed ~21d, Astro ~22d, 3310 ~28d).
+const DAYS_MIN = 7, DAYS_MAX = 60;   // outside this the record is broken (3 rows)
+const DAYS_FALLBACK = 22;            // median across all harvested cycles
 // The four current major production seeds, selected on load.
 const PRESET_SEEDS = ['3310', 'Astro', 'Mixed Version 2.0', 'Watercress'];
 
@@ -163,32 +168,33 @@ function removeSeedChip(name) {
   renderSeedChips(); render();
 }
 
-// ── Metric transforms ──
-// lb/day charts scale by time; lb/bd charts convert area. Annualized is a rate
-// (x365) so it only means something on the lb/day chart.
-function applyMetric(value, kind) {
-  if (value == null) return null;
-  if (kind === 'perday') {
-    if (metric === 'annualized') return value * 365;
-    if (metric === 'lbsf')       return value * 365 / BOARD_SF;
-    if (metric === 'kgsm')       return value * 365 / BOARD_SF * KG_PER_M2_PER_LB_SF;
-    return value;
-  }
-  // per board
-  if (metric === 'lbsf') return value / BOARD_SF;
-  if (metric === 'kgsm') return value / BOARD_SF * KG_PER_M2_PER_LB_SF;
-  return value;   // raw + annualized leave lb/bd alone
+// ── Metric transforms ─────────────────────────────────────────────────────
+// Each bucket carries: lb (pounds), annLb (pounds already scaled to a year by
+// that row's own cycle length), boards, and for the rate chart the set of days
+// actually picked. Annualising differs by chart because the quantities differ:
+//   lb/day  is a RATE      -> x208 picking days to reach lb/yr
+//   lb/bd   is an INTENSITY-> x(365/days-on-pond), i.e. turns per year
+// Area metrics always go through annLb, so a 17-day Watercress cycle correctly
+// counts more turns than a 28-day 3310 cycle.
+function valuePerDay(t) {
+  const perDay = t.lb / t.days.size;
+  if (metric === 'annualized') return perDay * HARVESTS_PER_YEAR;
+  if (metric === 'lbsf')       return t.annLb / t.boards / BOARD_SF;
+  if (metric === 'kgsm')       return t.annLb / t.boards / BOARD_SF * KG_PER_M2_PER_LB_SF;
+  return perDay;
+}
+function valuePerBoard(t) {
+  if (!t.boards) return null;
+  if (metric === 'annualized') return t.annLb / t.boards;
+  if (metric === 'lbsf')       return t.annLb / t.boards / BOARD_SF;
+  if (metric === 'kgsm')       return t.annLb / t.boards / BOARD_SF * KG_PER_M2_PER_LB_SF;
+  return t.lb / t.boards;
 }
 function unitLabel(kind) {
-  if (kind === 'perday') {
-    if (metric === 'annualized') return 'lb/yr';
-    if (metric === 'lbsf')       return 'lb/sf/yr';
-    if (metric === 'kgsm')       return 'kg/m²/yr';
-    return 'lb/day';
-  }
-  if (metric === 'lbsf') return 'lb/sf';
-  if (metric === 'kgsm') return 'kg/m²';
-  return 'lb/bd';
+  if (metric === 'lbsf') return 'lb/sf/yr';
+  if (metric === 'kgsm') return 'kg/m²/yr';
+  if (kind === 'perday') return metric === 'annualized' ? 'lb/yr' : 'lb/day';
+  return metric === 'annualized' ? 'lb/bd/yr' : 'lb/bd';
 }
 
 // ── Aggregation ──
@@ -202,19 +208,19 @@ function activeRows() {
 // lb per harvest DAY: total pounds in the week over the number of days actually
 // picked that week (not /7 — they don't harvest every day).
 function seriesPerDay(list) {
-  const acc = new Map();   // year -> week -> {lb, days:Set}
+  const acc = new Map();   // year -> week -> {lb, annLb, boards, days:Set}
   for (const r of list) {
     if (r.lb == null) continue;
     if (!acc.has(r.year)) acc.set(r.year, new Map());
     const wk = acc.get(r.year);
-    const t = wk.get(r.week) || { lb: 0, days: new Set() };
-    t.lb += r.lb; t.days.add(r.date);
+    const t = wk.get(r.week) || { lb: 0, annLb: 0, boards: 0, days: new Set() };
+    t.lb += r.lb; t.annLb += r.annLb; t.boards += r.boards; t.days.add(r.date);
     wk.set(r.week, t);
   }
   const out = [];
   for (const [year, wk] of [...acc.entries()].sort((a, b) => a[0] - b[0])) {
     const data = [...wk.keys()].sort((a, b) => a - b)
-      .map(w => ({ x: w, y: applyMetric(wk.get(w).lb / wk.get(w).days.size, 'perday') }));
+      .map(w => ({ x: w, y: valuePerDay(wk.get(w)) }));
     out.push({ id: String(year), color: colorFor('Y' + year), data });
   }
   return out;
@@ -222,20 +228,20 @@ function seriesPerDay(list) {
 
 // lb per board, weighted: total pounds / total boards (never an average of averages).
 function seriesPerBoard(list, groupField) {
-  const acc = new Map();   // "yy-key" -> week -> {lb, boards}
+  const acc = new Map();   // "yy-key" -> week -> {lb, annLb, boards}
   for (const r of list) {
     if (r.lb == null || !r.boards) continue;
     const key = yy(r.year) + '-' + (groupField === 'seed' ? seedAbbrev(r.seed) : r.pond);
     if (!acc.has(key)) acc.set(key, new Map());
     const wk = acc.get(key);
-    const t = wk.get(r.week) || { lb: 0, boards: 0 };
-    t.lb += r.lb; t.boards += r.boards;
+    const t = wk.get(r.week) || { lb: 0, annLb: 0, boards: 0 };
+    t.lb += r.lb; t.annLb += r.annLb; t.boards += r.boards;
     wk.set(r.week, t);
   }
   const out = [];
   for (const [key, wk] of [...acc.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     const data = [...wk.keys()].sort((a, b) => a - b)
-      .map(w => ({ x: w, y: applyMetric(wk.get(w).lb / wk.get(w).boards, 'perboard') }));
+      .map(w => ({ x: w, y: valuePerBoard(wk.get(w)) }));
     out.push({ id: key, color: colorFor(key), data });
   }
   return out;
@@ -292,11 +298,16 @@ function render() {
   draw(charts.c3, seriesPerBoard(list, 'pond'), perBd);
 
   const lb = list.reduce((s, r) => s + (r.lb || 0), 0);
+  const boards = list.reduce((s, r) => s + (r.boards || 0), 0);
+  const avgDays = boards
+    ? list.reduce((s, r) => s + r.daysOnPond * r.boards, 0) / boards : 0;
   const seedTxt = filters.seed.size ? `${filters.seed.size} seed${filters.seed.size > 1 ? 's' : ''}` : 'all seeds';
   document.getElementById('status').textContent =
-    `${list.length.toLocaleString()} harvest rows · ${Math.round(lb).toLocaleString()} lb · ${seedTxt}`;
+    `${list.length.toLocaleString()} harvest rows · ${Math.round(lb).toLocaleString()} lb · `
+    + `${seedTxt} · avg ${avgDays.toFixed(1)}d on pond (${(365 / (avgDays || 1)).toFixed(1)} turns/yr)`;
   document.getElementById('metricNote').textContent =
-    (metric === 'lbsf' || metric === 'kgsm') ? `assumes ${BOARD_SF} sf per board` : '';
+    metric === 'annualized' ? `lb/day x${HARVESTS_PER_YEAR} picking days; lb/bd x365/days-on-pond`
+    : (metric === 'lbsf' || metric === 'kgsm') ? `${BOARD_SF} sf/board, annualised per cycle` : '';
 }
 
 // ── Load ──
@@ -305,24 +316,35 @@ async function load() {
   const PAGE = 1000;
   let page = 0;
   while (true) {
+    // Source is the seed batch, which is what grow_lettuce_gh_harvest_v is built
+    // from — same rows, but it also carries harvest_days (days on pond), which
+    // the harvest view drops and the area metrics need.
     const { data, error } = await client
-      .from('grow_lettuce_gh_harvest_v')
-      .select('id,harvest_date,pond,seed_name,boards_per_pond,pounds_per_board,greenhouse_net_weight')
-      .not('greenhouse_net_weight', 'is', null)   // estimate-only rows carry max_lb but no actuals
+      .from('grow_lettuce_seed_batch_v')
+      .select('id,harvest_date,pond_side,invnt_item_id,grow_lettuce_seed_mix_id,'
+            + 'number_of_units,lb_per_board,harvest_days')
+      .eq('is_deleted', false)
+      .not('harvest_date', 'is', null)
+      .not('lb_per_board', 'is', null)   // estimate-only rows carry max_lb, no actuals
       .order('id', { ascending: true })
       .range(page * PAGE, (page + 1) * PAGE - 1);
     if (error) throw error;
     if (!data || !data.length) break;
     for (const r of data) {
-      if (!r.harvest_date || !r.pond || !r.seed_name) continue;
+      const seed = r.invnt_item_id || r.grow_lettuce_seed_mix_id;
+      const pond = String(r.pond_side || '').split(':')[0];
+      if (!r.harvest_date || !pond.startsWith('P') || !seed) continue;
+      const boards = +r.number_of_units || 0;
+      const lb = boards * (+r.lb_per_board || 0);
+      const d = +r.harvest_days;
+      const days = (d >= DAYS_MIN && d <= DAYS_MAX) ? d : DAYS_FALLBACK;
       rows.push({
         date: r.harvest_date,
         year: yearOf(r.harvest_date),
         week: weekOf(r.harvest_date),
-        pond: r.pond,
-        seed: r.seed_name,
-        boards: +r.boards_per_pond || 0,
-        lb: r.greenhouse_net_weight == null ? null : +r.greenhouse_net_weight,
+        pond, seed, boards, lb,
+        daysOnPond: days,
+        annLb: lb * (365 / days),   // this row's pounds scaled to a full year of turns
       });
     }
     if (data.length < PAGE) break;
