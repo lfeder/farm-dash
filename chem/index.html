@@ -36,8 +36,8 @@
 <div id="header">
   <div class="controls">
     <span id="modeToggle">
-      <span class="pond-btn mode-btn" data-mode="crop">By crop</span>
       <span class="pond-btn mode-btn" data-mode="pond">By pond</span>
+      <span class="pond-btn mode-btn" data-mode="crop">By crop</span>
     </span>
     <span id="cropControls">
       <label>Variety: <select id="varietySelect"><option value="">Loading…</option></select></label>
@@ -77,7 +77,7 @@ let charts = {};
 let activePonds = new Set();
 let currentPondRanges = {};
 let showYields = false;
-let mode = 'crop';        // 'crop' = pick variety/seed; 'pond' = raw pond+date view
+let mode = 'pond';        // 'pond' = raw pond+date view (default); 'crop' = pick variety/seed
 let pondChem = [];        // long-format rows from Supabase for the pond view
 let pondChemLoaded = false;
 let pondModeInit = false;   // pond view defaults applied once
@@ -139,8 +139,9 @@ function populateVarieties() {
   const yBtn = document.getElementById('yieldBtn');
   yBtn.onclick = () => { showYields = !showYields; yBtn.classList.toggle('off', !showYields); redraw(); };
   yBtn.classList.add('off');
-  // Default to GA
-  if (names.includes('GA')) { sel.value = 'GA'; onVarietyChange('GA'); }
+  // Default to GA. Only build the crop view now if that's the active mode —
+  // otherwise leave it primed and let setMode('crop') do it on demand.
+  if (names.includes('GA')) { sel.value = 'GA'; if (mode === 'crop') onVarietyChange('GA'); }
 }
 
 function onVarietyChange(variety) {
@@ -270,7 +271,7 @@ async function setMode(next) {
     redraw();
   } else {
     activePonds.clear();
-    onSeedOrVarietyChange();
+    onVarietyChange(document.getElementById('varietySelect').value);
   }
 }
 
@@ -592,7 +593,7 @@ function renderCharts(variety) {
 
   if (sheetsOk) {
     populateVarieties();
-    setMode('crop');
+    await setMode('pond');
   } else {
     document.querySelector('.mode-btn[data-mode="crop"]').classList.add('off');
     document.querySelector('.mode-btn[data-mode="crop"]').title = 'Needs Google Sheets, which is offline';
