@@ -131,7 +131,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-09 16:33</span>
+  <span id="versionStamp">08-09 16:35</span>
 </div>
 
 <div id="content" class="wide">
@@ -849,7 +849,7 @@ function builderInit() {
     tr.querySelector('.bl-germ').addEventListener('change', () => saveLaneCfg(tr));
     const inc = tr.querySelector('.bl-inc');
     const toggle = () => tr.querySelectorAll('.bl-cfg').forEach(td => td.style.visibility = inc.checked ? '' : 'hidden');
-    inc.addEventListener('change', () => { toggle(); syncIncAll(); }); toggle();
+    inc.addEventListener('change', () => { toggle(); syncIncAll(); renderBMap(); }); toggle();
   });
   // Select / unselect all. Lanes whose pattern has no sequence for their class are
   // left unticked — laneRowState() unticks them deliberately, so don't fight it.
@@ -859,9 +859,10 @@ function builderInit() {
       if (all.checked && tr.title.startsWith('no ')) return;
       const inc = tr.querySelector('.bl-inc');
       inc.checked = all.checked;
-      inc.dispatchEvent(new Event('change'));
+      tr.querySelectorAll('.bl-cfg').forEach(td => td.style.visibility = inc.checked ? '' : 'hidden');
     });
     syncIncAll();
+    renderBMap();
   };
   syncIncAll();
   // Property assignment (not addEventListener) so rebuilds don't stack handlers.
@@ -894,7 +895,7 @@ function initViz() {
   const modes = laneModes();
   const laneOf = c => {
     if (c.pond === 'P1') return 'P1AB';
-    if ((c.side || '')[0] === 'C') return null;
+    if ((c.side || '')[0] === 'C') return c.pond + 'C';   // own lane; never merged into AB
     if (modes[c.pond] === 'AB') return c.pond + 'AB';
     return c.side === 'AB' ? c.pond + 'AB' : c.pond + c.side;
   };
@@ -1182,7 +1183,15 @@ function renderBMap() {
   const sets = bMapMode === 'both' && bVizPlan
     ? [[bVizCurrent, 'now'], [bVizPlan, 'plan']]
     : [[bVizData, '']];
-  const lanes = [...new Set(sets.flatMap(([d2]) => Object.keys(d2 || {})))].sort();
+  let lanes = [...new Set(sets.flatMap(([d2]) => Object.keys(d2 || {})))].sort();
+  // Only draw the lanes ticked in the builder table, so the map matches what you
+  // asked to generate. Before the table exists (first paint) show everything.
+  const rows = document.querySelectorAll('#bLanes tr[data-lane]');
+  if (rows.length) {
+    const on = new Set([...rows].filter(tr => tr.querySelector('.bl-inc').checked)
+                                .map(tr => tr.dataset.lane));
+    if (on.size) lanes = lanes.filter(l => on.has(l));
+  }
   const onRows2 = (entries, w2) => entries.filter(c => c.boards > 0.5 && c.end > asof && c.ponded && c.ponded <= asof)
     .reduce((s2, c) => s2 + c.boards / w2, 0);
   lanes.forEach(lane => {
@@ -1340,7 +1349,15 @@ function printLabels() {
 function printMap() {
   const asof = asOf;   // shared banner as-of date
   const sets = bVizPlan ? [[bVizCurrent, 'now'], [bVizPlan, 'plan']] : [[bVizCurrent, '']];
-  const lanes = [...new Set(sets.flatMap(([d2]) => Object.keys(d2 || {})))].sort();
+  let lanes = [...new Set(sets.flatMap(([d2]) => Object.keys(d2 || {})))].sort();
+  // Only draw the lanes ticked in the builder table, so the map matches what you
+  // asked to generate. Before the table exists (first paint) show everything.
+  const rows = document.querySelectorAll('#bLanes tr[data-lane]');
+  if (rows.length) {
+    const on = new Set([...rows].filter(tr => tr.querySelector('.bl-inc').checked)
+                                .map(tr => tr.dataset.lane));
+    if (on.size) lanes = lanes.filter(l => on.has(l));
+  }
   // Two passes: measure the widest strip, then render everything at that width
   // so right edges align and nothing overflows left over the labels.
   const build = TW => {
