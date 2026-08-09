@@ -80,6 +80,7 @@ let showYields = false;
 let mode = 'crop';        // 'crop' = pick variety/seed; 'pond' = raw pond+date view
 let pondChem = [];        // long-format rows from Supabase for the pond view
 let pondChemLoaded = false;
+let pondModeInit = false;   // pond view defaults applied once
 
 // --- Data loading (JSONP via gviz) ---
 function fetchSheet(sheetId, tabOrGid, isTab) {
@@ -253,9 +254,11 @@ async function setMode(next) {
       document.getElementById('info').textContent = 'Error: ' + (e.message || e); return;
     }
     document.getElementById('info').textContent = '';
-    // Default to every site on, and the last 12 months of samples.
-    if (!activePonds.size || [...activePonds].every(p => !POND_SITES.includes(p))) {
+    // First entry: every site on and the last 12 months. After that keep
+    // whatever the user picked (don't inherit the crop view's pond subset).
+    if (!pondModeInit) {
       activePonds = new Set(POND_SITES);
+      pondModeInit = true;
     }
     const latest = pondChem.reduce((m, r) => (!m || r._date > m) ? r._date : m, null);
     if (latest) {
