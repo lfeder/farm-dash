@@ -24,6 +24,13 @@
   .pond-btn.off { opacity: 0.3; }
   .mode-btn { color: #aaa; border-color: #555; }
   .mode-btn.active { color: #1a1a2e; background: #4ecca3; border-color: #4ecca3; }
+  #farmSection { margin: 12px; background: #16213e; border-radius: 8px; border: 1px solid #0f3460; }
+  #farmSection summary { padding: 10px 14px; cursor: pointer; font-size: 0.9rem; font-weight: 600;
+                         color: #f6e58d; user-select: none; }
+  #farmSection summary::marker { color: #f6e58d; }
+  #farmInfo { font-weight: 400; color: #888; font-size: 0.78rem; margin-left: 8px; }
+  #farmGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 0 12px 12px; }
+  @media (max-width: 900px) { #farmGrid { grid-template-columns: 1fr; } }
   #grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 12px; }
   .chart-card { background: #16213e; border-radius: 8px; padding: 12px; }
   .chart-card h3 { font-size: 0.95rem; color: #ccc; margin-bottom: 4px; }
@@ -47,11 +54,18 @@
     <label>To: <input type="date" id="dateTo"></label>
     <div id="pondButtons"></div>
     <span class="pond-btn" id="yieldBtn" style="color:#fff;border-color:#fff;">Yields</span>
+    <span class="pond-btn off" id="overlayBtn" style="color:#f6e58d;border-color:#f6e58d;">+ Farm EC/pH</span>
     <span id="info"></span>
     <span id="versionStamp" style="font-size:0.7rem;color:#ccc;margin-left:8px;">04-18 01:15</span>
   </div>
 </div>
 <div id="loading">Loading data…</div>
+
+<details id="farmSection" style="display:none;">
+  <summary>Farm probe readings — EC, pH, DO, Water level <span id="farmInfo"></span></summary>
+  <div id="farmGrid"></div>
+</details>
+
 <div id="grid" style="display:none;"></div>
 
 <script>
@@ -81,6 +95,140 @@ let mode = 'pond';        // 'pond' = raw pond+date view (default); 'crop' = pic
 let pondChem = [];        // long-format rows from Supabase for the pond view
 let pondChemLoaded = false;
 let pondModeInit = false;   // pond view defaults applied once
+
+// ── Farm probe readings (grow_lettuce_pond_reading_daily_v) ───────────────
+// The JRP charts are lab assays: ~71 sample days over 2 years. These are our
+// own in-house probes, read twice a day per pond and averaged to a daily value
+// by the view. Different instrument, different cadence — hence separate charts,
+// with an opt-in overlay for the two metrics both sources measure (EC, pH).
+const FARM_METRICS = [
+  { id: 'lettuce_pond_ec',          label: 'EC',          uom: 'mS',  lo: 2.0, hi: 2.4 },
+  { id: 'lettuce_pond_ph',          label: 'pH',          uom: '',    lo: 5.3, hi: 6.3 },
+  { id: 'lettuce_dissolved_oxygen', label: 'DO',          uom: 'PPM', lo: 12,  hi: 20  },
+  { id: 'lettuce_water_level_cm',   label: 'Water Level', uom: 'cm below top' },
+];
+const FARM_TO_NUTRIENT = { lettuce_pond_ec: 'EC', lettuce_pond_ph: 'pH' };
+let farmData = [], farmLoaded = false, farmCharts = {}, showFarmOverlay = false;
+
+async function loadFarmData() {
+  if (farmLoaded) return;
+  const client = await DataSource.getClient();
+  const PAGE = 1000;
+  let page = 0;
+  while (true) {
+    const { data, error } = await client
+      .from('grow_lettuce_pond_reading_daily_v')
+      .select('pond,reading_date,metric,reading')
+      .in('metric', FARM_METRICS.map(m => m.id))
+      .order('reading_date', { ascending: true })
+      .range(page * PAGE, (page + 1) * PAGE - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    for (const r of data) {
+      farmData.push({ pond: r.pond, metric: r.metric,
+                      _date: new Date(r.reading_date + 'T00:00:00'),
+                      value: +r.reading });
+    }
+    if (data.length < PAGE) break;
+    page++;
+  }
+  farmLoaded = true;
+}
+
+// Farm value for a pond on a given day, tolerating a few days' slack so a lab
+// sample lands on a probe reading even when they didn't happen the same day.
+function farmValueNear(metricId, pond, dateStr, slackDays = 3) {
+  const target = new Date(dateStr + 'T00:00:00').getTime();
+  let best = null, bestGap = Infinity;
+  for (const r of farmData) {
+    if (r.metric !== metricId || r.pond !== pond) continue;
+    const gap = Math.abs(r._date.getTime() - target) / 86400000;
+    if (gap <= slackDays && gap < bestGap) { bestGap = gap; best = r.value; }
+  }
+  return best;
+}
+
+function wireOverlayBtn() {
+  const btn = document.getElementById('overlayBtn');
+  btn.onclick = async () => {
+    showFarmOverlay = !showFarmOverlay;
+    btn.classList.toggle('off', !showFarmOverlay);
+    if (showFarmOverlay && !farmLoaded) {
+      btn.textContent = '… loading';
+      try { await loadFarmData(); } catch (e) { console.error(e); }
+      btn.textContent = '+ Farm EC/pH';
+    }
+    redraw();
+  };
+}
+
+function renderFarmCharts() {
+  const grid = document.getElementById('farmGrid');
+  Object.values(farmCharts).forEach(c => c.destroy());
+  farmCharts = {};
+  grid.innerHTML = '';
+
+  const ponds = [...activePonds].filter(p => p !== 'Water').sort();
+  const fromVal = document.getElementById('dateFrom').value;
+  const toVal = document.getElementById('dateTo').value;
+  const from = fromVal ? new Date(fromVal + 'T00:00:00') : null;
+  const to = toVal ? new Date(toVal + 'T00:00:00') : null;
+
+  const inRange = r => (!from || r._date >= from) && (!to || r._date <= to);
+  const rows = farmData.filter(r => inRange(r) && ponds.includes(r.pond));
+  const dates = [...new Set(rows.map(r => r._date.toISOString().slice(0, 10)))].sort();
+  document.getElementById('farmInfo').textContent =
+    `${rows.length.toLocaleString()} daily values · ${dates.length} days · probes, not lab`;
+
+  for (const m of FARM_METRICS) {
+    const card = document.createElement('div');
+    card.className = 'chart-card';
+    card.innerHTML = `<h3>${m.label}${m.uom ? ' (' + m.uom + ')' : ''}</h3><canvas id="farm-${m.label}"></canvas>`;
+    grid.appendChild(card);
+
+    const mRows = rows.filter(r => r.metric === m.id);
+    const datasets = ponds.map(pond => {
+      const byDate = {};
+      mRows.filter(r => r.pond === pond)
+           .forEach(r => { byDate[r._date.toISOString().slice(0, 10)] = r.value; });
+      if (!dates.some(d => byDate[d] !== undefined)) return null;
+      return {
+        label: pond,
+        data: dates.map(d => byDate[d] !== undefined ? byDate[d] : null),
+        borderColor: POND_COLORS[pond], backgroundColor: POND_COLORS[pond],
+        borderWidth: 1.2, pointRadius: 0, tension: 0, fill: false, spanGaps: true,
+      };
+    }).filter(Boolean);
+
+    // Target band, where the metric has one.
+    if (m.lo != null) {
+      datasets.push({ label: 'min', data: dates.map(() => m.lo), borderColor: '#ffffff33',
+                      borderWidth: 1, borderDash: [4, 4], pointRadius: 0, fill: false });
+      datasets.push({ label: 'max', data: dates.map(() => m.hi), borderColor: '#ffffff33',
+                      borderWidth: 1, borderDash: [4, 4], pointRadius: 0, fill: false });
+    }
+
+    farmCharts[m.label] = new Chart(document.getElementById('farm-' + m.label).getContext('2d'), {
+      type: 'line',
+      data: { labels: dates, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: {
+          legend: { display: true, position: 'top',
+            labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, pointStyle: 'circle',
+                      font: { size: 9 }, color: '#aaa',
+                      filter: i => i.text !== 'min' && i.text !== 'max' } },
+          tooltip: { mode: 'nearest', intersect: false },
+        },
+        scales: {
+          x: { ticks: { color: '#888', font: { size: 9 }, maxTicksLimit: 8, maxRotation: 0 },
+               grid: { color: '#ffffff10' } },
+          y: { ticks: { color: '#888', font: { size: 9 } }, grid: { color: '#ffffff10' } },
+        },
+      },
+    });
+  }
+}
 
 // --- Data loading (JSONP via gviz) ---
 function fetchSheet(sheetId, tabOrGid, isTab) {
@@ -139,6 +287,7 @@ function populateVarieties() {
   const yBtn = document.getElementById('yieldBtn');
   yBtn.onclick = () => { showYields = !showYields; yBtn.classList.toggle('off', !showYields); redraw(); };
   yBtn.classList.add('off');
+  wireOverlayBtn();
   // Default to GA. Only build the crop view now if that's the active mode —
   // otherwise leave it primed and let setMode('crop') do it on demand.
   if (names.includes('GA')) { sel.value = 'GA'; if (mode === 'crop') onVarietyChange('GA'); }
@@ -189,6 +338,7 @@ function onSeedOrVarietyChange() {
 
 function redraw() {
   renderCharts(document.getElementById('varietySelect').value);
+  if (mode === 'pond' && farmLoaded) renderFarmCharts();
 }
 
 // ── Pond view ─────────────────────────────────────────────────────────────
@@ -268,8 +418,16 @@ async function setMode(next) {
       document.getElementById('dateTo').value = latest.toISOString().slice(0, 10);
     }
     renderPondButtons();
+    document.getElementById('farmSection').style.display = '';
+    try {
+      await loadFarmData();
+      renderFarmCharts();
+    } catch (e) {
+      document.getElementById('farmInfo').textContent = 'probe data unavailable: ' + (e.message || e);
+    }
     redraw();
   } else {
+    document.getElementById('farmSection').style.display = 'none';
     activePonds.clear();
     onVarietyChange(document.getElementById('varietySelect').value);
   }
@@ -443,6 +601,34 @@ function renderCharts(variety) {
         spanGaps: true,
         yAxisID: 'y'
       });
+    }
+
+    // Farm probe overlay, for the two metrics both sources measure. Dashed, and
+    // sampled at the LAB's dates (nearest probe day within 3) so the two lines
+    // are comparable point-for-point rather than one dense and one sparse.
+    if (showFarmOverlay && farmLoaded) {
+      const farmMetricId = Object.keys(FARM_TO_NUTRIENT).find(k => FARM_TO_NUTRIENT[k] === elem);
+      if (farmMetricId) {
+        for (const pond of ponds) {
+          if (pond === 'Water') continue;
+          const data = allDateStrs.map(ds => farmValueNear(farmMetricId, pond, ds));
+          if (!data.some(v => v != null)) continue;
+          datasets.push({
+            label: pond + ' farm',
+            data,
+            borderColor: POND_COLORS[pond] || '#999',
+            backgroundColor: 'transparent',
+            borderWidth: 1.2,
+            borderDash: [5, 3],
+            pointRadius: 2,
+            pointStyle: 'rectRot',
+            tension: 0,
+            fill: false,
+            spanGaps: true,
+            yAxisID: 'y',
+          });
+        }
+      }
     }
 
     // Add yield datasets on right y-axis if enabled
