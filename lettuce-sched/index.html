@@ -134,7 +134,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-07 18:36</span>
+  <span id="versionStamp">08-09 15:55</span>
 </div>
 
 <div id="content">
@@ -510,7 +510,7 @@ function renderGantt(today) {
         // Seeding-edge (cap) line where cumulative rows from the right cross capacity.
         if (capPos === null && cumRows + r >= capR - 0.01) capPos = xr + ((capR - cumRows) / r) * bw;
         cumRows += r;
-        blocks += `<div class="g-block${faded}" style="right:${xr}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${Math.round((c.end - c.seed) / DAY)}, D:${c.seedsPerBoard}"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days"${dayStyle}>${pondDays}</span></div>`;
+        blocks += `<div class="g-block${faded}" style="right:${xr}px;width:${bw}px;background:${col}" title="S:${fmtMD2(c.seed)}, H:${fmtMD2(c.end)}, #:${pondDays}, D:${c.seedsPerBoard}"><span class="lbl-rows">${Math.round(r)}</span><span class="lbl-days"${dayStyle}>${pondDays}</span></div>`;
         // Pond view: no inter-block gap, so a full lane ends exactly on the cap
         // line and the pond's left edge is straight across lanes.
         xr += bw + (PV ? 0 : 1);
