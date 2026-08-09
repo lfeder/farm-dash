@@ -131,7 +131,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-09 16:28</span>
+  <span id="versionStamp">08-09 16:33</span>
 </div>
 
 <div id="content" class="wide">
@@ -772,7 +772,7 @@ function builderInit() {
     return `<select class="bl-seed" title="Active seeds & mixes from production inventory">${extra}`
       + seedOptions.map(s => `<option value="${esc(s.seed_name)}"${s.seed_name === cur ? ' selected' : ''}>${esc(s.seed_name)} (${esc(s.variety)})</option>`).join('') + `</select>`;
   };
-  t.innerHTML = `<tr><th></th><th></th><th>Lane</th><th>Pattern</th><th>Seed</th><th>Lot</th><th>Density</th><th title="Days from seeding to ponding">Germ</th></tr>`
+  t.innerHTML = `<tr><th><input type="checkbox" id="bIncAll" checked title="Select / unselect all lanes"></th><th></th><th>Lane</th><th>Pattern</th><th>Seed</th><th>Lot</th><th>Density</th><th title="Days from seeding to ponding">Germ</th></tr>`
     + lanes.map(lane => {
       const ev = laneEvents(lane);
       const lastC = cycles.filter(c => (c.pond + c.side) === lane && c.ponded).sort((a, b) => a.ponded - b.ponded).pop();
@@ -849,12 +849,35 @@ function builderInit() {
     tr.querySelector('.bl-germ').addEventListener('change', () => saveLaneCfg(tr));
     const inc = tr.querySelector('.bl-inc');
     const toggle = () => tr.querySelectorAll('.bl-cfg').forEach(td => td.style.visibility = inc.checked ? '' : 'hidden');
-    inc.addEventListener('change', toggle); toggle();
+    inc.addEventListener('change', () => { toggle(); syncIncAll(); }); toggle();
   });
+  // Select / unselect all. Lanes whose pattern has no sequence for their class are
+  // left unticked — laneRowState() unticks them deliberately, so don't fight it.
+  const all = document.getElementById('bIncAll');
+  all.onclick = () => {
+    document.querySelectorAll('#bLanes tr[data-lane]').forEach(tr => {
+      if (all.checked && tr.title.startsWith('no ')) return;
+      const inc = tr.querySelector('.bl-inc');
+      inc.checked = all.checked;
+      inc.dispatchEvent(new Event('change'));
+    });
+    syncIncAll();
+  };
+  syncIncAll();
   // Property assignment (not addEventListener) so rebuilds don't stack handlers.
   document.getElementById('bGen').onclick = builderGenerate;
   // Startup map: today's ponds from existing data, before any generation.
   initViz();
+}
+
+// Master checkbox mirrors the rows: checked / unchecked / indeterminate when mixed.
+function syncIncAll() {
+  const all = document.getElementById('bIncAll');
+  if (!all) return;
+  const boxes = [...document.querySelectorAll('#bLanes .bl-inc')];
+  const on = boxes.filter(b => b.checked).length;
+  all.checked = on > 0 && on === boxes.length;
+  all.indeterminate = on > 0 && on < boxes.length;
 }
 
 // Validate the lane's pattern has a sequence for its class; untick if not.
