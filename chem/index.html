@@ -22,6 +22,8 @@
   #pondButtons { display: flex; gap: 4px; flex-wrap: wrap; }
   .pond-btn { padding: 2px 10px; border-radius: 4px; border: 1px solid; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: opacity 0.15s; }
   .pond-btn.off { opacity: 0.3; }
+  .mode-btn { color: #aaa; border-color: #555; }
+  .mode-btn.active { color: #1a1a2e; background: #4ecca3; border-color: #4ecca3; }
   #grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 12px; }
   .chart-card { background: #16213e; border-radius: 8px; padding: 12px; }
   .chart-card h3 { font-size: 0.95rem; color: #ccc; margin-bottom: 4px; }
@@ -33,8 +35,14 @@
 <body>
 <div id="header">
   <div class="controls">
-    <label>Variety: <select id="varietySelect"><option value="">Loading…</option></select></label>
-    <label>Seed: <select id="seedSelect"><option value="">All</option></select></label>
+    <span id="modeToggle">
+      <span class="pond-btn mode-btn" data-mode="crop">By crop</span>
+      <span class="pond-btn mode-btn" data-mode="pond">By pond</span>
+    </span>
+    <span id="cropControls">
+      <label>Variety: <select id="varietySelect"><option value="">Loading…</option></select></label>
+      <label>Seed: <select id="seedSelect"><option value="">All</option></select></label>
+    </span>
     <label>From: <input type="date" id="dateFrom"></label>
     <label>To: <input type="date" id="dateTo"></label>
     <div id="pondButtons"></div>
@@ -54,14 +62,24 @@ const GROW_TAB = 'grow_L_seeding';
 const ELEMENT_ORDER = ['EC','pH','N','NH4','P','K','Ca','Mg','S','Fe','Mn','B','Cu','Zn','Mo','Na'];
 const POND_COLORS = {
   P1: '#e74c3c', P2: '#3498db', P3: '#27ae60', P4: '#f39c12',
-  P5: '#7f8c8d', P6: '#e84393', P7: '#00cec9'
+  P5: '#7f8c8d', P6: '#e84393', P7: '#00cec9',
+  Water: '#dfe6e9'
 };
+// Pond view sites: the 7 ponds plus municipal top-up water. Water samples carry
+// no site_id (water isn't a pond), so they're keyed off site_id IS NULL —
+// unmistakable in the data: EC ~0.05 vs ~1.9, Fe 0.00, and Na/Cl present while
+// every actual nutrient reads ~0.
+const POND_SITES = ['P1','P2','P3','P4','P5','P6','P7','Water'];
+const SITE_FROM_ID = id => id ? 'P' + String(id).slice(-1) : 'Water';
 
 let chemData = [], seedingData = [];
 let charts = {};
 let activePonds = new Set();
 let currentPondRanges = {};
 let showYields = false;
+let mode = 'crop';        // 'crop' = pick variety/seed; 'pond' = raw pond+date view
+let pondChem = [];        // long-format rows from Supabase for the pond view
+let pondChemLoaded = false;
 
 // --- Data loading (JSONP via gviz) ---
 function fetchSheet(sheetId, tabOrGid, isTab) {
@@ -171,6 +189,88 @@ function redraw() {
   renderCharts(document.getElementById('varietySelect').value);
 }
 
+// ── Pond view ─────────────────────────────────────────────────────────────
+// Straight chemistry by site over a date range — no crop involved. Reads
+// Supabase (not the sheet the crop view uses), so it keeps working once Sheets
+// is switched off.
+async function loadPondChem() {
+  if (pondChemLoaded) return;
+  const client = await DataSource.getClient();
+  const PAGE = 1000;
+  let page = 0;
+  while (true) {
+    const { data, error } = await client
+      .from('grow_chemistry_result')
+      .select('id,site_id,sample_date,nutrient,result')
+      .eq('is_deleted', false)
+      .order('id', { ascending: true })
+      .range(page * PAGE, (page + 1) * PAGE - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    for (const r of data) {
+      if (!r.sample_date || !r.nutrient) continue;
+      pondChem.push({
+        _pond: SITE_FROM_ID(r.site_id),
+        _date: new Date(r.sample_date + 'T00:00:00'),
+        nutrient: r.nutrient,
+        result: r.result,
+      });
+    }
+    if (data.length < PAGE) break;
+    page++;
+  }
+  pondChemLoaded = true;
+}
+
+function renderPondButtons() {
+  const c = document.getElementById('pondButtons');
+  c.innerHTML = '';
+  POND_SITES.forEach(site => {
+    const btn = document.createElement('span');
+    btn.className = 'pond-btn';
+    btn.textContent = site;
+    btn.style.color = POND_COLORS[site];
+    btn.style.borderColor = POND_COLORS[site];
+    btn.classList.toggle('off', !activePonds.has(site));
+    btn.onclick = () => {
+      if (activePonds.has(site)) activePonds.delete(site); else activePonds.add(site);
+      btn.classList.toggle('off', !activePonds.has(site));
+      redraw();
+    };
+    c.appendChild(btn);
+  });
+}
+
+async function setMode(next) {
+  mode = next;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.getElementById('cropControls').style.display = mode === 'crop' ? '' : 'none';
+  document.getElementById('yieldBtn').style.display = mode === 'crop' ? '' : 'none';
+
+  if (mode === 'pond') {
+    document.getElementById('info').textContent = 'Loading chemistry…';
+    try { await loadPondChem(); } catch (e) {
+      document.getElementById('info').textContent = 'Error: ' + (e.message || e); return;
+    }
+    document.getElementById('info').textContent = '';
+    // Default to every site on, and the last 12 months of samples.
+    if (!activePonds.size || [...activePonds].every(p => !POND_SITES.includes(p))) {
+      activePonds = new Set(POND_SITES);
+    }
+    const latest = pondChem.reduce((m, r) => (!m || r._date > m) ? r._date : m, null);
+    if (latest) {
+      const from = new Date(latest); from.setUTCFullYear(from.getUTCFullYear() - 1);
+      document.getElementById('dateFrom').value = from.toISOString().slice(0, 10);
+      document.getElementById('dateTo').value = latest.toISOString().slice(0, 10);
+    }
+    renderPondButtons();
+    redraw();
+  } else {
+    activePonds.clear();
+    onSeedOrVarietyChange();
+  }
+}
+
 function getPondDateRanges(variety, seed) {
   const ranges = {};
   for (const row of seedingData) {
@@ -259,14 +359,10 @@ function renderCharts(variety) {
   charts = {};
   grid.innerHTML = '';
 
-  if (!variety) { info.textContent = ''; return; }
+  if (mode === 'crop' && !variety) { info.textContent = ''; return; }
 
   const ponds = [...activePonds].sort();
   if (ponds.length === 0) { info.textContent = 'No ponds selected.'; return; }
-
-  // Filter pondRanges to only active ponds
-  const pondRanges = {};
-  ponds.forEach(p => { if (currentPondRanges[p]) pondRanges[p] = currentPondRanges[p]; });
 
   // Apply date range filter
   const fromVal = document.getElementById('dateFrom').value;
@@ -274,15 +370,27 @@ function renderCharts(variety) {
   const fromDate = fromVal ? new Date(fromVal + 'T00:00:00') : null;
   const toDate = toVal ? new Date(toVal + 'T00:00:00') : null;
 
-  let filtered = filterChemData(pondRanges);
+  let filtered;
+  if (mode === 'pond') {
+    // No crop involved: every sample for the selected sites in the window.
+    const want = new Set(ponds);
+    filtered = pondChem.filter(r => want.has(r._pond));
+  } else {
+    // Crop view: restrict to the windows this variety/seed actually occupied.
+    const pondRanges = {};
+    ponds.forEach(p => { if (currentPondRanges[p]) pondRanges[p] = currentPondRanges[p]; });
+    filtered = filterChemData(pondRanges);
+  }
   if (fromDate) filtered = filtered.filter(r => r._date >= fromDate);
   if (toDate) filtered = filtered.filter(r => r._date <= toDate);
 
   if (filtered.length === 0) { info.textContent = 'No chemistry data for selection.'; return; }
-  info.textContent = '';
+  info.textContent = mode === 'pond'
+    ? `${filtered.length.toLocaleString()} results · ${new Set(filtered.map(r => r._date.getTime())).size} sample days`
+    : '';
 
-  const seed = document.getElementById('seedSelect').value;
-  const seedingLookup = buildSeedingLookup(variety, seed);
+  const seed = mode === 'crop' ? document.getElementById('seedSelect').value : '';
+  const seedingLookup = mode === 'crop' ? buildSeedingLookup(variety, seed) : {};
 
   const allDatesSet = new Set();
   const elementsSet = new Set();
@@ -459,6 +567,11 @@ function renderCharts(variety) {
 // expected-harvest fields this dashboard needs. The parent portal pins this
 // iframe to ?src=sheets regardless of the global mode.
 (async function init() {
+  document.querySelectorAll('.mode-btn').forEach(b => { b.onclick = () => setMode(b.dataset.mode); });
+
+  // The crop view still reads Sheets; the pond view reads Supabase. Load the
+  // sheets best-effort so the pond view survives Sheets being switched off.
+  let sheetsOk = true;
   try {
     const [chem, seeding] = await Promise.all([
       fetchSheet(CHEM_SHEET, '0', false),
@@ -466,12 +579,23 @@ function renderCharts(variety) {
     ]);
     chemData = chem;
     seedingData = seeding;
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('grid').style.display = 'grid';
-    populateVarieties();
   } catch (e) {
-    document.getElementById('loading').textContent = 'Error loading data: ' + e;
-    console.error(e);
+    sheetsOk = false;
+    console.warn('Sheets unavailable — crop view disabled, pond view still works.', e);
+  }
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('grid').style.display = 'grid';
+
+  if (sheetsOk) {
+    populateVarieties();
+    setMode('crop');
+  } else {
+    document.querySelector('.mode-btn[data-mode="crop"]').classList.add('off');
+    document.querySelector('.mode-btn[data-mode="crop"]').title = 'Needs Google Sheets, which is offline';
+    await setMode('pond');
+    document.getElementById('info').textContent =
+      'Sheets offline — crop view unavailable; showing chemistry by pond from Supabase.';
   }
 })();
 
