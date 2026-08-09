@@ -131,7 +131,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp">08-09 16:17</span>
+  <span id="versionStamp">08-09 16:28</span>
 </div>
 
 <div id="content" class="wide">
@@ -647,9 +647,11 @@ async function loadPatterns() {
 
 // Lane helpers. Lane = pond+side string as shown on the schedule (P1AB, P2A, P7AB…).
 function laneClass(lane) {
-  if (lane.startsWith('P1')) return '1';
-  if (lane.endsWith('C')) return 'C';                 // all 1-wide C lanes share one class
-  return '2-7';
+  // Rows per cycle are a property of the pond, not the side: every P2-7 lane runs
+  // the same 110-row sequence and only the board width differs (C=1, B=9/10,
+  // A=10, AB=20). So C reads the shared '2-7' sequence — there is no separate C
+  // sequence to keep in step.
+  return lane.startsWith('P1') ? '1' : '2-7';
 }
 function laneWidth(lane) {
   const pond = lane.slice(0, 2), side = lane.slice(2);
@@ -715,7 +717,7 @@ function renderRef() {
     { lc: '2-7', cap: 110, title: 'Ponds 2–7, A side — 10 boards/row · 110 rows', note: r => `${r * 10} bd` },
     { lc: '2-7', cap: 110, title: 'Ponds 2–3, B side — 9 boards/row · 110 rows',  note: r => `${r * 9} bd` },
     { lc: '2-7', cap: 110, title: 'Ponds 5–7, AB — 20 boards/row · 110 rows',     note: r => `${r * 20} bd` },
-    { lc: 'C',   cap: 110, title: 'C lanes — 1 board/row · 110 boards',           note: r => `${r} bd` },
+    { lc: '2-7', cap: 110, title: 'Ponds 2–3, C side — 1 board/row · 110 rows',    note: r => `${r} bd` },
   ];
   let h = '';
   GROUPS.forEach(g => {
@@ -759,6 +761,8 @@ function builderInit() {
   const lanes = ['P1AB'];
   ['P2', 'P3', 'P4', 'P5', 'P6', 'P7'].forEach(p => {
     if (modes[p] === 'AB') lanes.push(p + 'AB'); else lanes.push(p + 'A', p + 'B');
+    // Only P2 and P3 have a C side (org_site_side options); 1 board wide.
+    if (p === 'P2' || p === 'P3') lanes.push(p + 'C');
   });
   const t = document.getElementById('bLanes');
   const patOpts = p => Object.keys(patterns).map(x => `<option${x === p ? ' selected' : ''}>${esc(x)}</option>`).join('');
@@ -780,6 +784,8 @@ function builderInit() {
         P2B: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P3A: { pat: '28/28/28/28', seed: '3310' },
         P3B: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
+        P2C: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
+        P3C: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P4A: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P4B: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
         P4AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
