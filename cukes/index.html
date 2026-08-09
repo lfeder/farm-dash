@@ -536,6 +536,19 @@ async function fetchYear(y) {
   }
 }
 
+// Greenhouse chips are derived from the loaded rows, never hardcoded: the old
+// fixed list (GH1-GH8/HK/Hilo/Kona/Waimea) matched nothing in the table
+// (real values are BIP_* and JTL_*), so every GH chip silently selected zero
+// cycles. Re-derived after each fetch; the current selection is preserved.
+function renderGhChips() {
+  const seen = new Set();
+  for (const r of rows) if (r.Greenhouse) seen.add(r.Greenhouse);
+  const ghs = [...seen].sort();
+  // Drop any selection no longer present so a stale chip can't hide all data.
+  for (const g of [...filters.gh]) if (!seen.has(g)) filters.gh.delete(g);
+  renderChips('f-gh', 'gh', ghs);
+}
+
 // Fetch rows for a set of seed-years. Concurrent callers share one promise per
 // year rather than each starting their own fetch.
 async function fetchYears(years) {
@@ -568,6 +581,7 @@ async function ensureAndRender() {
     : picked;
   try {
     await fetchYears(wantYears);
+    renderGhChips();  // new years can introduce houses not seen yet
     render();
   } catch (e) {
     console.error('ensureAndRender failed', e);
@@ -585,13 +599,12 @@ for (let y = 2019; y <= CURRENT_YEAR; y++) YEAR_RANGE.push(y);
     await fetchYears([CURRENT_YEAR]);
 
     const months = [1,2,3,4,5,6,7,8,9,10,11,12];
-    const ghs = ['GH1','GH2','GH3','GH4','GH5','GH6','GH7','GH8','HK','Hilo','Kona','Waimea'];
     const vars = ['E','J','K'];
     const grades = ['1','2'];
 
     renderChips('f-year', 'year', YEAR_RANGE);
     renderChips('f-month', 'month', months, m => String(m).padStart(2,'0'));
-    renderChips('f-gh', 'gh', ghs);
+    renderGhChips();
     renderChips('f-variety', 'variety', vars);
     renderChips('f-grade', 'grade', grades);
 
