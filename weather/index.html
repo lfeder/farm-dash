@@ -36,7 +36,7 @@
 
 <div id="header">
   <h1>Weather</h1>
-  <span id="stamp">08-10 09:15</span>
+  <span id="stamp">08-10 09:35</span>
 </div>
 
 <div class="barrow" id="rangeBar">
@@ -77,7 +77,7 @@
 
 <script>
 // ---- Version stamp: bump on every edit (see lettuce-sched convention) ----
-const PAGE_VER = '08-10 09:15';
+const PAGE_VER = '08-10 09:35';
 document.getElementById('stamp').textContent = PAGE_VER;
 
 const SB = {
@@ -211,17 +211,23 @@ async function loadWindow(cfg, lastMs) {
 
   const view = raw ? 'weather_1min_v' : cfg.view;
   const ts   = raw ? 'bucket_at'      : cfg.ts;
-  const since = new Date(lastMs - (cfg.days + 1) * DAY).toISOString().slice(0, 19);
-  const sel = selectCols(ts);
+  const sel  = selectCols(ts);
+  // `days: null` means All -- no lower bound. Guard explicitly: `null + 1` is 1
+  // in JS, so arithmetic on it silently produced a ONE-DAY window and All drew
+  // two points.
+  const filter = cfg.days == null ? ''
+    : `&${ts}=gte.${new Date(lastMs - (cfg.days + 1) * DAY).toISOString().slice(0, 19)}`;
 
   const out = [];
-  // 24h of per-minute readings is ~1440 rows, so raw mode pages twice.
+  // Page whenever the window can exceed PostgREST's 1000-row cap: All (~600
+  // days and growing) and raw 24h (~1440 per-minute readings).
+  const pages = (cfg.days == null || raw);
   for (let off = 0; ; off += 1000) {
     const batch = await sbGet(
-      `${view}?select=${sel}&org_id=eq.${ORG}` +
-      `&${ts}=gte.${since}&order=${ts}.asc&limit=1000&offset=${off}`);
+      `${view}?select=${sel}&org_id=eq.${ORG}${filter}` +
+      `&order=${ts}.asc&limit=1000&offset=${off}`);
     out.push(...batch);
-    if (batch.length < 1000 || !raw) break;
+    if (batch.length < 1000 || !pages) break;
   }
   const mapped = out
     .map(r => ({ ...r, t: parseTs(r[ts].length === 10 ? r[ts] + 'T00:00' : r[ts]) }))
