@@ -36,7 +36,7 @@
 
 <div id="header">
   <h1>Weather</h1>
-  <span id="stamp">08-10 06:20</span>
+  <span id="stamp">08-10 06:45</span>
 </div>
 
 <div class="barrow" id="rangeBar">
@@ -64,7 +64,7 @@
   (<code>edi_crodeon_weather</code>), pulled from the Crodeon API every 10&nbsp;min by
   <code>weather-sync.yml</code>. Times are HST wall-clock.
   <b>DLI 1d</b> is the day's PAR integral (mol/m²/day); <b>DLI 21d</b> is the trailing
-  21-day sum. <b>Rain</b> is a rate, so it is integrated over time rather than summed —
+  21-day <i>average</i> of it — same units, so both plot on one scale. <b>Rain</b> is a rate, so it is integrated over time rather than summed —
   a plain sum would scale with the sampling cadence. History before 05/07/26 is a
   10-minute backfill; the live feed is 1-minute, and both integrate to the same
   figures. Buckets with under 90% sensor coverage are drawn as gaps, not as low
@@ -73,7 +73,7 @@
 
 <script>
 // ---- Version stamp: bump on every edit (see lettuce-sched convention) ----
-const PAGE_VER = '08-10 06:20';
+const PAGE_VER = '08-10 06:45';
 document.getElementById('stamp').textContent = PAGE_VER;
 
 const SB = {
@@ -94,7 +94,7 @@ const METRICS = [
   { grp: 'Wind',     id: 'Wind Max',  col: 'wind_max',  unit: 'mph',       color: '#00cec9' },
   { grp: 'Light',    id: 'PAR',       col: 'par',       unit: 'µmol/m²/s', color: '#ffeaa7' },
   { grp: 'Light',    id: 'DLI 1d',    col: 'dli',       unit: 'mol/m²/d',  color: '#7cff6b', agg: 'sum', win: 1 },
-  { grp: 'Light',    id: 'DLI 21d',   col: 'dli',       unit: 'mol/m²',    color: '#2ecc71', agg: 'sum', win: 21 },
+  { grp: 'Light',    id: 'DLI 21d',   col: 'dli',       unit: 'mol/m²/d',  color: '#2ecc71', agg: 'sum', win: 21 },
   { grp: 'Humidity', id: 'Out Humid', col: 'out_humid', unit: '%',         color: '#55efc4' },
   { grp: 'Humidity', id: 'In Humid',  col: 'in_humid',  unit: '%',         color: '#00b894' },
   { grp: 'Precip',   id: 'Rain',      col: 'rain',      unit: 'in',        color: '#0984e3', agg: 'sum' },
@@ -200,10 +200,16 @@ function parOk(b, bucket) {
   return b.parCov >= span * MIN_COVERAGE;
 }
 
-// DLI over a trailing window of `win` buckets-worth of days, ending at each
-// bucket. Returns null until a full window exists so the line does not start
-// low on a partially-filled window -- and null if ANY bucket in the window is
-// under-covered, since a 21-day sum silently loses a day just as easily.
+// Mean daily DLI over a trailing `win`-day window, ending at each bucket.
+//
+// This is an AVERAGE, not a sum: DLI is mol/m2 per DAY by definition, and the
+// page plots DLI 1d and DLI 21d on one shared axis. A 21-day sum would land
+// near 400 against DLI 1d's ~20 and squash it flat; the trailing mean keeps
+// both on the same scale and is the agronomically useful figure.
+//
+// Returns null until a full window exists, so the line does not start low on a
+// partially-filled window -- and null if ANY bucket in the window is
+// under-covered, since a 21-day mean loses a day just as silently as a sum.
 function rollingDli(buckets, win, bucket) {
   const per = bucket === 'hour' ? 24 : 1;          // buckets per day
   const need = Math.round(win * per);
@@ -214,7 +220,9 @@ function rollingDli(buckets, win, bucket) {
     run += buckets[i].dli;
     if (!ok[i]) bad++;
     if (i >= need) { run -= buckets[i - need].dli; if (!ok[i - need]) bad--; }
-    out.push(i >= need - 1 && bad === 0 ? run : null);
+    // `run` is total mol over `win` days, so dividing by win gives mol/day
+    // regardless of whether we are bucketing hourly or daily.
+    out.push(i >= need - 1 && bad === 0 ? run / win : null);
   }
   return out;
 }
