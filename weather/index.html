@@ -36,7 +36,7 @@
 
 <div id="header">
   <h1>Weather</h1>
-  <span id="stamp">08-10 07:30</span>
+  <span id="stamp">08-10 08:05</span>
 </div>
 
 <div class="barrow" id="rangeBar">
@@ -60,7 +60,7 @@
 </div>
 
 <div id="note" style="display:none">
-  <b>Source:</b> <code>weather_daily_v</code> (24h view uses <code>weather_hourly_v</code>) — rollups of the Crodeon station
+  <b>Source:</b> <code>weather_daily_v</code> (24h and 7d use <code>weather_hourly_v</code>) — rollups of the Crodeon station
   (<code>edi_crodeon_weather</code>), pulled from the Crodeon API every 10&nbsp;min by
   <code>weather-sync.yml</code>. Times are HST wall-clock.
   <b>DLI 1d</b> is the day's PAR integral (mol/m²/day); <b>DLI 21d</b> is the trailing
@@ -73,7 +73,7 @@
 
 <script>
 // ---- Version stamp: bump on every edit (see lettuce-sched convention) ----
-const PAGE_VER = '08-10 07:30';
+const PAGE_VER = '08-10 08:05';
 document.getElementById('stamp').textContent = PAGE_VER;
 
 const SB = {
@@ -103,7 +103,7 @@ const GROUPS = ['Temp', 'Wind', 'Light', 'Humidity', 'Precip'];
 
 const RANGES = [
   { id: '24h', label: '24h', days: 1,    bucket: 'hour' },
-  { id: '7d',  label: '7d',  days: 7,    bucket: 'day'  },
+  { id: '7d',  label: '7d',  days: 7,    bucket: 'hour' },
   { id: '30d', label: '30d', days: 30,   bucket: 'day'  },
   { id: 'all', label: 'All', days: null, bucket: 'day'  },
 ];
@@ -118,7 +118,7 @@ let range = '30d';
 let stats = new Set(['avg']);
 let metrics = new Set(['Dew Pt']);
 let dayRows = [];       // daily rollup, whole history -- one request
-let hourRows = [];      // hourly, only the recent window (24h view)
+let hourRows = [];      // hourly, recent window only (24h + 7d views)
 let chart = null;
 
 // ---------------------------------------------------------------- data
@@ -171,11 +171,13 @@ async function loadDaily() {
             .filter(r => r.t != null);
 }
 
-// Hourly is only needed for the 24h view, so fetch a narrow window rather than
-// the whole table. 48h of slack covers the DLI-1d trailing window at the left
-// edge of the chart.
+// Hourly is only needed by the sub-daily ranges (24h, 7d), so fetch a window
+// rather than the whole table. 30 days covers 7d plus the 21-day lead-in that
+// DLI 21d needs, and is 720 rows -- one request, under PostgREST's 1000 cap.
+const HOURLY_WINDOW_DAYS = 30;
+
 async function loadHourly(sinceMs) {
-  const since = new Date(sinceMs - 2 * DAY).toISOString().slice(0, 19);
+  const since = new Date(sinceMs - HOURLY_WINDOW_DAYS * DAY).toISOString().slice(0, 19);
   const rows = await sbGet(
     `weather_hourly_v?select=${selectCols('hour_at')}&org_id=eq.${ORG}` +
     `&hour_at=gte.${since}&order=hour_at.asc&limit=1000`);
@@ -427,6 +429,13 @@ let hourPending = false;
     document.getElementById('note').style.display = '';
     buildBars();
     render();
+
+    // Daily is on screen; pull the hourly window in the background so 24h and
+    // 7d are already there when clicked.
+    hourPending = true;
+    loadHourly(dayRows[dayRows.length - 1].t)
+      .then(h => { hourRows = h; if (RANGES.find(r => r.id === range).bucket === 'hour') render(); })
+      .catch(() => {}).finally(() => { hourPending = false; });
   } catch (e) {
     document.getElementById('loading').style.display = 'none';
     const el = document.getElementById('err');
