@@ -1016,7 +1016,10 @@ let galleryGroups = [];   // [{ id, label, date, photos: [{ path, batch, cultiva
 
 const PHOTO_BASE = DataSource.SUPABASE_PROJECTS.prod.url + '/storage/v1';
 
-// photo_path already carries the bucket ('images/grow_lettuce_seed_batch/x.jpg').
+// photo_path carries the bucket ('images/grow_lettuce_seed_batch/x.jpg') — but
+// the nightly snapshot has also been seen writing full URLs
+// ('https://auth.aloha.ag/storage/v1/object/public/images/…'), so normalize to
+// the bucket-relative form before building either endpoint URL.
 // Grids go through the render endpoint — the originals are 2–4 MB phone shots,
 // far too heavy to drop four (or twenty) of into a page. Zoom gets the original.
 //
@@ -1025,9 +1028,10 @@ const PHOTO_BASE = DataSource.SUPABASE_PROJECTS.prod.url + '/storage/v1';
 // width+height+resize=cover crops to the 4:3 the tiles are laid out for and
 // drops the same thumbnail to ~39 kB.
 function photoUrl(path, width, height) {
+  const rel = String(path || '').replace(/^https?:\/\/[^/]+\/storage\/v1\/(?:object|render\/image)\/public\//, '');
   return width
-    ? `${PHOTO_BASE}/render/image/public/${path}?width=${width}&height=${height}&resize=cover&quality=72`
-    : `${PHOTO_BASE}/object/public/${path}`;
+    ? `${PHOTO_BASE}/render/image/public/${rel}?width=${width}&height=${height}&resize=cover&quality=72`
+    : `${PHOTO_BASE}/object/public/${rel}`;
 }
 
 function fmtGalleryDate(iso, opts) {
