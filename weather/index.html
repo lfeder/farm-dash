@@ -36,7 +36,7 @@
 
 <div id="header">
   <h1>Weather</h1>
-  <span id="stamp">08-10 08:05</span>
+  <span id="stamp">08-10 09:15</span>
 </div>
 
 <div class="barrow" id="rangeBar">
@@ -47,6 +47,10 @@
   <div class="grp">
     <span class="cap">Statistic</span>
     <div class="btns" id="bStat"></div>
+  </div>
+  <div class="grp" id="gDetail">
+    <span class="cap">Detail</span>
+    <div class="btns" id="bDetail"></div>
   </div>
 </div>
 
@@ -60,7 +64,7 @@
 </div>
 
 <div id="note" style="display:none">
-  <b>Source:</b> <code>weather_daily_v</code> (24h and 7d use <code>weather_hourly_v</code>) — rollups of the Crodeon station
+  <b>Source:</b> <code>weather_daily_v</code> (24h reads <code>weather_10min_v</code>, 7d/30d <code>weather_hourly_v</code>, and 24h+1&nbsp;min <code>weather_1min_v</code>) — rollups of the Crodeon station
   (<code>edi_crodeon_weather</code>), pulled from the Crodeon API every 10&nbsp;min by
   <code>weather-sync.yml</code>. Times are HST wall-clock.
   <b>DLI 1d</b> is the day's PAR integral (mol/m²/day); <b>DLI 21d</b> is the trailing
@@ -73,7 +77,7 @@
 
 <script>
 // ---- Version stamp: bump on every edit (see lettuce-sched convention) ----
-const PAGE_VER = '08-10 08:05';
+const PAGE_VER = '08-10 09:15';
 document.getElementById('stamp').textContent = PAGE_VER;
 
 const SB = {
@@ -101,11 +105,23 @@ const METRICS = [
 ];
 const GROUPS = ['Temp', 'Wind', 'Light', 'Humidity', 'Precip'];
 
+// Each range reads the rollup that matches its grain, so every one is a
+// SINGLE request under PostgREST's 1000-row cap. Fetching a fine grain and
+// bucketing up in the browser is tempting but much slower: these are plain
+// views, so every page re-runs the window function over all ~200k raw rows
+// (~0.9s), and 30d of 10-minute rows would be 5 such pages.
+//
+// 10 min is the finest grain that exists across the WHOLE record -- the live
+// feed is per-minute, but everything before 2026-05-07 was backfilled at 10.
 const RANGES = [
-  { id: '24h', label: '24h', days: 1,    bucket: 'hour' },
-  { id: '7d',  label: '7d',  days: 7,    bucket: 'hour' },
-  { id: '30d', label: '30d', days: 30,   bucket: 'day'  },
-  { id: 'all', label: 'All', days: null, bucket: 'day'  },
+  { id: '24h', label: '24h', days: 1,    grain: 'min10',
+    view: 'weather_10min_v',  ts: 'bucket_at' },   //  144 rows
+  { id: '7d',  label: '7d',  days: 7,    grain: 'hour',
+    view: 'weather_hourly_v', ts: 'hour_at'   },   //  168 rows
+  { id: '30d', label: '30d', days: 30,   grain: 'hour',
+    view: 'weather_hourly_v', ts: 'hour_at'   },   //  720 rows
+  { id: 'all', label: 'All', days: null, grain: 'day',
+    view: 'weather_daily_v',  ts: 'day_at'    },   //  597 rows
 ];
 const STATS = [
   { id: 'min', label: 'Min' },
@@ -113,12 +129,27 @@ const STATS = [
   { id: 'max', label: 'Max' },
 ];
 
+// Native 1-minute readings only exist from 2026-05-07 -- everything earlier was
+// backfilled at 10 minutes. So full detail is an explicit choice, not automatic:
+// baking it in would silently change resolution depending on the dates in view,
+// which is the same class of invisible inconsistency that made rain read 6x high
+// across the cadence boundary.
+const FINE_FROM = Date.UTC(2026, 4, 7);
+let detail = 'auto';            // 'auto' | 'raw'
+
+// 24h is the only range where per-minute is drawable (1440 points); a week
+// would be 10,080. Detail is offered there and ignored elsewhere.
+function detailAvailable(cfg) { return cfg.id === '24h'; }
+function activeGrain(cfg) {
+  return (detail === 'raw' && detailAvailable(cfg)) ? 'min1' : cfg.grain;
+}
+
 // ---- State (defaults match the manager app: 30d / Avg / Dew Pt) ----
 let range = '30d';
 let stats = new Set(['avg']);
 let metrics = new Set(['Dew Pt']);
-let dayRows = [];       // daily rollup, whole history -- one request
-let hourRows = [];      // hourly, recent window only (24h + 7d views)
+let dayRows  = [];              // daily rollup, whole history -- always loaded
+const winCache = new Map();     // range id -> rows, fetched once per range
 let chart = null;
 
 // ---------------------------------------------------------------- data
@@ -171,25 +202,43 @@ async function loadDaily() {
             .filter(r => r.t != null);
 }
 
-// Hourly is only needed by the sub-daily ranges (24h, 7d), so fetch a window
-// rather than the whole table. 30 days covers 7d plus the 21-day lead-in that
-// DLI 21d needs, and is 720 rows -- one request, under PostgREST's 1000 cap.
-const HOURLY_WINDOW_DAYS = 30;
+// One request for a range's own window, at its own grain. Cached per range, so
+// switching back and forth costs nothing.
+async function loadWindow(cfg, lastMs) {
+  const raw = detail === 'raw' && detailAvailable(cfg);
+  const key = cfg.id + (raw ? ':raw' : '');
+  if (winCache.has(key)) return winCache.get(key);
 
-async function loadHourly(sinceMs) {
-  const since = new Date(sinceMs - HOURLY_WINDOW_DAYS * DAY).toISOString().slice(0, 19);
-  const rows = await sbGet(
-    `weather_hourly_v?select=${selectCols('hour_at')}&org_id=eq.${ORG}` +
-    `&hour_at=gte.${since}&order=hour_at.asc&limit=1000`);
-  return rows.map(r => ({ ...r, t: parseTs(r.hour_at) })).filter(r => r.t != null);
+  const view = raw ? 'weather_1min_v' : cfg.view;
+  const ts   = raw ? 'bucket_at'      : cfg.ts;
+  const since = new Date(lastMs - (cfg.days + 1) * DAY).toISOString().slice(0, 19);
+  const sel = selectCols(ts);
+
+  const out = [];
+  // 24h of per-minute readings is ~1440 rows, so raw mode pages twice.
+  for (let off = 0; ; off += 1000) {
+    const batch = await sbGet(
+      `${view}?select=${sel}&org_id=eq.${ORG}` +
+      `&${ts}=gte.${since}&order=${ts}.asc&limit=1000&offset=${off}`);
+    out.push(...batch);
+    if (batch.length < 1000 || !raw) break;
+  }
+  const mapped = out
+    .map(r => ({ ...r, t: parseTs(r[ts].length === 10 ? r[ts] + 'T00:00' : r[ts]) }))
+    .filter(r => r.t != null);
+  winCache.set(key, mapped);
+  return mapped;
 }
 
 // ------------------------------------------------------------- bucketing
 
 // Collapse hourly rows into the range's bucket. Averages are weighted by the
 // reading count `n` so a partial hour does not count the same as a full one.
-function bucketize(src, bucket) {
-  const key = t => bucket === 'hour' ? t : Math.floor(t / DAY) * DAY;
+const GRAIN_MS = { min1: 60e3, min10: 10 * 60e3, hour: HOUR, day: DAY };
+
+function bucketize(src, grain) {
+  const w = GRAIN_MS[grain];
+  const key = t => Math.floor(t / w) * w;
   const map = new Map();
   for (const r of src) {
     const k = key(r.t);
@@ -219,9 +268,8 @@ function bucketize(src, bucket) {
 // ramping through Dec 2024, and any sync outage does the same thing.
 const MIN_COVERAGE = 0.9;
 
-function parOk(b, bucket) {
-  const span = bucket === 'hour' ? HOUR / 1000 : DAY / 1000;
-  return b.parCov >= span * MIN_COVERAGE;
+function parOk(b, grain) {
+  return b.parCov >= (GRAIN_MS[grain] / 1000) * MIN_COVERAGE;
 }
 
 // Mean daily DLI over a trailing `win`-day window, ending at each bucket.
@@ -234,10 +282,10 @@ function parOk(b, bucket) {
 // Returns null until a full window exists, so the line does not start low on a
 // partially-filled window -- and null if ANY bucket in the window is
 // under-covered, since a 21-day mean loses a day just as silently as a sum.
-function rollingDli(buckets, win, bucket) {
-  const per = bucket === 'hour' ? 24 : 1;          // buckets per day
+function rollingDli(buckets, win, grain) {
+  const per = DAY / GRAIN_MS[grain];               // buckets per day
   const need = Math.round(win * per);
-  const ok = buckets.map(b => parOk(b, bucket));
+  const ok = buckets.map(b => parOk(b, grain));
   const out = [];
   let run = 0, bad = 0;
   for (let i = 0; i < buckets.length; i++) {
@@ -253,7 +301,11 @@ function rollingDli(buckets, win, bucket) {
 
 // ---------------------------------------------------------------- render
 
-function seriesFor(buckets, bucket) {
+// `buckets` are at the display grain; `dayBuckets` are always daily. DLI is a
+// per-DAY quantity, so it is sourced from the daily rollup no matter how fine
+// the chart is drawn -- that also means DLI 21d needs no lead-in fetch at the
+// fine grain, which was costing several extra round-trips.
+function seriesFor(buckets, grain, dayBuckets) {
   const ds = [];
   for (const m of METRICS) {
     if (!metrics.has(m.id)) continue;
@@ -264,14 +316,16 @@ function seriesFor(buckets, bucket) {
       // a plain sum. That keeps the 10-minute backfill and the 1-minute live
       // era on the same scale -- a naive sum would read 6x higher after
       // 05/07/26 for identical weather.
-      const vals = m.col === 'dli'
-        ? rollingDli(buckets, m.win, bucket)
-        : buckets.map(b => b.cov >= (bucket === 'hour' ? HOUR : DAY) / 1000 * MIN_COVERAGE
-            ? b.rain : null);
+      const isDli = m.col === 'dli';
+      const src = isDli ? dayBuckets : buckets;
+      const g   = isDli ? 'day' : grain;
+      const vals = isDli
+        ? rollingDli(src, m.win, 'day')
+        : src.map(b => b.cov >= (GRAIN_MS[g] / 1000) * MIN_COVERAGE ? b.rain : null);
       ds.push({
         label: `${m.id} (${m.unit})`, unit: m.unit,
         borderColor: m.color, backgroundColor: m.color,
-        data: buckets.map((b, i) => ({ x: b.t, y: vals[i] })).filter(p => p.y != null),
+        data: src.map((b, i) => ({ x: b.t, y: vals[i] })).filter(p => p.y != null),
         borderWidth: 2, pointRadius: 0, tension: 0.25, spanGaps: true,
       });
       continue;
@@ -298,10 +352,11 @@ function seriesFor(buckets, bucket) {
 
 function render() {
   const cfg = RANGES.find(r => r.id === range);
-  // 24h reads the hourly window; every other range reads the daily rollup.
-  // Fall back to daily if the hourly fetch has not landed yet, so the first
-  // paint never blocks on it.
-  const rows = (cfg.bucket === 'hour' && hourRows.length) ? hourRows : dayRows;
+  const win = winCache.get(cfg.id + (detail === 'raw' && detailAvailable(cfg) ? ':raw' : ''));
+  // Until this range's window lands, draw the daily rows already in hand so the
+  // chart never goes blank while switching.
+  const rows  = win && win.length ? win : dayRows;
+  const grain = win && win.length ? activeGrain(cfg) : 'day';
   const last = rows.length ? rows[rows.length - 1].t : Date.now();
   const from = cfg.days == null ? -Infinity : last - cfg.days * DAY;
 
@@ -311,13 +366,15 @@ function render() {
   const lead = needLead ? 21 * DAY : 0;
   const wide = rows.filter(r => r.t >= from - lead);
 
-  const buckets = bucketize(wide, cfg.bucket);
-  const ds = seriesFor(buckets, cfg.bucket).map(d => ({
+  const buckets = bucketize(wide, grain);
+  // DLI reads the daily rollup, clipped to the same window plus its lead-in.
+  const dayBuckets = bucketize(dayRows.filter(r => r.t >= from - lead), 'day');
+  const ds = seriesFor(buckets, grain, dayBuckets).map(d => ({
     ...d, data: d.data.filter(p => p.x >= from),
   }));
 
   const units = [...new Set(ds.map(d => d.unit))];
-  const timeFmt = cfg.bucket === 'hour'
+  const timeFmt = grain !== 'day'
     ? t => new Date(t).toISOString().slice(11, 16)
     : t => { const d = new Date(t); return `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCFullYear()).slice(2)}`; };
 
@@ -374,15 +431,9 @@ function buildBars() {
   const rb = document.getElementById('bRange');
   rb.innerHTML = '';
   RANGES.forEach(r => rb.appendChild(mkBtn(r.label, range === r.id, '', () => {
-    range = r.id; buildBars(); render();
+    range = r.id; buildBars(); ensureWindow(); render();
     // 24h is the only range that needs sub-daily detail. Fetch it on demand,
     // then repaint -- the daily fallback is already on screen meanwhile.
-    if (r.bucket === 'hour' && !hourRows.length && !hourPending) {
-      hourPending = true;
-      const last = dayRows.length ? dayRows[dayRows.length - 1].t : Date.now();
-      loadHourly(last).then(h => { hourRows = h; render(); })
-                      .catch(() => {}).finally(() => { hourPending = false; });
-    }
   })));
 
   const sb = document.getElementById('bStat');
@@ -393,6 +444,22 @@ function buildBars() {
     else stats.add(s.id);
     buildBars(); render();
   })));
+
+  const cfgNow = RANGES.find(r => r.id === range);
+  const db = document.getElementById('bDetail');
+  db.innerHTML = '';
+  const canRaw = detailAvailable(cfgNow);
+  [{ id: 'auto', label: '10 min' }, { id: 'raw', label: '1 min' }].forEach(d => {
+    const b = mkBtn(d.label, detail === d.id && canRaw || (d.id === 'auto' && !canRaw), '', () => {
+      if (!canRaw) return;
+      detail = d.id; buildBars(); ensureWindow(); render();
+    });
+    if (!canRaw) { b.style.opacity = '0.35'; b.style.cursor = 'default'; }
+    db.appendChild(b);
+  });
+  document.getElementById('gDetail').title = canRaw
+    ? 'Per-minute readings exist from 05/07/26 onward; earlier history is 10-minute.'
+    : 'Per-minute detail is only available on the 24h range.';
 
   const mb = document.getElementById('metricBar');
   mb.innerHTML = '';
@@ -419,7 +486,21 @@ function buildBars() {
 
 // ---------------------------------------------------------------- boot
 
-let hourPending = false;
+let pending = null;
+
+// Fetch the window the current range + detail needs, if it is not cached yet,
+// then repaint. The daily rows are already on screen meanwhile.
+function ensureWindow() {
+  const cfg = RANGES.find(r => r.id === range);
+  const key = cfg.id + (detail === 'raw' && detailAvailable(cfg) ? ':raw' : '');
+  if (winCache.has(key) || pending === key) return;
+  pending = key;
+  const last = dayRows.length ? dayRows[dayRows.length - 1].t : Date.now();
+  loadWindow(cfg, last)
+    .then(() => { if (pending === key) render(); })
+    .catch(() => {})
+    .finally(() => { if (pending === key) pending = null; });
+}
 
 (async function boot() {
   try {
@@ -430,12 +511,9 @@ let hourPending = false;
     buildBars();
     render();
 
-    // Daily is on screen; pull the hourly window in the background so 24h and
-    // 7d are already there when clicked.
-    hourPending = true;
-    loadHourly(dayRows[dayRows.length - 1].t)
-      .then(h => { hourRows = h; if (RANGES.find(r => r.id === range).bucket === 'hour') render(); })
-      .catch(() => {}).finally(() => { hourPending = false; });
+    // Daily is on screen; pull the current range's own window in the
+    // background and repaint when it lands.
+    ensureWindow();
   } catch (e) {
     document.getElementById('loading').style.display = 'none';
     const el = document.getElementById('err');
