@@ -36,7 +36,7 @@
 
 <div id="header">
   <h1>Weather</h1>
-  <span id="stamp">08-10 06:45</span>
+  <span id="stamp">08-10 07:30</span>
 </div>
 
 <div class="barrow" id="rangeBar">
@@ -60,7 +60,7 @@
 </div>
 
 <div id="note" style="display:none">
-  <b>Source:</b> <code>weather_hourly_v</code> — hourly rollup of the Crodeon station
+  <b>Source:</b> <code>weather_daily_v</code> (24h view uses <code>weather_hourly_v</code>) — rollups of the Crodeon station
   (<code>edi_crodeon_weather</code>), pulled from the Crodeon API every 10&nbsp;min by
   <code>weather-sync.yml</code>. Times are HST wall-clock.
   <b>DLI 1d</b> is the day's PAR integral (mol/m²/day); <b>DLI 21d</b> is the trailing
@@ -73,7 +73,7 @@
 
 <script>
 // ---- Version stamp: bump on every edit (see lettuce-sched convention) ----
-const PAGE_VER = '08-10 06:45';
+const PAGE_VER = '08-10 07:30';
 document.getElementById('stamp').textContent = PAGE_VER;
 
 const SB = {
@@ -117,7 +117,8 @@ const STATS = [
 let range = '30d';
 let stats = new Set(['avg']);
 let metrics = new Set(['Dew Pt']);
-let rows = [];          // all hourly rows, ascending by hour_at
+let dayRows = [];       // daily rollup, whole history -- one request
+let hourRows = [];      // hourly, only the recent window (24h view)
 let chart = null;
 
 // ---------------------------------------------------------------- data
@@ -138,26 +139,47 @@ async function sbGet(path) {
   return r.json();
 }
 
-// Page through everything once (~2.2k rows today, grows ~24/day).
-async function loadAll() {
-  const cols = ['hour_at', 'n', 'dli_sum', 'rain_sum', 'rain_avg',
+// Column list shared by both grains.
+function selectCols(tsField) {
+  const cols = [tsField, 'n', 'dli_sum', 'rain_sum', 'rain_avg',
                 'covered_s', 'par_covered_s'];
   for (const m of METRICS) {
     if (m.agg === 'sum') continue;
     for (const s of ['min', 'avg', 'max']) cols.push(`${m.col}_${s}`);
   }
-  const sel = [...new Set(cols)].join(',');
+  return [...new Set(cols)].join(',');
+}
 
+// PostgREST caps every response at 1000 rows regardless of `limit`, so paging
+// the hourly view for "All" meant 15 sequential round-trips and ~12MB -- only
+// to bucket it straight down to ~600 days. Daily rows are pre-aggregated
+// server-side, so the whole history is ONE request.
+async function loadDaily() {
+  const sel = selectCols('day_at');
   const out = [];
-  const PAGE = 1000;
-  for (let off = 0; ; off += PAGE) {
+  // ~600 days today, so this is a single request. It crosses PostgREST's
+  // 1000-row ceiling around late 2027; page past it rather than silently
+  // truncating the history then.
+  for (let off = 0; ; off += 1000) {
     const batch = await sbGet(
-      `weather_hourly_v?select=${sel}&org_id=eq.${ORG}` +
-      `&order=hour_at.asc&limit=${PAGE}&offset=${off}`);
+      `weather_daily_v?select=${sel}&org_id=eq.${ORG}` +
+      `&order=day_at.asc&limit=1000&offset=${off}`);
     out.push(...batch);
-    if (batch.length < PAGE) break;
+    if (batch.length < 1000) break;
   }
-  return out.map(r => ({ ...r, t: parseTs(r.hour_at) })).filter(r => r.t != null);
+  return out.map(r => ({ ...r, t: parseTs(r.day_at + 'T00:00') }))
+            .filter(r => r.t != null);
+}
+
+// Hourly is only needed for the 24h view, so fetch a narrow window rather than
+// the whole table. 48h of slack covers the DLI-1d trailing window at the left
+// edge of the chart.
+async function loadHourly(sinceMs) {
+  const since = new Date(sinceMs - 2 * DAY).toISOString().slice(0, 19);
+  const rows = await sbGet(
+    `weather_hourly_v?select=${selectCols('hour_at')}&org_id=eq.${ORG}` +
+    `&hour_at=gte.${since}&order=hour_at.asc&limit=1000`);
+  return rows.map(r => ({ ...r, t: parseTs(r.hour_at) })).filter(r => r.t != null);
 }
 
 // ------------------------------------------------------------- bucketing
@@ -274,11 +296,15 @@ function seriesFor(buckets, bucket) {
 
 function render() {
   const cfg = RANGES.find(r => r.id === range);
+  // 24h reads the hourly window; every other range reads the daily rollup.
+  // Fall back to daily if the hourly fetch has not landed yet, so the first
+  // paint never blocks on it.
+  const rows = (cfg.bucket === 'hour' && hourRows.length) ? hourRows : dayRows;
   const last = rows.length ? rows[rows.length - 1].t : Date.now();
   const from = cfg.days == null ? -Infinity : last - cfg.days * DAY;
 
   // DLI 21d needs 21 days of lead-in before `from`, so bucket the wider slice
-  // and clip afterwards -- otherwise the rolling sum starts empty.
+  // and clip afterwards -- otherwise the rolling average starts empty.
   const needLead = [...metrics].some(id => (METRICS.find(m => m.id === id) || {}).win > 1);
   const lead = needLead ? 21 * DAY : 0;
   const wide = rows.filter(r => r.t >= from - lead);
@@ -347,6 +373,14 @@ function buildBars() {
   rb.innerHTML = '';
   RANGES.forEach(r => rb.appendChild(mkBtn(r.label, range === r.id, '', () => {
     range = r.id; buildBars(); render();
+    // 24h is the only range that needs sub-daily detail. Fetch it on demand,
+    // then repaint -- the daily fallback is already on screen meanwhile.
+    if (r.bucket === 'hour' && !hourRows.length && !hourPending) {
+      hourPending = true;
+      const last = dayRows.length ? dayRows[dayRows.length - 1].t : Date.now();
+      loadHourly(last).then(h => { hourRows = h; render(); })
+                      .catch(() => {}).finally(() => { hourPending = false; });
+    }
   })));
 
   const sb = document.getElementById('bStat');
@@ -383,10 +417,12 @@ function buildBars() {
 
 // ---------------------------------------------------------------- boot
 
+let hourPending = false;
+
 (async function boot() {
   try {
-    rows = await loadAll();
-    if (!rows.length) throw new Error('No weather rows returned.');
+    dayRows = await loadDaily();
+    if (!dayRows.length) throw new Error('No weather rows returned.');
     document.getElementById('loading').style.display = 'none';
     document.getElementById('note').style.display = '';
     buildBars();
