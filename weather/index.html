@@ -36,7 +36,7 @@
 
 <div id="header">
   <h1>Weather</h1>
-  <span id="stamp">08-09 17:05</span>
+  <span id="stamp">08-09 20:15</span>
 </div>
 
 <div class="barrow" id="rangeBar">
@@ -64,12 +64,16 @@
   (<code>edi_crodeon_weather</code>), pulled from the Crodeon API every 10&nbsp;min by
   <code>weather-sync.yml</code>. Times are HST wall-clock.
   <b>DLI 1d</b> is the day's PAR integral (mol/m²/day); <b>DLI 21d</b> is the trailing
-  21-day sum. <b>Rain</b> is summed per bucket; the Min/Avg/Max toggle does not apply to it.
+  21-day sum. <b>Rain</b> is a rate, so it is integrated over time rather than summed —
+  a plain sum would scale with the sampling cadence. History before 05/07/26 is a
+  10-minute backfill; the live feed is 1-minute, and both integrate to the same
+  figures. Buckets with under 90% sensor coverage are drawn as gaps, not as low
+  values — the PAR sensor was absent until 11/26/24 and ramping through Dec 2024.
 </div>
 
 <script>
 // ---- Version stamp: bump on every edit (see lettuce-sched convention) ----
-const PAGE_VER = '08-09 17:05';
+const PAGE_VER = '08-09 20:15';
 document.getElementById('stamp').textContent = PAGE_VER;
 
 const SB = {
@@ -136,7 +140,8 @@ async function sbGet(path) {
 
 // Page through everything once (~2.2k rows today, grows ~24/day).
 async function loadAll() {
-  const cols = ['hour_at', 'n', 'dli_sum', 'rain_sum'];
+  const cols = ['hour_at', 'n', 'dli_sum', 'rain_sum', 'rain_avg',
+                'covered_s', 'par_covered_s'];
   for (const m of METRICS) {
     if (m.agg === 'sum') continue;
     for (const s of ['min', 'avg', 'max']) cols.push(`${m.col}_${s}`);
@@ -165,11 +170,13 @@ function bucketize(src, bucket) {
   for (const r of src) {
     const k = key(r.t);
     let b = map.get(k);
-    if (!b) { b = { t: k, n: 0, dli: 0, rain: 0, acc: {} }; map.set(k, b); }
+    if (!b) { b = { t: k, n: 0, dli: 0, rain: 0, cov: 0, parCov: 0, acc: {} }; map.set(k, b); }
     const n = +r.n || 0;
     b.n += n;
     b.dli += +r.dli_sum || 0;
     b.rain += +r.rain_sum || 0;
+    b.cov += +r.covered_s || 0;
+    b.parCov += +r.par_covered_s || 0;
     for (const m of METRICS) {
       if (m.agg === 'sum') continue;
       const a = b.acc[m.col] || (b.acc[m.col] = { min: null, max: null, wsum: 0, w: 0 });
@@ -182,18 +189,32 @@ function bucketize(src, bucket) {
   return [...map.values()].sort((x, y) => x.t - y.t);
 }
 
+// A bucket whose PAR coverage is short did not measure a dark day -- it did not
+// measure. Plotting its DLI would draw a plausible-looking low value, which is
+// worse than a gap: the station's PAR sensor was absent until 11/26/24 and
+// ramping through Dec 2024, and any sync outage does the same thing.
+const MIN_COVERAGE = 0.9;
+
+function parOk(b, bucket) {
+  const span = bucket === 'hour' ? HOUR / 1000 : DAY / 1000;
+  return b.parCov >= span * MIN_COVERAGE;
+}
+
 // DLI over a trailing window of `win` buckets-worth of days, ending at each
 // bucket. Returns null until a full window exists so the line does not start
-// low on a partially-filled window.
+// low on a partially-filled window -- and null if ANY bucket in the window is
+// under-covered, since a 21-day sum silently loses a day just as easily.
 function rollingDli(buckets, win, bucket) {
   const per = bucket === 'hour' ? 24 : 1;          // buckets per day
   const need = Math.round(win * per);
+  const ok = buckets.map(b => parOk(b, bucket));
   const out = [];
-  let run = 0;
+  let run = 0, bad = 0;
   for (let i = 0; i < buckets.length; i++) {
     run += buckets[i].dli;
-    if (i >= need) run -= buckets[i - need].dli;
-    out.push(i >= need - 1 ? run : null);
+    if (!ok[i]) bad++;
+    if (i >= need) { run -= buckets[i - need].dli; if (!ok[i - need]) bad--; }
+    out.push(i >= need - 1 && bad === 0 ? run : null);
   }
   return out;
 }
@@ -206,9 +227,15 @@ function seriesFor(buckets, bucket) {
     if (!metrics.has(m.id)) continue;
 
     if (m.agg === 'sum') {
+      // Rain is a RATE held constant between updates, not a per-reading
+      // increment, so `rain_sum` is its time integral (rate x gap) rather than
+      // a plain sum. That keeps the 10-minute backfill and the 1-minute live
+      // era on the same scale -- a naive sum would read 6x higher after
+      // 05/07/26 for identical weather.
       const vals = m.col === 'dli'
         ? rollingDli(buckets, m.win, bucket)
-        : buckets.map(b => b.rain);
+        : buckets.map(b => b.cov >= (bucket === 'hour' ? HOUR : DAY) / 1000 * MIN_COVERAGE
+            ? b.rain : null);
       ds.push({
         label: `${m.id} (${m.unit})`, unit: m.unit,
         borderColor: m.color, backgroundColor: m.color,
