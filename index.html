@@ -38,6 +38,7 @@ const DASHBOARDS = [
   { id: 'lsched',   label: 'Lettuce Sched', src: 'lettuce-sched/index.html' },
   { id: 'chat',      label: 'Chat',      src: 'chat/index.html' },
   { id: 'chem',      label: 'Chemistry', src: 'chem/index.html' },
+  { id: 'weather',   label: 'Weather',   src: 'weather/index.html' },
   { id: 'fsafe',    label: 'Food Safety', src: 'fsafe/index.html' },
   { id: 'pack',     label: 'Pack Plan',  src: 'pack/index.html' },
 ];
@@ -48,7 +49,7 @@ const iframes = {};
 
 // Bump on deploy to bust the browser's cache of the iframe sub-pages (they have
 // no other cache-busting, so otherwise a stale copy lingers after a push).
-const BUILD_VER = '20260809f';
+const BUILD_VER = '20260809g';
 
 // Each sub-page pins its own data sources now (no global sheets/prod toggle),
 // so we only append the cache-busting version.
