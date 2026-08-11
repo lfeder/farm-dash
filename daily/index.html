@@ -311,14 +311,23 @@ const isoDate = d => d.toISOString().slice(0, 10);
 async function reloadDayScoped() {
   const iso = isoDate(refDate);
   const swallow = (p, n) => p.catch(e => { console.error(n + ' load error:', e); return null; });
-  const [gh, ponds] = await Promise.all([
+  const [gh, ponds, cuke, lett, ph] = await Promise.all([
     swallow(DataSource.fetchTable('cuke_checked_gh', { mode: 'prod', date: iso }), 'cuke_checked_gh'),
     swallow(DataSource.fetchTable('lettuce_scheduled_ponds', { mode: 'prod', date: iso }), 'lettuce_scheduled_ponds'),
+    swallow(DataSource.fetchTable('cuke_harvest_daily', { mode: 'prod', date: iso }), 'cuke_harvest_daily'),
+    swallow(DataSource.fetchTable('lettuce_harvest',
+      { mode: 'prod', date: iso, filters: { org_id: 'hawaii_farming' } }), 'lettuce_harvest'),
+    swallow(DataSource.fetchTable('lettuce_ph_weight',
+      { mode: 'prod', date: iso,
+        filters: { org_id: 'hawaii_farming', is_deleted: false } }), 'lettuce_ph_weight'),
   ]);
   if (iso !== isoDate(refDate)) return;   // a newer date won the race
   checkedGhRows     = gh    ? parseGvizTable(gh)    : [];
   scheduledPondRows = ponds ? parseGvizTable(ponds) : [];
-  renderDataChecks();
+  if (cuke) { cukeGrowRows = parseGvizTable(cuke); normalizeCukeGrow(); }
+  if (lett) { lettuceGrowRows = parseGvizTable(lett); normalizeLettuceGrow(); }
+  if (ph)   { lettucePhRows = parseGvizTable(ph); normalizePhRows(); }
+  render();
 }
 
 function setDay(mode) {
@@ -1292,6 +1301,35 @@ function wireGallery() {
   });
 }
 
+// Column defaults, shared by the initial load and the day-scoped re-fetch so
+// the two paths cannot drift.
+function normalizeCukeGrow() {
+  cukeGrowRows.forEach(r => {
+    r.Greenhouse = r.Greenhouse || '';
+    r.Variety = r.Variety || '';
+    r.Grade = Math.round(r.Grade || 0);
+    r.GreenhouseNetWeight = r.GreenhouseNetWeight || 0;
+  });
+}
+function normalizePhRows() {
+  lettucePhRows.forEach(r => {
+    r.Pond = r.Pond || '';
+    r.Boards = r.Boards || 0;
+    r.NetWeight = r.NetWeight || 0;
+  });
+}
+function normalizeLettuceGrow() {
+  lettuceGrowRows.forEach(r => {
+    r.Pond = r.Pond || '';
+    r.Side = r.Side || '';
+    r.SeedName = r.SeedName || '';
+    r.BoardsPerPond = r.BoardsPerPond || 0;
+    r.PoundsPerBoard = r.PoundsPerBoard || 0;
+    r.GreenhouseNetWeight = r.GreenhouseNetWeight || 0;
+    r.MaxLb = r.MaxLb || 0;
+  });
+}
+
 // ── Load Data ──
 async function loadData() {
   // Fetch every source concurrently — total time is the slowest single fetch
@@ -1304,11 +1342,11 @@ async function loadData() {
     // the last five sheets-backed feeds here (cuke harvest + the four
     // food-safety ones) moved to prod on 08/11/26.
     DataSource.fetchTable('invoices_daily', { mode: 'prod' }),
-    DataSource.fetchTable('cuke_harvest_daily', { mode: 'prod' }),
+    DataSource.fetchTable('cuke_harvest_daily', { mode: 'prod', date: isoDate(refDate) }),
     // Lettuce GH weights moved sheets -> prod (grow_lettuce_gh_harvest_v over
     // grow_lettuce_seed_batch) when field entry switched to the app ~07/13/26.
     DataSource.fetchTable('lettuce_harvest',
-      { mode: 'prod', filters: { org_id: 'hawaii_farming' } }),
+      { mode: 'prod', date: isoDate(refDate), filters: { org_id: 'hawaii_farming' } }),
     swallow(DataSource.fetchTable('fsafe_emp', { mode: 'prod' }), 'fsafe_emp'),
     swallow(DataSource.fetchTable('fsafe_ca', { mode: 'prod' }), 'fsafe_ca'),
     swallow(DataSource.fetchTable('lettuce_pack_orders', { mode: 'prod' }), 'lettuce_pack_orders'),
@@ -1323,7 +1361,8 @@ async function loadData() {
     // page's data-source toggle (mirrors lettuce_pack_orders). Scope to the
     // real org and drop soft-deleted rows.
     swallow(DataSource.fetchTable('lettuce_ph_weight',
-      { mode: 'prod', filters: { org_id: 'hawaii_farming', is_deleted: false } }), 'lettuce_ph_weight'),
+      { mode: 'prod', date: isoDate(refDate),
+        filters: { org_id: 'hawaii_farming', is_deleted: false } }), 'lettuce_ph_weight'),
     // Cuke POs by invoice date (prod-only) — daily cuke PO table.
     swallow(DataSource.fetchTable('cuke_pack_orders', { mode: 'prod' }), 'cuke_pack_orders'),
     // Harvest-photo gallery snapshot (prod-only).
@@ -1340,31 +1379,14 @@ async function loadData() {
     .filter(r => r._y === 2025 || r._y === 2026);
   invoiceRows.forEach(r => { r.Dollars = r.Dollars || 0; });
 
-  cukeGrowRows = parseGvizTable(cukeTable).filter(r => r._y === 2026);
-  cukeGrowRows.forEach(r => {
-    r.Greenhouse = r.Greenhouse || '';
-    r.Variety = r.Variety || '';
-    r.Grade = Math.round(r.Grade || 0);
-    r.GreenhouseNetWeight = r.GreenhouseNetWeight || 0;
-  });
+  cukeGrowRows = parseGvizTable(cukeTable);
+  normalizeCukeGrow();
 
-  lettuceGrowRows = parseGvizTable(lettTable).filter(r => r._y === 2026);
-  lettuceGrowRows.forEach(r => {
-    r.Pond = r.Pond || '';
-    r.Side = r.Side || '';
-    r.SeedName = r.SeedName || '';
-    r.BoardsPerPond = r.BoardsPerPond || 0;
-    r.PoundsPerBoard = r.PoundsPerBoard || 0;
-    r.GreenhouseNetWeight = r.GreenhouseNetWeight || 0;
-    r.MaxLb = r.MaxLb || 0;
-  });
+  lettuceGrowRows = parseGvizTable(lettTable);
+  normalizeLettuceGrow();
 
   lettucePhRows = phTable ? parseGvizTable(phTable) : [];
-  lettucePhRows.forEach(r => {
-    r.Pond = r.Pond || '';
-    r.Boards = r.Boards || 0;
-    r.NetWeight = r.NetWeight || 0;
-  });
+  normalizePhRows();
 
   // Food safety + POs (prod)
   empRows = empTable ? parseGvizTable(empTable) : [];
