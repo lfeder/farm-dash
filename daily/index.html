@@ -704,9 +704,16 @@ function renderWeeklyChart() {
   const data = {};
   for (let d = 1; d <= 5; d++) data[d] = {};
 
+  // Sales are booked ahead, so invoice rows exist for dates that have not
+  // happened yet. Plotting them puts a partial future day on the chart -- on a
+  // Monday, Tuesday's prebooked orders show up as a real Tuesday and read as a
+  // collapse. Cut everything after the reference date.
+  const cutoff = refDate.getUTCFullYear() * 10000
+               + (refDate.getUTCMonth() + 1) * 100 + refDate.getUTCDate();
   invoiceRows.filter(r => r._y === yr).forEach(r => {
     const dow = r._dow;
     if (dow < 1 || dow > 5) return;
+    if (r._y * 10000 + r._m * 100 + r._d > cutoff) return;
     const w = r._isoWeek;
     if (!data[dow][w]) data[dow][w] = 0;
     data[dow][w] += r.Dollars;
@@ -1275,21 +1282,21 @@ async function loadData() {
   const swallow = (p, name) => p.catch(e => { console.error(name + ' load error:', e); return null; });
   const [invoiceTable, cukeTable, lettTable, empTable, caTable, poTable,
          ruleTable, cukePreopTable, lettPreopTable, phTable, cukePoTable, galleryTable] = await Promise.all([
-    // Sources are PINNED per feed (no runtime toggle): invoices -> prod
-    // (edi/QB, current), grow -> sheets (grow migration incomplete),
-    // food-safety -> sheets (only live source today).
+    // Every feed reads Supabase. Google Sheets was switched off 08/09/26, so
+    // the last five sheets-backed feeds here (cuke harvest + the four
+    // food-safety ones) moved to prod on 08/11/26.
     DataSource.fetchTable('invoices_daily', { mode: 'prod' }),
-    DataSource.fetchTable('cuke_harvest_daily', { mode: 'sheets' }),
+    DataSource.fetchTable('cuke_harvest_daily', { mode: 'prod' }),
     // Lettuce GH weights moved sheets -> prod (grow_lettuce_gh_harvest_v over
     // grow_lettuce_seed_batch) when field entry switched to the app ~07/13/26.
     DataSource.fetchTable('lettuce_harvest',
       { mode: 'prod', filters: { org_id: 'hawaii_farming' } }),
-    swallow(DataSource.fetchTable('fsafe_emp', { mode: 'sheets' }), 'fsafe_emp'),
-    swallow(DataSource.fetchTable('fsafe_ca', { mode: 'sheets' }), 'fsafe_ca'),
+    swallow(DataSource.fetchTable('fsafe_emp', { mode: 'prod' }), 'fsafe_emp'),
+    swallow(DataSource.fetchTable('fsafe_ca', { mode: 'prod' }), 'fsafe_ca'),
     swallow(DataSource.fetchTable('lettuce_pack_orders', { mode: 'prod' }), 'lettuce_pack_orders'),
     swallow(DataSource.fetchTable('data_check_rule', { mode: 'prod' }), 'data_check_rule'),
-    swallow(DataSource.fetchTable('fsafe_cuke_preop', { mode: 'sheets' }), 'fsafe_cuke_preop'),
-    swallow(DataSource.fetchTable('fsafe_lettuce_preop', { mode: 'sheets' }), 'fsafe_lettuce_preop'),
+    swallow(DataSource.fetchTable('fsafe_cuke_preop', { mode: 'prod' }), 'fsafe_cuke_preop'),
+    swallow(DataSource.fetchTable('fsafe_lettuce_preop', { mode: 'prod' }), 'fsafe_lettuce_preop'),
     // PH weight is Supabase-only, so always fetch from prod regardless of the
     // page's data-source toggle (mirrors lettuce_pack_orders). Scope to the
     // real org and drop soft-deleted rows.
@@ -1337,7 +1344,7 @@ async function loadData() {
     r.NetWeight = r.NetWeight || 0;
   });
 
-  // Food safety + POs (default to sheets via per-source config)
+  // Food safety + POs (prod)
   empRows = empTable ? parseGvizTable(empTable) : [];
   caRows  = caTable  ? parseGvizTable(caTable)  : [];
   poRows  = poTable  ? parseGvizTable(poTable)  : [];
@@ -1346,7 +1353,7 @@ async function loadData() {
   cukePoRows = cukePoTable ? parseGvizTable(cukePoTable) : [];
   cukePoRows.forEach(r => { r.SKU = r.SKU || ''; r.Cases = +r.Cases || 0; });
 
-  // Data-quality rules (prod) + pre-op checklists (sheets)
+  // Data-quality rules + pre-op checklists (prod)
   checkRules = ruleTable
     ? parseGvizTable(ruleTable).filter(r => r.is_active !== false && String(r.is_active).toLowerCase() !== 'false')
     : [];
