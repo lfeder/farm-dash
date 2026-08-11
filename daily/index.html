@@ -100,7 +100,6 @@
 <div id="header">
   <h1>Daily</h1>
   <span style="display:flex;align-items:center;gap:6px;">
-    <span style="font-size:0.7rem;color:#fff;" id="versionStamp"></span>
   </span>
 </div>
 
@@ -1273,17 +1272,6 @@ function wireGallery() {
     }
   });
 }
-
-// Version stamp: read this file's own Last-Modified rather than hand-editing a
-// literal. The previous hardcoded value sat at 08-04 18:10 for a week of daily
-// edits -- a stamp nobody remembers to bump is worse than no stamp.
-fetch(location.pathname, { method: 'HEAD' }).then(r => {
-  const d = new Date(r.headers.get('last-modified'));
-  if (isNaN(d)) return;
-  const pad = n => String(n).padStart(2, '0');
-  document.getElementById('versionStamp').textContent =
-    `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}).catch(() => {});
 
 // ── Load Data ──
 async function loadData() {
