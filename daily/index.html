@@ -202,7 +202,8 @@ let caRows = [];    // fsafe_log_corrective_action — corrective-action log
 let poRows = [];    // lettuce_pack_orders — forward-looking POs
 let cukePoRows = []; // cuke_pack_orders — by invoice date (prod)
 let checkRules = [];          // data_check_rule (prod Supabase)
-let preopData = {};           // logical table name -> pre-op rows
+let checkedGhRows = [];       // cuke GHs with a food-safety log on refDate
+let scheduledPondRows = [];   // lettuce ponds due to harvest on refDate
 const _loggedCheckDates = new Set();
 let weeklyChart = null;
 
@@ -302,12 +303,31 @@ function syncControls() {
   document.getElementById('date-line').textContent = refDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
 }
 
+const isoDate = d => d.toISOString().slice(0, 10);
+
+// The data-quality feeds hold one day only, so moving the date must re-query
+// them. Everything else is already in memory, so render() runs immediately and
+// the checks refresh when their fetch lands.
+async function reloadDayScoped() {
+  const iso = isoDate(refDate);
+  const swallow = (p, n) => p.catch(e => { console.error(n + ' load error:', e); return null; });
+  const [gh, ponds] = await Promise.all([
+    swallow(DataSource.fetchTable('cuke_checked_gh', { mode: 'prod', date: iso }), 'cuke_checked_gh'),
+    swallow(DataSource.fetchTable('lettuce_scheduled_ponds', { mode: 'prod', date: iso }), 'lettuce_scheduled_ponds'),
+  ]);
+  if (iso !== isoDate(refDate)) return;   // a newer date won the race
+  checkedGhRows     = gh    ? parseGvizTable(gh)    : [];
+  scheduledPondRows = ponds ? parseGvizTable(ponds) : [];
+  renderDataChecks();
+}
+
 function setDay(mode) {
   dayMode = mode;
   refDate = hstToday();
   if (mode === 'yesterday') refDate.setUTCDate(refDate.getUTCDate() - 1);
   syncControls();
   render();
+  reloadDayScoped();
 }
 
 function setDate(val) {
@@ -317,6 +337,7 @@ function setDate(val) {
   dayMode = 'date';
   syncControls();
   render();
+  reloadDayScoped();
 }
 
 function render() {
@@ -331,32 +352,30 @@ function render() {
   renderDataChecks();
 }
 
-// ── Data-quality checks (rules from prod; pre-op presence => harvest expected) ──
+// ── Data-quality checks ──
+// "What should have harvested today?" vs "what actually reported?".
+//   cuke    expected = greenhouses with any food-safety log filed that day
+//           (pre OR post -- one is enough to prove the house was in play)
+//   lettuce expected = ponds whose seed batches are due to harvest that day
+// Both are day-scoped fetches keyed off refDate, so changing the date re-queries
+// rather than loading a year up front. The previous version read a pre-op sheet
+// and, for lettuce, a hardcoded expectation of 7 ponds.
 function renderDataChecks() {
   const rd = refDate;
   const isRefDay = r => r._y === rd.getUTCFullYear() && r._m === (rd.getUTCMonth() + 1) && r._d === rd.getUTCDate();
   const evaluated = [];
   checkRules.forEach(rule => {
-    const preop = preopData[rule.preop_table] || [];
-    const dateCol = rule.preop_date_col || 'Checked Date';
-    const flagCol = rule.preop_flag_col || 'Approved to Harvest';
-    // Only an expectation on days the pre-op approved harvest.
-    const approvedRows = preop.filter(r => sameDay(r[dateCol], rd) && String(r[flagCol]).toLowerCase() === 'true');
-    if (!approvedRows.length) return;
-
-    // Expected count: a fixed number, or 'preop' = distinct members listed in
-    // the pre-op (e.g. the cuke Greenhouse(s) field).
-    let expected;
-    if (String(rule.expected).toLowerCase() === 'preop') {
-      const sep = rule.preop_members_sep || '+';
-      const set = new Set();
-      approvedRows.forEach(r => String(r[rule.preop_members_col] || '')
-        .split(sep).map(s => s.trim()).filter(Boolean).forEach(m => set.add(m)));
-      expected = set.size;
-    } else {
-      expected = Number(rule.expected) || 0;
+    let expected = 0;
+    if (rule.harvest_key === 'cuke') {
+      // The view already de-duplicates per day; sum in case of multiple rows.
+      expected = checkedGhRows.filter(isRefDay)
+        .reduce((n, r) => Math.max(n, Number(r.Count) || 0), 0);
+    } else if (rule.harvest_key === 'lettuce') {
+      expected = new Set(scheduledPondRows.filter(isRefDay)
+        .map(r => String(r.Site || '').trim()).filter(Boolean)).size;
     }
-    if (!expected) return; // can't determine an expectation -> skip
+    // Nothing was due -> no expectation, so nothing to flag.
+    if (!expected) return;
 
     // Actual: distinct values of the dimension in that day's harvest rows.
     const rows = (HARVEST_ROWS[rule.harvest_key] || (() => []))().filter(isRefDay);
@@ -1294,8 +1313,12 @@ async function loadData() {
     swallow(DataSource.fetchTable('fsafe_ca', { mode: 'prod' }), 'fsafe_ca'),
     swallow(DataSource.fetchTable('lettuce_pack_orders', { mode: 'prod' }), 'lettuce_pack_orders'),
     swallow(DataSource.fetchTable('data_check_rule', { mode: 'prod' }), 'data_check_rule'),
-    swallow(DataSource.fetchTable('fsafe_cuke_preop', { mode: 'prod' }), 'fsafe_cuke_preop'),
-    swallow(DataSource.fetchTable('fsafe_lettuce_preop', { mode: 'prod' }), 'fsafe_lettuce_preop'),
+    // Day-scoped: only the reference date is fetched. setDate()/setDay()
+    // re-query these two rather than the page holding a year of history.
+    swallow(DataSource.fetchTable('cuke_checked_gh',
+      { mode: 'prod', date: isoDate(refDate) }), 'cuke_checked_gh'),
+    swallow(DataSource.fetchTable('lettuce_scheduled_ponds',
+      { mode: 'prod', date: isoDate(refDate) }), 'lettuce_scheduled_ponds'),
     // PH weight is Supabase-only, so always fetch from prod regardless of the
     // page's data-source toggle (mirrors lettuce_pack_orders). Scope to the
     // real org and drop soft-deleted rows.
@@ -1356,8 +1379,8 @@ async function loadData() {
   checkRules = ruleTable
     ? parseGvizTable(ruleTable).filter(r => r.is_active !== false && String(r.is_active).toLowerCase() !== 'false')
     : [];
-  preopData['fsafe_cuke_preop']    = cukePreopTable ? parseGvizTable(cukePreopTable) : [];
-  preopData['fsafe_lettuce_preop'] = lettPreopTable ? parseGvizTable(lettPreopTable) : [];
+  checkedGhRows     = cukePreopTable ? parseGvizTable(cukePreopTable) : [];
+  scheduledPondRows = lettPreopTable ? parseGvizTable(lettPreopTable) : [];
 
   // The gallery always shows each crop's latest photo day, so it is rendered
   // once here rather than from render() with the rest of the date-driven page.
