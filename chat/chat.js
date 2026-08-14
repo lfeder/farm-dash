@@ -364,6 +364,16 @@
     bubble.textBuf = '';
   }
 
+  /**
+   * Queries collapse to a one-line summary. A turn can run a dozen of them and
+   * the prose answer is the deliverable — the rows are evidence you open when
+   * you want to check the work.
+   */
+  function setToolOpen(node, open) {
+    node.querySelector('.tool-detail').hidden = !open;
+    node.querySelector('.tool-caret').textContent = open ? '▾' : '▸';
+  }
+
   function addToolPart(bubble, { id, sql, purpose }) {
     closeTextRun(bubble);
     const node = document.createElement('div');
@@ -371,11 +381,17 @@
     node.innerHTML = `
       <div class="tool-head">
         <span class="tool-spin"></span>
+        <span class="tool-caret">▸</span>
         <span class="tool-purpose">${esc(purpose)}</span>
         <span class="tool-meta"></span>
       </div>
-      <details class="tool-sql"><summary>sql</summary><pre>${esc(sql)}</pre></details>
-      <div class="tool-body"></div>`;
+      <div class="tool-detail" hidden>
+        <details class="tool-sql"><summary>sql</summary><pre>${esc(sql)}</pre></details>
+        <div class="tool-body"></div>
+      </div>`;
+    node.querySelector('.tool-head').onclick = () => {
+      setToolOpen(node, node.querySelector('.tool-detail').hidden);
+    };
     bubble.parts.appendChild(node);
     if (id) bubble.toolNodes.set(id, node);
     scrollDown();
@@ -391,6 +407,9 @@
       meta.textContent = 'failed';
       node.querySelector('.tool-body').innerHTML =
         `<div class="err">${esc(evt.error)}</div>`;
+      // A failure is worth seeing without a click — Claude retries after it,
+      // and the message explains why the next query looks different.
+      setToolOpen(node, true);
       return;
     }
     meta.textContent = `${evt.row_count.toLocaleString()} row${evt.row_count === 1 ? '' : 's'} · ${evt.ms}ms`;
