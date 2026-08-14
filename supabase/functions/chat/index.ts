@@ -181,14 +181,32 @@ const TOOLS = [
 // ---------------------------------------------------------------------------
 
 /**
- * Business context: the semantic layer.
- *
- * This is deliberately thin right now. It is the highest-leverage place to
- * improve answer quality — see chat/org-knowledge.md and
- * chat/context-rank-keep.json for curated material to move in here. Anything
- * added above the cache breakpoint is billed at cache-read rates after the
- * first request, so length is cheap; being wrong is not.
+ * Facts about the environment, not about the business. These stay on: without
+ * the timezone the model silently answers "today" in UTC and is off by a day,
+ * and without the hr_* note a blocked query looks like a bug rather than policy.
  */
+const ENVIRONMENT_FACTS = `
+## Environment
+
+- Timezone is HST (UTC-10), no daylight saving. "Today" means the HST date —
+  \`(now() AT TIME ZONE 'Pacific/Honolulu')::date\`.
+- hr_* and app_hr_* tables are restricted and will reject any query. If a
+  question needs them, say so plainly rather than working around it.
+`.trim();
+
+/**
+ * The semantic layer. OFF until it has been refined — unvetted business claims
+ * in the prompt are worse than none, because the model will repeat them as
+ * fact without querying ("Costco is about half of revenue") and filter to
+ * categories that may not match how the data is actually keyed.
+ *
+ * To turn it back on, flip the flag. Curated material to grow it with lives in
+ * chat/org-knowledge.md and chat/context-rank-keep.json. It sits above the
+ * cache breakpoint, so length is nearly free after the first request in each
+ * window; accuracy is what costs.
+ */
+const USE_BUSINESS_CONTEXT = false;
+
 const BUSINESS_CONTEXT = `
 ## The business
 
@@ -226,7 +244,6 @@ cucumbers and lettuce, revenue over $10M/yr, all sold in-state.
 - sales_invoice_v is the general invoice feed. sales_invoice_edi_v is the one
   the sales page uses: 2025 from the frozen sales_invoice table, 2026 onward
   from QuickBooks. Use _edi_v when the question is about current sales figures.
-- Timezone is HST (UTC-10), no daylight saving. "Today" means the HST date.
 - Dollar and case figures live on invoice rows; pounds are usually derived
   from case counts via sales_product.case_net_weight — do not hardcode weights.
 
@@ -234,8 +251,6 @@ cucumbers and lettuce, revenue over $10M/yr, all sold in-state.
 
 - Arugula was tried and failed. An empty arugula result is correct.
 - Payroll arrives from a PEO as imported totals, not timeclock detail.
-- hr_* and app_hr_* tables are restricted and unreadable. If a question needs
-  them, say so plainly rather than working around it.
 - The cucumber properties have no weather station; the single station is on
   the lettuce farm.
 `.trim();
@@ -246,7 +261,7 @@ You are the analytics assistant for Hawaii Farming's internal dashboard. You
 answer questions about the farm's data by querying Postgres and explaining what
 you find.
 
-${BUSINESS_CONTEXT}
+${USE_BUSINESS_CONTEXT ? `${ENVIRONMENT_FACTS}\n\n${BUSINESS_CONTEXT}` : ENVIRONMENT_FACTS}
 
 ## Database schema (public schema)
 ${schemaText}
@@ -254,6 +269,8 @@ ${schemaText}
 ## How to work
 
 - Query first, then answer. Never guess at numbers you have not queried.
+- You have not been briefed on this business. Do not assume what a code, grade,
+  customer or product name means — look at the data and let it tell you.
 - Answer in prose. Lead with the finding — the number, the trend, the outlier —
   then the supporting detail. The user sees the table and chart alongside your
   text, so do not read the table back to them row by row.
@@ -261,13 +278,12 @@ ${schemaText}
   to drill in. That is what the tools are for.
 - If a query errors, read the Postgres message, fix the SQL, and retry.
 - If a result is empty or surprising, check your assumptions with another query
-  (wrong date range, wrong farm_id, wrong product code) before reporting it as
-  a finding.
+  (wrong date range, wrong filter, wrong code) before reporting it as a finding.
 - Chart anything with a time axis or a cross-category comparison.
 - Limit result sets to what answers the question. Aggregate in SQL rather than
   returning thousands of raw rows.
 - State the caveat when one matters: the date range you actually used, rows
-  excluded, a farm_id filter you applied. Be brief about it.
+  excluded, a filter you applied. Be brief about it.
 - If the data cannot answer the question, say that and say what would be needed.
   Do not substitute a near-miss answer without flagging it.
 `.trim();
