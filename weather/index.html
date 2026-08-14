@@ -380,9 +380,24 @@ function render() {
   }));
 
   const units = [...new Set(ds.map(d => d.unit))];
-  const timeFmt = grain !== 'day'
-    ? t => new Date(t).toISOString().slice(11, 16)
-    : t => { const d = new Date(t); return `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCFullYear()).slice(2)}`; };
+
+  // Axis labels follow the SPAN, not the bucket grain. Keying off the grain
+  // put clock times across a 30-day axis -- 30d buckets hourly, so every label
+  // read "17:20" with no hint of which day, and five ticks apart looked like an
+  // afternoon rather than a month.
+  const xs = ds.flatMap(d => d.data.map(p => p.x));
+  const span = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
+  const hhmm = t => new Date(t).toISOString().slice(11, 16);
+  const mmdd = t => { const d = new Date(t);
+    return `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`; };
+  const mmddyy = t => `${mmdd(t)}/${String(new Date(t).getUTCFullYear()).slice(2)}`;
+
+  const timeFmt = span <= 2 * DAY ? hhmm
+                : span <= 400 * DAY ? mmdd
+                : mmddyy;
+  // The tooltip names one point, so it carries the date AND the time whenever
+  // the bucket is finer than a day -- "21:00" alone is unreadable on a month.
+  const tipFmt = grain === 'day' ? mmddyy : t => `${mmdd(t)} ${hhmm(t)}`;
 
   if (chart) chart.destroy();
   chart = new Chart(document.getElementById('chart'), {
@@ -410,7 +425,7 @@ function render() {
         legend: { labels: { color: '#ccc', boxWidth: 10, usePointStyle: true, pointStyle: 'line' } },
         tooltip: {
           callbacks: {
-            title: items => timeFmt(items[0].parsed.x),
+            title: items => tipFmt(items[0].parsed.x),
             label: c => `${c.dataset.label}: ${(+c.parsed.y).toFixed(2)}`,
           },
         },
