@@ -77,7 +77,7 @@
 
 <script>
 // ---- Version stamp: bump on every edit (see lettuce-sched convention) ----
-const PAGE_VER = '08-10 09:35';
+const PAGE_VER = '08-15 11:20';
 document.getElementById('stamp').textContent = PAGE_VER;
 
 const SB = {
@@ -144,10 +144,41 @@ function activeGrain(cfg) {
   return (detail === 'raw' && detailAvailable(cfg)) ? 'min1' : cfg.grain;
 }
 
-// ---- State (defaults match the manager app: 30d / Avg / Dew Pt) ----
-let range = '30d';
-let stats = new Set(['avg']);
-let metrics = new Set(['Dew Pt']);
+// ---- State ----
+// First-load defaults: 24h / Avg + Max / 10 min / Wind Max. Whatever the
+// viewer last chose wins over these — see loadPrefs below.
+let range = '24h';
+let stats = new Set(['avg', 'max']);
+let metrics = new Set(['Wind Max']);
+
+// Remember the last settings per browser. Not per user: the page is served
+// static with the anon key and nobody signs in, so there is no account to key
+// this to. localStorage means a phone and a laptop each keep their own view.
+const PREFS_KEY = 'lf.weather.prefs.v1';
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({
+      range, detail, stats: [...stats], metrics: [...metrics],
+    }));
+  } catch { /* private mode, quota — the defaults still work */ }
+}
+
+// Anything unrecognised is dropped rather than trusted: a stored metric whose
+// column was since renamed would otherwise draw an empty chart with no clue why.
+function loadPrefs() {
+  let p;
+  try { p = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null'); } catch { return; }
+  if (!p) return;
+  if (RANGES.some(r => r.id === p.range)) range = p.range;
+  if (p.detail === 'auto' || p.detail === 'raw') detail = p.detail;
+  const s = (p.stats || []).filter(x => STATS.some(t => t.id === x));
+  if (s.length) stats = new Set(s);                 // never leave none selected
+  if (Array.isArray(p.metrics)) {
+    metrics = new Set(p.metrics.filter(x => METRICS.some(m => m.id === x)));
+  }
+}
+loadPrefs();
 let dayRows  = [];              // daily rollup, whole history -- always loaded
 const winCache = new Map();     // range id -> rows, fetched once per range
 let chart = null;
@@ -503,6 +534,9 @@ function buildBars() {
     wrap.appendChild(cap); wrap.appendChild(btns);
     mb.appendChild(wrap);
   });
+  // Every control change routes through here, so this is the one place that
+  // has to remember anything.
+  savePrefs();
 }
 
 // ---------------------------------------------------------------- boot
