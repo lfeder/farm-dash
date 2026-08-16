@@ -10,7 +10,6 @@
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
   #header { background: #16213e; padding: 10px 20px; border-bottom: 1px solid #0f3460; }
   #header h1 { font-size: 1.3rem; color: #4ecca3; display: inline-block; margin-right: 16px; }
-  #stamp { font-size: 0.72rem; color: #666; float: right; margin-top: 6px; }
   #loading { display: flex; align-items: center; justify-content: center; height: 70vh; font-size: 1.1rem; color: #4ecca3; }
   #err { padding: 20px; color: #ff7675; }
 
@@ -36,7 +35,6 @@
 
 <div id="header">
   <h1>Weather</h1>
-  <span id="stamp">08-10 09:35</span>
 </div>
 
 <div class="barrow" id="rangeBar">
@@ -68,21 +66,23 @@
 </div>
 
 <div id="note" style="display:none">
-  <b>Source:</b> <code>weather_daily_v</code> (24h reads <code>weather_10min_v</code>, 7d/30d <code>weather_hourly_v</code>, and 24h+1&nbsp;min <code>weather_1min_v</code>) — rollups of the Crodeon station
+  <b>Source:</b> <code>weather_daily_v</code> (1h and 24h+1&nbsp;min read <code>weather_1min_v</code>, 24h <code>weather_10min_v</code>, 7d/30d <code>weather_hourly_v</code>) — rollups of the Crodeon station
   (<code>edi_crodeon_weather</code>), pulled from the Crodeon API every 10&nbsp;min by
   <code>weather-sync.yml</code>. Times are HST wall-clock.
   <b>DLI 1d</b> is the day's PAR integral (mol/m²/day); <b>DLI 21d</b> is the trailing
-  21-day <i>average</i> of it — same units, so both plot on one scale. <b>Rain</b> is a rate, so it is integrated over time rather than summed —
-  a plain sum would scale with the sampling cadence. History before 05/07/26 is a
-  10-minute backfill; the live feed is 1-minute, and both integrate to the same
-  figures. Buckets with under 90% sensor coverage are drawn as gaps, not as low
+  21-day <i>average</i> of it — same units, so both plot on one scale. <b>Rain</b> is reported by the gauge as a running total that resets at
+  midnight UTC (2&nbsp;pm HST), so it is charted as the increment between readings —
+  totals are true accumulation and add up the same at any grain or date range.
+  History before 05/07/26 is a 10-minute backfill and the live feed is 1-minute;
+  increments make the two eras read the same. Note the rain scale is
+  uncalibrated — treat it as relative, not inches. Buckets with under 90% sensor coverage are drawn as gaps, not as low
   values — the PAR sensor was absent until 11/26/24 and ramping through Dec 2024.
 </div>
 
 <script>
-// ---- Version stamp: bump on every edit (see lettuce-sched convention) ----
-const PAGE_VER = '08-15 17:20';
-document.getElementById('stamp').textContent = PAGE_VER;
+// No per-page version stamp: the shell nav already shows one (index.html
+// #version), and this page was the last one still printing a second, manually
+// maintained one underneath it. Cache-busting is BUILD_VER in the shell.
 
 const SB = {
   url: 'https://zdvpqygiqavwpxljpvqw.supabase.co',
@@ -118,6 +118,13 @@ const GROUPS = ['Temp', 'Wind', 'Light', 'Humidity', 'Precip'];
 // 10 min is the finest grain that exists across the WHOLE record -- the live
 // feed is per-minute, but everything before 2026-05-07 was backfilled at 10.
 const RANGES = [
+  // 1h is the storm view: per-minute, no aggregation, ~60 points. `lead` is the
+  // extra span fetched before the window, in days -- the 1-day default used by
+  // every other range would pull ~1500 per-minute rows here, and this path does
+  // not page, so PostgREST's 1000-row cap would silently drop the NEWEST rows
+  // (the fetch is ordered ascending). One hour of lead-in is 120 rows.
+  { id: '1h',  label: '1h',  days: 1 / 24, grain: 'min1', lead: 1 / 24,
+    view: 'weather_1min_v',   ts: 'bucket_at' },   //  120 rows
   { id: '24h', label: '24h', days: 1,    grain: 'min10',
     view: 'weather_10min_v',  ts: 'bucket_at' },   //  144 rows
   { id: '7d',  label: '7d',  days: 7,    grain: 'hour',
@@ -256,12 +263,17 @@ async function loadWindow(cfg, lastMs, force) {
   // in JS, so arithmetic on it silently produced a ONE-DAY window and All drew
   // two points.
   const filter = cfg.days == null ? ''
-    : `&${ts}=gte.${new Date(lastMs - (cfg.days + 1) * DAY).toISOString().slice(0, 19)}`;
+    : `&${ts}=gte.${new Date(lastMs - (cfg.days + (cfg.lead ?? 1)) * DAY).toISOString().slice(0, 19)}`;
 
   const out = [];
   // Page whenever the window can exceed PostgREST's 1000-row cap: All (~600
-  // days and growing) and raw 24h (~1440 per-minute readings).
-  const pages = (cfg.days == null || raw);
+  // days and growing) and anything at per-minute grain -- raw 24h (~1440
+  // readings) and the 1h range. 1h looks small but `lastMs` is the last DAILY
+  // bucket, i.e. midnight, so its lower bound lands ~2h before midnight and the
+  // fetch still spans everything since: ~1300 rows by late afternoon. Ordered
+  // ascending, an unpaged fetch would drop the NEWEST rows -- the exact hour
+  // being asked for.
+  const pages = (cfg.days == null || raw || cfg.grain === 'min1');
   for (let off = 0; ; off += 1000) {
     const batch = await sbGet(
       `${view}?select=${sel}&org_id=eq.${ORG}${filter}` +
@@ -536,6 +548,7 @@ function buildBars() {
 
   document.getElementById('gDetail').title = canRaw
     ? 'Per-minute readings exist from 05/07/26 onward; earlier history is 10-minute.'
+    : range === '1h' ? 'The 1h range is already per-minute.'
     : 'Per-minute detail is only available on the 24h range.';
 
   const mb = document.getElementById('metricBar');
