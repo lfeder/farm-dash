@@ -77,7 +77,7 @@
 
 <script>
 // ---- Version stamp: bump on every edit (see lettuce-sched convention) ----
-const PAGE_VER = '08-15 11:20';
+const PAGE_VER = '08-15 16:55';
 document.getElementById('stamp').textContent = PAGE_VER;
 
 const SB = {
@@ -235,10 +235,12 @@ async function loadDaily() {
 
 // One request for a range's own window, at its own grain. Cached per range, so
 // switching back and forth costs nothing.
-async function loadWindow(cfg, lastMs) {
+async function loadWindow(cfg, lastMs, force) {
   const raw = detail === 'raw' && detailAvailable(cfg);
   const key = cfg.id + (raw ? ':raw' : '');
-  if (winCache.has(key)) return winCache.get(key);
+  // `force` refetches but leaves the old rows in the cache until the new ones
+  // land, so a live refresh never blanks the chart back to the daily fallback.
+  if (!force && winCache.has(key)) return winCache.get(key);
 
   const view = raw ? 'weather_1min_v' : cfg.view;
   const ts   = raw ? 'bucket_at'      : cfg.ts;
@@ -544,11 +546,16 @@ function buildBars() {
 
 let pending = null;
 
+function winKey() {
+  const cfg = RANGES.find(r => r.id === range);
+  return cfg.id + (detail === 'raw' && detailAvailable(cfg) ? ':raw' : '');
+}
+
 // Fetch the window the current range + detail needs, if it is not cached yet,
 // then repaint. The daily rows are already on screen meanwhile.
 function ensureWindow() {
   const cfg = RANGES.find(r => r.id === range);
-  const key = cfg.id + (detail === 'raw' && detailAvailable(cfg) ? ':raw' : '');
+  const key = winKey();
   if (winCache.has(key) || pending === key) return;
   pending = key;
   const last = dayRows.length ? dayRows[dayRows.length - 1].t : Date.now();
@@ -557,6 +564,45 @@ function ensureWindow() {
     .catch(() => {})
     .finally(() => { if (pending === key) pending = null; });
 }
+
+// ---- Live refresh -------------------------------------------------------
+// winCache is fetch-once-per-key and nothing used to invalidate it, so an open
+// tab froze at load time. During the 08/15/26 hurricane the 10-min chart sat
+// ~90 minutes behind the 1-min one purely because the 1-min key happened to be
+// fetched later -- 48 mph on screen against a real 70. A weather page that
+// silently stops updating is worse than one that fails loudly, so: repoll while
+// the tab is visible, and immediately when it regains focus.
+const REFRESH_MS       = 60e3;          // the feed writes once a minute
+const DAILY_REFRESH_MS = 10 * 60e3;     // whole-history rollup: slow-moving and
+                                        // costly, and its matview is itself
+                                        // only refreshed by pg_cron every 10m
+let lastDailyFetch = Date.now();
+let refreshing = false;
+
+async function refresh() {
+  if (refreshing || document.visibilityState !== 'visible') return;
+  refreshing = true;
+  try {
+    if (Date.now() - lastDailyFetch >= DAILY_REFRESH_MS) {
+      const rows = await loadDaily();
+      if (rows.length) dayRows = rows;
+      lastDailyFetch = Date.now();
+    }
+    // Only the window actually on screen. Refreshing every cached range would
+    // re-run each view over all ~200k raw rows for charts nobody is looking at.
+    const key = winKey();
+    const cfg = RANGES.find(r => r.id === range);
+    const last = dayRows.length ? dayRows[dayRows.length - 1].t : Date.now();
+    await loadWindow(cfg, last, true);
+    if (winKey() === key) render();     // bail if they switched range mid-fetch
+  } catch { /* transient network -- the next tick retries */ }
+  finally { refreshing = false; }
+}
+
+setInterval(refresh, REFRESH_MS);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') refresh();
+});
 
 (async function boot() {
   try {
