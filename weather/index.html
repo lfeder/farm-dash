@@ -52,6 +52,10 @@
     <span class="cap">Detail</span>
     <div class="btns" id="bDetail"></div>
   </div>
+  <div class="grp" id="gLive">
+    <span class="cap">Updates</span>
+    <div class="btns" id="bLive"></div>
+  </div>
 </div>
 
 <div class="barrow" id="metricBar"></div>
@@ -77,7 +81,7 @@
 
 <script>
 // ---- Version stamp: bump on every edit (see lettuce-sched convention) ----
-const PAGE_VER = '08-15 16:55';
+const PAGE_VER = '08-15 17:20';
 document.getElementById('stamp').textContent = PAGE_VER;
 
 const SB = {
@@ -150,6 +154,8 @@ function activeGrain(cfg) {
 let range = '24h';
 let stats = new Set(['avg', 'max']);
 let metrics = new Set(['Wind Max']);
+let live = false;               // storm mode -- see "Live mode" below
+let lastRefresh = null;         // ms of the last successful live refetch
 
 // Remember the last settings per browser. Not per user: the page is served
 // static with the anon key and nobody signs in, so there is no account to key
@@ -159,7 +165,7 @@ const PREFS_KEY = 'lf.weather.prefs.v1';
 function savePrefs() {
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify({
-      range, detail, stats: [...stats], metrics: [...metrics],
+      range, detail, live, stats: [...stats], metrics: [...metrics],
     }));
   } catch { /* private mode, quota — the defaults still work */ }
 }
@@ -172,6 +178,7 @@ function loadPrefs() {
   if (!p) return;
   if (RANGES.some(r => r.id === p.range)) range = p.range;
   if (p.detail === 'auto' || p.detail === 'raw') detail = p.detail;
+  if (typeof p.live === 'boolean') live = p.live;
   const s = (p.stats || []).filter(x => STATS.some(t => t.id === x));
   if (s.length) stats = new Set(s);                 // never leave none selected
   if (Array.isArray(p.metrics)) {
@@ -512,6 +519,21 @@ function buildBars() {
     if (!canRaw) { b.style.opacity = '0.35'; b.style.cursor = 'default'; }
     db.appendChild(b);
   });
+  // Live: off by default, on for storms. Shows the last refresh time while on,
+  // so a chart that has quietly stopped updating is visible rather than assumed
+  // current -- the whole failure this was built for.
+  const lb = document.getElementById('bLive');
+  lb.innerHTML = '';
+  const hhmm = t => new Date(t).toTimeString().slice(0, 5);
+  const liveBtn = mkBtn(live ? `Live · ${hhmm(lastRefresh || Date.now())}` : 'Live', live, '', () => {
+    live = !live; buildBars(); applyLive();
+  });
+  if (live) { liveBtn.style.background = '#e17055'; liveBtn.style.borderColor = '#e17055'; }
+  lb.appendChild(liveBtn);
+  document.getElementById('gLive').title = live
+    ? 'Refetching every minute while this tab is visible. Time shown is the last successful update.'
+    : 'Off: the chart shows data as of page load. Turn on during storms to refetch every minute.';
+
   document.getElementById('gDetail').title = canRaw
     ? 'Per-minute readings exist from 05/07/26 onward; earlier history is 10-minute.'
     : 'Per-minute detail is only available on the 24h range.';
@@ -565,22 +587,30 @@ function ensureWindow() {
     .finally(() => { if (pending === key) pending = null; });
 }
 
-// ---- Live refresh -------------------------------------------------------
-// winCache is fetch-once-per-key and nothing used to invalidate it, so an open
-// tab froze at load time. During the 08/15/26 hurricane the 10-min chart sat
-// ~90 minutes behind the 1-min one purely because the 1-min key happened to be
-// fetched later -- 48 mph on screen against a real 70. A weather page that
-// silently stops updating is worse than one that fails loudly, so: repoll while
-// the tab is visible, and immediately when it regains focus.
+// ---- Live mode ----------------------------------------------------------
+// winCache is fetch-once-per-key and nothing invalidates it, so an open tab
+// shows whatever was true when it loaded. During the 08/15/26 hurricane the
+// 10-min chart sat ~90 minutes behind the 1-min one purely because the two
+// grains are different cache keys and the 1-min one happened to be fetched
+// later -- 48 mph on screen against a real 70.
+//
+// Fixed with an explicit LIVE toggle rather than always-on polling (Lenny's
+// call): the page is normally read a few times a day, where repolling forever
+// is pure waste, but during a storm it is watched continuously and staleness is
+// dangerous. Off by default, and it survives reload so a wall display stays
+// live once switched on.
 const REFRESH_MS       = 60e3;          // the feed writes once a minute
 const DAILY_REFRESH_MS = 10 * 60e3;     // whole-history rollup: slow-moving and
                                         // costly, and its matview is itself
                                         // only refreshed by pg_cron every 10m
 let lastDailyFetch = Date.now();
 let refreshing = false;
+let liveTimer = null;
 
 async function refresh() {
-  if (refreshing || document.visibilityState !== 'visible') return;
+  // Skip while hidden: a backgrounded tab polling all night helps nobody, and
+  // the visibilitychange handler catches it up the moment it is looked at.
+  if (refreshing || !live || document.visibilityState !== 'visible') return;
   refreshing = true;
   try {
     if (Date.now() - lastDailyFetch >= DAILY_REFRESH_MS) {
@@ -594,12 +624,17 @@ async function refresh() {
     const cfg = RANGES.find(r => r.id === range);
     const last = dayRows.length ? dayRows[dayRows.length - 1].t : Date.now();
     await loadWindow(cfg, last, true);
-    if (winKey() === key) render();     // bail if they switched range mid-fetch
+    if (winKey() === key) { lastRefresh = Date.now(); render(); buildBars(); }
   } catch { /* transient network -- the next tick retries */ }
   finally { refreshing = false; }
 }
 
-setInterval(refresh, REFRESH_MS);
+// Single owner of the timer, so toggling twice cannot leave two running.
+function applyLive() {
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+  if (live) { liveTimer = setInterval(refresh, REFRESH_MS); refresh(); }
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') refresh();
 });
@@ -616,6 +651,7 @@ document.addEventListener('visibilitychange', () => {
     // Daily is on screen; pull the current range's own window in the
     // background and repaint when it lands.
     ensureWindow();
+    applyLive();          // resume live mode if it was left on
   } catch (e) {
     document.getElementById('loading').style.display = 'none';
     const el = document.getElementById('err');
