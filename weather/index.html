@@ -348,11 +348,12 @@ function seriesFor(buckets, grain, dayBuckets) {
     if (!metrics.has(m.id)) continue;
 
     if (m.agg === 'sum') {
-      // Rain is a RATE held constant between updates, not a per-reading
-      // increment, so `rain_sum` is its time integral (rate x gap) rather than
-      // a plain sum. That keeps the 10-minute backfill and the 1-minute live
-      // era on the same scale -- a naive sum would read 6x higher after
-      // 05/07/26 for identical weather.
+      // `outside_rain` is a CUMULATIVE counter that resets at 00:00 UTC
+      // (14:00 HST), NOT a rate -- every decrease in the whole history lands on
+      // that reset. The views turn it into per-reading increments, so `rain_sum`
+      // is a true accumulation and is additive across buckets: summing it here
+      // at any grain gives the same total as the daily (Hawaii-day) rollup, and
+      // the 10-minute backfill and 1-minute live eras stay on the same scale.
       const isDli = m.col === 'dli';
       const src = isDli ? dayBuckets : buckets;
       const g   = isDli ? 'day' : grain;
