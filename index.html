@@ -46,7 +46,7 @@
   <span class="brand">Dash</span>
   <div class="tabs" id="tabs"></div>
   <select class="picker" id="picker" aria-label="Dashboard"></select>
-  <span id="version" style="margin-left:auto;font-size:0.7rem;color:#e0e0e0"></span>
+  <span id="version" style="display:none;margin-left:auto;font-size:0.7rem;color:#e0e0e0"></span>
 </nav>
 <div class="frame-container" id="frames"></div>
 <script>
@@ -73,7 +73,7 @@ const iframes = {};
 
 // Bump on deploy to bust the browser's cache of the iframe sub-pages (they have
 // no other cache-busting, so otherwise a stale copy lingers after a push).
-const BUILD_VER = '20260817a';
+const BUILD_VER = '20260817b';
 
 // Each sub-page pins its own data sources now (no global sheets/prod toggle),
 // so we only append the cache-busting version.
