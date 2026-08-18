@@ -961,7 +961,12 @@ function renderCard(name, opts) {
         gh.sides[side].forEach(e => {
             const len = e.bags * BAG_PX;
             const tipV = e.split ? `${e.split[0]}/${e.split[1]}` : e.variety;
-            const tip = `Row ${e.row_num} · ${tipV} · ${e.bags} bags · ${e.total_plants} plants`;
+            // One line per field rather than a single ·-joined run: the flat form was
+            // as wide as the tooltip's max-width and got clipped on a phone. The \\n is
+            // literal here on purpose — it stays two characters through the HTML
+            // attribute and only becomes a newline when the browser parses the
+            // handler as JS, which is what showTooltip turns into <br>.
+            const tip = `Row ${e.row_num}\\n${tipV}\\n${e.bags} bags\\n${e.total_plants} plants`;
             const sc0 = e.splitColors ? e.splitColors[0] : (COLORS[e.split && e.split[0]] || '#888');
             const sc1 = e.splitColors ? e.splitColors[1] : (COLORS[e.split && e.split[1]] || '#888');
             const bg = e.split
