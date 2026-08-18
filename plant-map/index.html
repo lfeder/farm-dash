@@ -236,7 +236,7 @@ body {
     pointer-events: none;
     z-index: 1000;
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    max-width: 350px;
+    max-width: min(350px, calc(100vw - 16px));
     display: none;
 }
 
@@ -792,7 +792,12 @@ function renderHeader() {
 }
 
 // Uniform sizing: each row is ROW_W px thick, each bag adds BAG_PX to the row length
-const ROW_W = 6;   // px — thickness of one row
+// 6px is a mouse target, not a finger one — on a phone the rows were essentially
+// untappable. Touch devices (pointer: coarse) get a thicker row; the map grows
+// with it, which is the trade for being able to hit a row at all. Pointer type,
+// not width, because a narrow desktop window still has a precise cursor.
+const TOUCH = window.matchMedia('(pointer: coarse)').matches;
+const ROW_W = TOUCH ? 14 : 6;   // px — thickness of one row
 const BAG_PX = 6;  // px — length per bag
 const SIDE_GAP = 8; // px — sidewalk gap between sides
 
@@ -1224,8 +1229,13 @@ function renderPopup() {
     // Adjust if off-screen
     requestAnimationFrame(() => {
         const r = popup.getBoundingClientRect();
-        if (r.bottom > window.innerHeight) popup.style.top = (POPUP_POS.y - r.height - 8) + 'px';
-        if (r.right > window.innerWidth) popup.style.left = (POPUP_POS.x - r.width) + 'px';
+        let x = POPUP_POS.x, y = POPUP_POS.y;
+        if (r.bottom > window.innerHeight) y = POPUP_POS.y - r.height - 8;
+        if (r.right > window.innerWidth) x = POPUP_POS.x - r.width;
+        // Clamp, for the same reason as the tooltip: on a phone the edit popup
+        // is wider than the tap gap and the bare flip sent it off the left edge.
+        popup.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+        popup.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
     });
 }
 
@@ -1366,10 +1376,15 @@ function moveTooltip(e) {
     const tip = document.getElementById('tooltip');
     let x = e.clientX + 12;
     let y = e.clientY + 12;
-    // Keep on screen
+    // Keep on screen. The flip alone used to push the tooltip off the LEFT edge
+    // on a phone: a 350px-wide tip tapped at x=200 on a 390px screen flips to
+    // 200-350-12 = -162. Flip first, then clamp into the viewport, so a tooltip
+    // wider than the gap it has lands at the edge instead of outside it.
     const rect = tip.getBoundingClientRect();
     if (x + rect.width > window.innerWidth) x = e.clientX - rect.width - 12;
     if (y + rect.height > window.innerHeight) y = e.clientY - rect.height - 12;
+    x = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8));
+    y = Math.max(8, Math.min(y, window.innerHeight - rect.height - 8));
     tip.style.left = x + 'px';
     tip.style.top = y + 'px';
 }

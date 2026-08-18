@@ -14,6 +14,28 @@
   nav .tab { padding: 0 16px; height: 100%; display: flex; align-items: center; cursor: pointer; color: #888; font-size: 0.85rem; font-weight: 500; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
   nav .tab:hover { color: #ccc; }
   nav .tab.active { color: #4ecca3; border-bottom-color: #4ecca3; }
+  nav .picker { display: none; }
+  /* Phone: 12 tabs is ~1150px of nav, three times a phone's width, and the row
+     neither wraps nor scrolls — everything past the fourth tab was unreachable.
+     Below 700px the tabs collapse into a native <select>, which opens the OS
+     picker showing all 12 at once. Desktop keeps the tab row untouched. */
+  @media (max-width: 700px) {
+    nav { padding: 0 12px; gap: 10px; }
+    nav .brand { margin-right: 0; }
+    nav .tabs { display: none; }
+    nav .picker {
+      display: block; flex: 1; min-width: 0; max-width: 100%;
+      background: #0f3460; color: #e0e0e0; border: 1px solid #2a3a5e;
+      border-radius: 6px; padding: 7px 10px; font-size: 0.9rem;
+      font-family: inherit; -webkit-appearance: none; appearance: none;
+      /* appearance:none drops the native caret, which is the only cue the
+         control opens something — draw one back in. */
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%234ecca3'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
+    }
+  }
   .frame-container { flex: 1; position: relative; }
   .frame-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; display: none; }
   .frame-container iframe.active { display: block; }
@@ -23,6 +45,7 @@
 <nav>
   <span class="brand">Dash</span>
   <div class="tabs" id="tabs"></div>
+  <select class="picker" id="picker" aria-label="Dashboard"></select>
   <span id="version" style="margin-left:auto;font-size:0.7rem;color:#e0e0e0"></span>
 </nav>
 <div class="frame-container" id="frames"></div>
@@ -44,12 +67,13 @@ const DASHBOARDS = [
 ];
 
 const tabs = document.getElementById('tabs');
+const picker = document.getElementById('picker');
 const framesEl = document.getElementById('frames');
 const iframes = {};
 
 // Bump on deploy to bust the browser's cache of the iframe sub-pages (they have
 // no other cache-busting, so otherwise a stale copy lingers after a push).
-const BUILD_VER = '20260815a';
+const BUILD_VER = '20260817a';
 
 // Each sub-page pins its own data sources now (no global sheets/prod toggle),
 // so we only append the cache-busting version.
@@ -78,6 +102,9 @@ function navigate(id) {
   document.querySelectorAll('.tab').forEach(t =>
     t.classList.toggle('active', t.dataset.id === dash.id)
   );
+  // The picker is the same navigation in a phone-shaped control, so it has to
+  // follow hash changes and aliases too — not just its own change event.
+  picker.value = dash.id;
 }
 
 DASHBOARDS.forEach(d => {
@@ -87,7 +114,14 @@ DASHBOARDS.forEach(d => {
   el.textContent = d.label;
   el.onclick = () => navigate(d.id);
   tabs.appendChild(el);
+
+  const opt = document.createElement('option');
+  opt.value = d.id;
+  opt.textContent = d.label;
+  picker.appendChild(opt);
 });
+
+picker.addEventListener('change', () => navigate(picker.value));
 
 navigate(location.hash.slice(1) || DASHBOARDS[0].id);
 window.addEventListener('hashchange', () => navigate(location.hash.slice(1)));
