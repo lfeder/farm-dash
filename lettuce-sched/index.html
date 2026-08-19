@@ -133,7 +133,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">08-11 09:20</span>
+  <span id="versionStamp" style="display:none">08-18 00:00</span>
 </div>
 
 <div id="content" class="wide">
@@ -407,7 +407,10 @@ function renderGantt(today) {
     const capX = capR * ROW_PX;
     const pondH = pond === 'P1' ? POND_H / 2 : POND_H;
 
-    const sideOrd = s => ({ AB: 0, A: 1, B: 2, C: 3 }[(s || '').trim().toUpperCase()] ?? 4);
+    // Lane stacking order, top to bottom. P3's divider was physically moved
+    // (2026-08-18): C now sits ABOVE A, so P3 reads C (1 bd) / A (10) / B (9).
+    const ORD = pond === 'P3' ? { AB: 0, C: 1, A: 2, B: 3 } : { AB: 0, A: 1, B: 2, C: 3 };
+    const sideOrd = s => ORD[(s || '').trim().toUpperCase()] ?? 4;
     let sides = [...new Set(cycles.filter(c => c.pond === pond).map(c => c.side))]
       .sort((a, b) => sideOrd(a) - sideOrd(b) || String(a).localeCompare(String(b)));
     // A/B↔AB transition: when a pond has BOTH an AB lane and A/B lanes, don't
