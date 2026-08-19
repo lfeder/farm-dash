@@ -133,7 +133,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">08-18 00:00</span>
+  <span id="versionStamp" style="display:none">08-18 16:30</span>
 </div>
 
 <div id="content" class="wide">
@@ -942,6 +942,15 @@ function builderGenerate() {
   const out = [], tsv = [], edits = [];
   bVizData = bVizPlan = {};
   let mism = 0, total = 0, minFillTxt = [];
+  // Runaway-deferral guard. A deferral adds boards to the NEXT event, which can
+  // push that event over target too — so it defers again, and the excess walks
+  // the whole lane (every harvest one event late). Board totals still balance
+  // and the lane still reads full, so nothing downstream catches it; that is
+  // exactly what happened to P3A on 2026-08-07. Cap how many times a cohort can
+  // be pushed, and shout when a chain is long enough to be a cascade.
+  const MAX_DEFER_HOPS = 1;   // a cohort may be left on the pond at most once
+  const DEFER_RUN_WARN = 3;   // consecutive deferring events that look like a cascade
+  const warnTxt = [];
   document.querySelectorAll('#bLanes tr[data-lane]').forEach(tr => {
     if (!tr.querySelector('.bl-inc').checked) return;
     const lane = tr.dataset.lane;
@@ -994,6 +1003,7 @@ function builderGenerate() {
       phase = bestK;
     }
     let fill = cap, minFill = cap;
+    let deferRun = 0, maxDeferRun = 0, deferBlocked = 0;   // cascade guard state
     const blankPool = [];   // blank boards on the pond, FIFO; harvest date flexible
     const emit = (b, days, blank) => {
       const harv = new Date(d.getTime() + days * DAY);
@@ -1012,6 +1022,7 @@ function builderGenerate() {
         const target = seq[phase % seq.length] * w;
         const before = out.length;
         let onToday = 0;
+        let deferredToday = 0;
         let offUsed = Math.round(off[ymd(d)] || 0);   // boards actually coming off today
         if (mode === 'split') {
           // Farm-practice splits between ADJACENT harvest events only:
@@ -1030,16 +1041,24 @@ function builderGenerate() {
             let excess = tot() - target;
             let nk = nextKey();
             if (!nk) { let nd = new Date(d.getTime() + DAY); while (!SLOT_DOW.includes(nd.getUTCDay())) nd = new Date(nd.getTime() + DAY); nk = ymd(nd); offC[nk] = offC[nk] || []; }
-            const byYoungest = ev.slice().sort((a2, b2) => (b2.p || '').localeCompare(a2.p || ''));
+            // Only boards that have not already been pushed this run are eligible:
+            // re-pushing the same boards is what turns one deferral into a cascade.
+            const byYoungest = ev.slice()
+              .filter(e2 => (e2.hops || 0) < MAX_DEFER_HOPS)
+              .sort((a2, b2) => (b2.p || '').localeCompare(a2.p || ''));
             for (const e2 of byYoungest) {
               if (excess <= 0) break;
               if (e2.b <= 0) continue;
               const mv = Math.min(e2.b, excess);
               e2.b -= mv; excess -= mv;
-              offC[nk].push({ label: e2.label, b: mv, gen: e2.gen, p: e2.p });
+              offC[nk].push({ label: e2.label, b: mv, gen: e2.gen, p: e2.p, hops: (e2.hops || 0) + 1 });
               off[nk] = (off[nk] || 0) + mv;
+              deferredToday += mv;
               edits.push({ lane, cohort: e2.label, boards: mv, from: k, to: nk, p: e2.p, kind: 'leave on pond — harvest with next event' });
             }
+            // Excess we refused to push rather than start a cascade: the event
+            // simply harvests heavy. Surfaced below instead of hidden.
+            if (excess > 0) deferBlocked += excess;
           } else if (tot() < target) {
             // Deficit: harvest early from the next event's OLDEST boards (they
             // are physically next at the harvest edge anyway).
@@ -1060,6 +1079,8 @@ function builderGenerate() {
           }
           off[k] = tot();                              // reshaped harvest for today
           offUsed = Math.round(off[k]);
+          if (deferredToday > 0) { deferRun++; if (deferRun > maxDeferRun) maxDeferRun = deferRun; }
+          else deferRun = 0;
           if (offUsed > 0) onToday = emit(offUsed, p.days[si]);
         } else if (mode === 'steady') {
           onToday = emit(target, p.days[si]);
@@ -1112,6 +1133,10 @@ function builderGenerate() {
       tsv.push([pondP, sideP, 'BLANK', 'BLANK', '', 0, bp.b, fmtUS(bp.ponded), fmtUS(bp.ponded), fmtUS(end)].join('\t'));
     });
     if (minFill < cap) minFillTxt.push(`${lane} dips to ${minFill}/${cap}`);
+    if (maxDeferRun >= DEFER_RUN_WARN)
+      warnTxt.push(`${lane}: ${maxDeferRun} harvest events in a row deferred — the template's rows/event probably does not match this lane. Check the pattern and phase before applying.`);
+    if (deferBlocked > 0)
+      warnTxt.push(`${lane}: ${Math.round(deferBlocked)} boards could not be reshaped without re-deferring boards already moved; those events harvest heavy.`);
   });
   // Fold results into the preview map data: apply split edits to existing
   // cohorts (move boards between harvest dates), then append generated rows.
@@ -1144,6 +1169,16 @@ function builderGenerate() {
   renderBMap();
   document.getElementById('bMapWrap').style.display = '';
   const modeName = { steady: 'steady pattern', match: 'match harvests', converge: 'converge', split: 'split harvests' }[mode];
+  // Balance / warning line. Previously computed and thrown away, which is how a
+  // whole-lane deferral cascade shipped unnoticed on 2026-08-07.
+  const bal = document.getElementById('bBalance');
+  const notes = [];
+  if (warnTxt.length) notes.push(`<b style="color:#b3402f">⚠ ${warnTxt.map(esc).join('<br>⚠ ')}</b>`);
+  if (minFillTxt.length) notes.push(`Fill: ${minFillTxt.map(esc).join('; ')}`);
+  notes.push(`${total} rows generated (${esc(modeName)})`
+    + (mism ? ` · <b style="color:#b3402f">${mism} events where boards on ≠ boards off</b>` : ' · every event balances'));
+  bal.innerHTML = notes.join('<br>');
+  document.getElementById('bPreviewWrap').style.display = '';
   // Harvest split edit list (existing rows to modify by hand / in Supabase later).
   const ed = document.getElementById('bEdits');
   if (edits.length) {

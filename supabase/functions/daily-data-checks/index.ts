@@ -101,6 +101,16 @@ async function restGet(path: string) {
 // carrying photos. Newer than what is stored -> replace that group's rows. Not
 // newer -> leave the prior set alone, so a day with no new photos keeps
 // yesterday's gallery up rather than blanking the tile.
+// Stable, human-readable photo label: lane + seeding date (e.g. "P3A 08/18").
+// Replaces the old batch_code string, which encoded the same facts plus stale
+// harvest dates and board counts.
+function photoLabel(b: any): string {
+  const lane = b.lane || "?";
+  const sd = String(b.seeding_date || "");
+  const md = sd.length >= 10 ? `${sd.slice(5, 7)}/${sd.slice(8, 10)}` : sd;
+  return md ? `${lane} ${md}` : lane;
+}
+
 async function refreshGallery(today: string) {
   const groups = await restGet("dash_crop_group?is_active=eq.true&select=*&order=sort_order");
   if (!Array.isArray(groups) || !groups.length) return [];
@@ -108,7 +118,11 @@ async function refreshGallery(today: string) {
   const since = daysBefore(today, GALLERY_WINDOW_DAYS);
   const [stored, batches, items] = await Promise.all([
     restGet("dash_crop_photo?select=group_id,gallery_date"),
-    restGet("grow_lettuce_seed_batch?select=harvest_date,batch_code,invnt_item_id," +
+    // lane + seeding_date replace batch_code here: batch_code is being retired
+    // from grow_lettuce_seed_batch (lane and variety now live in their own
+    // columns). dash_crop_photo.batch_code stays as the photo caption, but is
+    // now filled with a lane/seeding label rather than the old lineage string.
+    restGet("grow_lettuce_seed_batch?select=harvest_date,lane,seeding_date,invnt_item_id," +
             "grow_lettuce_seed_mix_id,final_photo_path" +
             "&final_photo_path=not.is.null&is_deleted=eq.false&org_id=eq.hawaii_farming" +
             `&harvest_date=gte.${since}&order=harvest_date.desc&limit=4000`),
@@ -149,13 +163,13 @@ async function refreshGallery(today: string) {
 
     const rows = mine
       .filter((b: any) => b.harvest_date === latest)
-      .sort((a: any, b: any) => String(a.batch_code || "").localeCompare(String(b.batch_code || "")))
+      .sort((a: any, b: any) => photoLabel(a).localeCompare(photoLabel(b)))
       .slice(0, GALLERY_MAX_PHOTOS)
       .map((b: any, seq: number) => ({
         group_id: g.id,
         photo_path: b.final_photo_path,
         gallery_date: latest,
-        batch_code: b.batch_code,
+        batch_code: photoLabel(b),
         cultivar: b.invnt_item_id || b.grow_lettuce_seed_mix_id,
         seq,
         refreshed_at: new Date().toISOString(),
