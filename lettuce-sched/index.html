@@ -133,7 +133,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">08-18 16:30</span>
+  <span id="versionStamp" style="display:none">08-18 17:15</span>
 </div>
 
 <div id="content" class="wide">
@@ -288,7 +288,6 @@ async function load() {
       seed, ponded, end,
       harv: parseUsDate(r.HarvestDate),
       exp: parseUsDate(r.ExpHarvestDate),
-      status: (r.Status || '').trim(),
     };
   }).filter(c => c.pond && c.seed && c.end && c.end > c.seed)
     // Keep only cycles active during 2026 (seeded by year-end, harvest in/after Jan).
