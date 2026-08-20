@@ -133,7 +133,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">08-19 11:05</span>
+  <span id="versionStamp" style="display:none">08-19 11:40</span>
 </div>
 
 <div id="content" class="wide">
@@ -470,8 +470,20 @@ function renderGantt(today) {
       used += r.h;
     });
 
+    // Sides that are no longer drawn (retired mid-transition — P4A/P4B once the
+    // pond merged to AB) can still have activity ON the as-of date: boards
+    // harvested that morning belong in the gutter and in the counts. Without
+    // this they vanish, and the pond reads as a phantom imbalance — P4 showed
+    // Harv 0 / Pond 180 on 2026-08-19. Attribute them to the pond's first
+    // surviving lane. `foldAB` already represents AB via abHalf, so exclude it.
+    const shownSides = new Set(rows.map(r => (r.side || '').trim().toUpperCase()));
+    if (foldAB) shownSides.add('AB');
+    const orphans = cycles.filter(c => c.pond === pond
+      && !shownSides.has((c.side || '').trim().toUpperCase()));
+
     let firstInPond = true;
-    rows.forEach(({ side, w, list, h: rowH }) => {
+    rows.forEach(({ side, w, list, h: rowH }, ri) => {
+      const mine = ri === 0 ? orphans : [];   // only the first lane adopts them
       // Right-anchored layout: everything tiles from the RIGHT edge, so every
       // lane's harvest edge lines up. Far right = harvested-today gutter, then
       // the pond (rightmost solid = next to cut), faded near-future to the left.
@@ -485,6 +497,7 @@ function renderGantt(today) {
         : `<div style="position:absolute;right:0;width:${GUT_W - 8}px;top:-4px;bottom:-2px;background:#f5f0eb"></div>`;
       // gutter: that day's cut cycles, one block each
       const cut = cycles.filter(c => c.pond === pond && c.side === side).concat(abHalf(side))
+        .concat(mine)
         .filter(c => dEq(c.end, today));
       cut.forEach(c => {
         const r = c.boards / w;
@@ -557,7 +570,7 @@ function renderGantt(today) {
       const trackW = Math.max(x, capX) + 40;
       maxTrackW = Math.max(maxTrackW, trackW);
       // Counts (boards) for this pond/side falling on the as-of date.
-      const all = cycles.filter(c => c.pond === pond && c.side === side).concat(abHalf(side));
+      const all = cycles.filter(c => c.pond === pond && c.side === side).concat(abHalf(side)).concat(mine);
       const nH = Math.round(all.filter(c => dEq(c.end, today)).reduce((s, c) => s + c.boards, 0)); // actual harvest if present, else expected
       const nP = Math.round(all.filter(c => dEq(c.ponded, today)).reduce((s, c) => s + c.boards, 0));
       const nS = Math.round(all.filter(c => dEq(c.seed, today)).reduce((s, c) => s + c.boards, 0));
