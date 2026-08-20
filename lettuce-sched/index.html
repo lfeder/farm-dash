@@ -133,7 +133,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">08-18 17:15</span>
+  <span id="versionStamp" style="display:none">08-19 11:05</span>
 </div>
 
 <div id="content" class="wide">
@@ -410,7 +410,14 @@ function renderGantt(today) {
     // (2026-08-18): C now sits ABOVE A, so P3 reads C (1 bd) / A (10) / B (9).
     const ORD = pond === 'P3' ? { AB: 0, C: 1, A: 2, B: 3 } : { AB: 0, A: 1, B: 2, C: 3 };
     const sideOrd = s => ORD[(s || '').trim().toUpperCase()] ?? 4;
-    let sides = [...new Set(cycles.filter(c => c.pond === pond).map(c => c.side))]
+    // End-of-day, same rule the blocks use below: a cycle is off the pond once
+    // its harvest date (actual if recorded, else expected) is on/before the
+    // as-of date. The lane LIST has to honour it too — otherwise one cohort
+    // harvesting today keeps its side alive, and on a pond mid A/B->AB merge
+    // that re-triggers the fold and draws two rows for a pond that is already
+    // a single AB lane (P4, 2026-08-19).
+    const onPondAsOf = c => !((c.harv || c.end) && (c.harv || c.end) <= today);
+    let sides = [...new Set(cycles.filter(c => c.pond === pond && onPondAsOf(c)).map(c => c.side))]
       .sort((a, b) => sideOrd(a) - sideOrd(b) || String(a).localeCompare(String(b)));
     // A/B↔AB transition: when a pond has BOTH an AB lane and A/B lanes, don't
     // draw a separate AB row — fold each AB cohort into the A and B rows as a
