@@ -108,6 +108,16 @@ const FARM_METRICS = [
   { id: 'lettuce_water_level_cm',   label: 'Water Level', uom: 'cm below top' },
 ];
 const FARM_TO_NUTRIENT = { lettuce_pond_ec: 'EC', lettuce_pond_ph: 'pH' };
+
+// How far back the probe series goes. The full history is ~883 days and 40,000
+// daily values, which is forty sequential 1,000-row pages before the section can
+// draw — the slowest thing on the page by a wide margin. Three months is ~4,000
+// rows in five pages.
+//
+// The cost: the dashed farm overlay on the lab charts only appears where the two
+// overlap, so a lab sample older than this window loses its probe comparison.
+// Widen FARM_WINDOW_DAYS if that matters more than the load time.
+const FARM_WINDOW_DAYS = 92;
 let farmData = [], farmLoaded = false, farmCharts = {}, showFarmOverlay = false;
 
 async function loadFarmData() {
@@ -115,11 +125,14 @@ async function loadFarmData() {
   const client = await DataSource.getClient();
   const PAGE = 1000;
   let page = 0;
+  const since = new Date(Date.now() - FARM_WINDOW_DAYS * 86400000)
+    .toISOString().slice(0, 10);
   while (true) {
     const { data, error } = await client
       .from('grow_lettuce_pond_reading_daily_v')
       .select('pond,reading_date,metric,reading')
       .in('metric', FARM_METRICS.map(m => m.id))
+      .gte('reading_date', since)
       .order('reading_date', { ascending: true })
       .range(page * PAGE, (page + 1) * PAGE - 1);
     if (error) throw error;
@@ -178,7 +191,8 @@ function renderFarmCharts() {
   const rows = farmData.filter(r => inRange(r) && ponds.includes(r.pond));
   const dates = [...new Set(rows.map(r => r._date.toISOString().slice(0, 10)))].sort();
   document.getElementById('farmInfo').textContent =
-    `${rows.length.toLocaleString()} daily values · ${dates.length} days · probes, not lab`;
+    `${rows.length.toLocaleString()} daily values · ${dates.length} days · ` +
+    `last ${Math.round(FARM_WINDOW_DAYS / 30)} months · probes, not lab`;
 
   for (const m of FARM_METRICS) {
     const card = document.createElement('div');
