@@ -385,12 +385,11 @@ function parseGvizGeneric(table) {
 }
 async function loadBudget() {
   if (budgetWeekRaw && budgetWeekRaw.length) return;
-  const [w, m, p, hc, hl, a, y, pf] = await Promise.all([
+  const [w, m, p, hw, a, y, pf] = await Promise.all([
     DataSource.fetchTable('budget_week_raw',       { mode: 'prod' }),
     DataSource.fetchTable('budget_month_raw',      { mode: 'prod' }),
     DataSource.fetchTable('budget_prices',         { mode: 'prod' }),
-    DataSource.fetchTable('grow_cuke_harvest_wk',    { mode: 'sheets' }), // grow lives in sheets, not prod
-    DataSource.fetchTable('grow_lettuce_harvest_wk', { mode: 'sheets' }),
+    DataSource.fetchTable('grow_harvest_weekly',   { mode: 'prod' }),
     DataSource.fetchTable('sales_actuals',         { mode: 'prod' }),
     DataSource.fetchTable('sales_actuals_ytd',     { mode: 'prod' }),
     DataSource.fetchTable('po_fill',               { mode: 'prod' }),
@@ -398,20 +397,10 @@ async function loadBudget() {
   budgetWeekRaw = parseGvizGeneric(w);
   budgetMonthRaw = parseGvizGeneric(m);
   budgetPrices = parseGvizGeneric(p)[0] || {};
-  harvestRows = buildHarvestRows(hc, hl);
+  harvestRows = buildHarvestRows(hw);
   budgetActuals = parseGvizGeneric(a);
   budgetActualsYtd = parseGvizGeneric(y);
   poFill = parseGvizGeneric(pf);
-}
-// gviz "Date(y,m,d)" (m is 0-indexed) -> iso-week parts, or null
-function gvizDateParts(v) {
-  const m = String(v).match(/Date\((\d+),(\d+),(\d+)/);
-  if (!m) return null;
-  const y = +m[1], mo = +m[2], d = +m[3];
-  const dt = new Date(Date.UTC(y, mo, d));
-  const t = new Date(dt); t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
-  const ys = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-  return { date: dt, isoyear: t.getUTCFullYear(), isoweek: Math.ceil(((t - ys) / 86400000 + 1) / 7), year: y, month: mo + 1 };
 }
 function isoWeekSunday(year, week) {
   const jan4 = new Date(Date.UTC(year, 0, 4)), mon0 = (jan4.getUTCDay() + 6) % 7;
@@ -422,18 +411,23 @@ const lettVariety = s => { s = (s || '').toLowerCase();
   return s.includes('watercress') ? 'W' : s.includes('runaway') ? 'A' : 'L'; };
 // Build weekly grown rows from the two grow sheets; drop each farm's trailing
 // incomplete week (its Sunday beyond the farm's latest harvest date).
-function buildHarvestRows(cukeTbl, lettTbl) {
-  const agg = new Map(), maxDate = {};
-  const add = (farm, variety, grade, parts, pounds) => {
-    if (!parts || !pounds) return;
-    const k = [parts.isoyear, parts.isoweek, parts.year, parts.month, farm, variety, grade].join('|');
-    if (!agg.has(k)) agg.set(k, { isoyear: parts.isoyear, isoweek: parts.isoweek, year: parts.year, month: parts.month, farm, variety, grade, pounds_grown: 0 });
-    agg.get(k).pounds_grown += pounds;
-    if (!maxDate[farm] || parts.date > maxDate[farm]) maxDate[farm] = parts.date;
-  };
-  parseGvizGeneric(cukeTbl).forEach(r => add('Cuke', r.Variety, parseInt(r.Grade) || 1, gvizDateParts(r.HarvestDate), +r.Pounds || 0));
-  parseGvizGeneric(lettTbl).forEach(r => add('Lettuce', lettVariety(r.SeedName), 1, gvizDateParts(r.HarvestDate), +r.Pounds || 0));
-  return [...agg.values()].filter(row => maxDate[row.farm] && isoWeekSunday(row.isoyear, row.isoweek) <= maxDate[row.farm]);
+function buildHarvestRows(weeklyTbl) {
+  // The view already aggregates to isoweek x farm x variety x grade, so this is
+  // the trim the page always applied and nothing else: drop weeks that run past
+  // the last week each farm actually harvested, so a partial current week does
+  // not read as a collapse in volume.
+  const rows = parseGvizGeneric(weeklyTbl).map(r => ({
+    isoyear: +r.isoyear, isoweek: +r.isoweek, year: +r.year, month: +r.month,
+    farm: r.farm, variety: r.variety, grade: +r.grade || 1,
+    pounds_grown: +r.pounds_grown || 0,
+  })).filter(r => r.pounds_grown);
+
+  const lastWeek = {};
+  rows.forEach(r => {
+    const wk = isoWeekSunday(r.isoyear, r.isoweek);
+    if (!lastWeek[r.farm] || wk > lastWeek[r.farm]) lastWeek[r.farm] = wk;
+  });
+  return rows.filter(r => isoWeekSunday(r.isoyear, r.isoweek) <= lastWeek[r.farm]);
 }
 function toggleBudgetPeriod() {
   budgetPeriod = budgetPeriod === 'weekly' ? 'monthly' : 'weekly';
