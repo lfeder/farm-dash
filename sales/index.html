@@ -407,10 +407,8 @@ function isoWeekSunday(year, week) {
   const sun = new Date(jan4); sun.setUTCDate(jan4.getUTCDate() - mon0 + (week - 1) * 7 + 6);
   return sun;
 }
-const lettVariety = s => { s = (s || '').toLowerCase();
-  return s.includes('watercress') ? 'W' : s.includes('runaway') ? 'A' : 'L'; };
-// Build weekly grown rows from the two grow sheets; drop each farm's trailing
-// incomplete week (its Sunday beyond the farm's latest harvest date).
+// Build weekly grown rows; drop each farm's trailing incomplete week (its
+// Sunday beyond the farm's latest harvest date).
 function buildHarvestRows(weeklyTbl) {
   // The view already aggregates to isoweek x farm x variety x grade, so this is
   // the trim the page always applied and nothing else: drop weeks that run past

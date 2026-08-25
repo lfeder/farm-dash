@@ -761,7 +761,7 @@ async function loadData() {
     DataSource.fetchTable('lettuce_pack_orders', {mode:'prod'}), // POs always from prod (sales_po_detail_v)
     DataSource.fetchTable('lettuce_harvest',     {mode}),
     DataSource.fetchTable('lettuce_grow_plan',   {mode}),
-    DataSource.fetchTable('lettuce_schedule', {mode:'sheets'}), // sheets-only; seeding table
+    DataSource.fetchTable('lettuce_schedule', { mode: 'prod' }),
   ]);
   if (oR.status==='fulfilled') cachedOrders  = oR.value;
   if (hR.status==='fulfilled') cachedHarvest = hR.value;
