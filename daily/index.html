@@ -62,6 +62,20 @@
   .gal-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .gal-count { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.62); color: #fff;
                font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; }
+  /* A tile with nothing to show still holds its place in the grid — an absent
+     tile would read as "that crop does not exist", which is a third meaning we
+     do not want. Missing is the louder of the two: someone can still go and
+     take the photo, where no harvest is simply the day's answer. */
+  .gal-empty { cursor: default; }
+  .gal-blank { display: flex; align-items: center; justify-content: center;
+    background: #eef0ee; border: 1px dashed #c9cec9; }
+  .gal-blank-txt { font-size: 0.82rem; font-weight: 600; letter-spacing: .01em;
+    color: #8a938a; text-align: center; padding: 0 10px; }
+  /* Amber only for the one somebody can still act on. No Harvest is just the
+     day's answer and stays neutral — colouring both would make the grid look
+     alarmed on a day when nothing was wrong. */
+  .gal-missing .gal-blank { background: #fdf3e8; border-color: #e6c9a0; }
+  .gal-missing .gal-blank-txt { color: #9a6a00; }
   .gal-meta { padding: 8px 10px; }
   .gal-name { font-size: 0.9rem; font-weight: 600; color: #333; }
   .gal-sub { font-size: 0.72rem; color: #888; margin-top: 2px; display: flex; justify-content: space-between; gap: 8px; }
@@ -1078,10 +1092,14 @@ function fmtGalleryDate(iso, opts) {
 function buildGalleryGroups(rows) {
   const byId = new Map();
   rows.forEach(r => {
-    if (!r.photo_path) return;
     if (!byId.has(r.group_id)) {
-      byId.set(r.group_id, { id: r.group_id, label: r.label, sort: +r.sort_order || 0, date: r.gallery_date, photos: [] });
+      byId.set(r.group_id, { id: r.group_id, label: r.label, sort: +r.sort_order || 0,
+        date: r.gallery_date, status: r.status || (r.photo_path ? 'ok' : 'no_harvest'), photos: [] });
     }
+    // A photo-less row is the group's whole answer — it carries the status and
+    // nothing to show. Only real photos go in the array, so photos.length still
+    // means what it says everywhere below.
+    if (!r.photo_path) return;
     byId.get(r.group_id).photos.push({
       path: r.photo_path, batch: r.batch_code || '', cultivar: r.cultivar || '', seq: +r.seq || 0,
     });
@@ -1100,6 +1118,23 @@ function renderGallery() {
     return;
   }
   galleryGroups.forEach(g => {
+    // Nothing to open when there is no photo: the tile is the whole message, so
+    // it renders as a plain div rather than a button that does nothing.
+    if (!g.photos.length) {
+      const note = document.createElement('div');
+      const missing = g.status === 'photo_missing';
+      note.className = 'gal-tile gal-empty' + (missing ? ' gal-missing' : '');
+      note.innerHTML =
+        `<div class="gal-thumb gal-blank"><span class="gal-blank-txt">` +
+          (missing ? 'Photo Missing' : 'No Harvest') +
+        `</span></div>` +
+        `<div class="gal-meta">` +
+          `<div class="gal-name">${escapeHtml(g.label)}</div>` +
+          `<div class="gal-sub"><span>${fmtGalleryDate(g.date)}</span></div>` +
+        `</div>`;
+      grid.appendChild(note);
+      return;
+    }
     const hero = g.photos[0];
     const tile = document.createElement('button');
     tile.className = 'gal-tile';
