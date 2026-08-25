@@ -1,8 +1,13 @@
 // Nightly data-quality checks for the Daily dashboard.
 // Runs at 5pm HST (03:00 UTC) via pg_cron, evaluates each active rule in
 // data_check_rule against the live sheet data, upserts results to
-// data_check_result and (optionally)
-// emails a summary with a dashboard link.
+// data_check_result and (optionally) emails a summary with a dashboard link.
+//
+// Two kinds of rule. min_distinct_count reads a pre-op sheet for what was
+// expected and counts what the harvest sheet recorded. photo_logged asks
+// dash_crop_harvest_v whether a crop was cut that day and whether a photo came
+// with it — same question the dashboard tile answers, asked here so it reaches
+// the mail rather than waiting to be noticed.
 //
 // Mirrors the dashboard's client-side check engine. Sheet/column specifics live
 // in CROP below — keep in sync with lib/data-source.js if the sheets change.
@@ -43,7 +48,31 @@ async function gviz(sheet: string, tab: string, query: string): Promise<string[]
   return text.trim().split("\n").filter(Boolean).map(l => l.replace(/^"|"$/g, "").split('","'));
 }
 
+// "Harvested but nobody photographed it" — the same question the dashboard tile
+// answers, asked here so it reaches the 5pm mail instead of waiting for someone
+// to open the page. No pre-op and no expected count: the harvest view already
+// knows what was cut, and a photo either came with it or did not.
+//
+// Not harvested that day returns null, exactly as a non-harvest day does for
+// the sheet checks — silence, not a pass and not a failure.
+async function evaluatePhotoRule(rule: any, date: string) {
+  const gid = encodeURIComponent(rule.dimension || "");
+  const rows = await restGet(
+    `dash_crop_harvest_v?select=photo_path&group_id=eq.${gid}&harvest_date=eq.${date}`);
+  if (!Array.isArray(rows) || !rows.length) return null;
+
+  const shot = rows.filter((r: any) => r.photo_path).length;
+  const passed = shot > 0;
+  const detail = passed ? null
+    : String(rule.message || rule.name)
+        .replace("{actual}", String(shot))
+        .replace("{expected}", String(rows.length));
+  return { rule_id: rule.id, checked_date: date, passed, detail,
+           run_at: new Date().toISOString() };
+}
+
 async function evaluateRule(rule: any, date: string) {
+  if (rule.check_type === "photo_logged") return await evaluatePhotoRule(rule, date);
   const cfg = CROP[rule.harvest_key];
   if (!cfg) return null;
   const p = cfg.preop;
