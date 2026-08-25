@@ -99,7 +99,24 @@ Deno.serve(async () => {
     });
   }
 
-  // Pull the photos before the email goes out, so the dashboard it links to is
+  const fails = results.filter(r => !r.passed);
+  let emailed = false;
+  if (RESEND_KEY && EMAIL_TO.length) {
+    const body = fails.length
+      ? fails.map(f => `⚠ ${f.detail}`).join("<br>")
+      : "All data checks passed.";
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: EMAIL_FROM, to: EMAIL_TO,
+        subject: `Daily — ${fails.length} data issue${fails.length === 1 ? "" : "s"} (${date})`,
+        html: `<p>${body}</p><p><a href="${DASH_URL}">Open the Daily dashboard</a></p>`,
+      }),
+    });
+    emailed = resp.ok;
+    if (!resp.ok) console.error("resend error", await resp.text());
+  }
 
   return new Response(JSON.stringify({ date, results, fails: fails.length, emailed }), {
     headers: { "Content-Type": "application/json" },
