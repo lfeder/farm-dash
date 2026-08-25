@@ -17,10 +17,9 @@ const DASH_URL     = "https://lfeder.github.io/farm-dash/?src=sheets#daily";
 const FS   = "1MbHJoJmq0w8hWz8rl9VXezmK-63MFmuK19lz3pu0dfc";
 const GROW = "1VtEecYn-W1pbnIU1hRHfxIpkH2DtK7hj0CpcpiLoziM";
 
-// How far back the gallery refresh looks for a group's most recent photo day,
-// and the most photos it keeps for one group. A mixed-board day runs ~8 photos;
-// the cap only guards against a bulk backfill landing on a single date.
-const GALLERY_WINDOW_DAYS = 60;
+// The most photos kept for one group. A mixed-board day runs ~8; the cap only
+// guards against a bulk backfill landing on a single date. There is no lookback
+// window any more — the refresh asks about one day, today's.
 const GALLERY_MAX_PHOTOS  = 24;
 
 // Per crop (rule.harvest_key): how to read the pre-op and the harvest from sheets.
@@ -97,10 +96,17 @@ async function restGet(path: string) {
 // before the email — we snapshot the newest photo day per crop group into
 // dash_crop_photo, which the page can read.
 //
-// Per group, independently of the others: find the most recent harvest_date
-// carrying photos. Newer than what is stored -> replace that group's rows. Not
-// newer -> leave the prior set alone, so a day with no new photos keeps
-// yesterday's gallery up rather than blanking the tile.
+// Per group, for the report's own day and no other: the tile answers "what
+// happened to this crop today", so it is rewritten every run and never carries
+// a date other than today's.
+//
+//   ok             harvested today, and photographed
+//   photo_missing  harvested today, nobody photographed it
+//   no_harvest     not harvested today
+//
+// The old rule kept the previous day's photos when none arrived, which made a
+// stale tile look current — on 2026-08-24 Reds showed the 17th while reds had
+// been cut that morning. Silence now says which kind of silence it is.
 // Stable, human-readable photo label: lane + seeding date (e.g. "P3A 08/18").
 // Replaces the old batch_code string, which encoded the same facts plus stale
 // harvest dates and board counts.
@@ -115,17 +121,18 @@ async function refreshGallery(today: string) {
   const groups = await restGet("dash_crop_group?is_active=eq.true&select=*&order=sort_order");
   if (!Array.isArray(groups) || !groups.length) return [];
 
-  const since = daysBefore(today, GALLERY_WINDOW_DAYS);
-  const [stored, batches, items] = await Promise.all([
-    restGet("dash_crop_photo?select=group_id,gallery_date"),
+  const [batches, items] = await Promise.all([
     // lane + seeding_date replace batch_code here: batch_code is being retired
     // from grow_lettuce_seed_batch (lane and variety now live in their own
     // columns). dash_crop_photo.batch_code stays as the photo caption, but is
     // now filled with a lane/seeding label rather than the old lineage string.
+    // Deliberately NOT filtered to rows carrying a photo: a batch harvested
+    // today without one is the whole point of photo_missing, and filtering it
+    // out here would make it indistinguishable from no_harvest.
     restGet("grow_lettuce_seed_batch?select=harvest_date,lane,seeding_date,invnt_item_id," +
             "grow_lettuce_seed_mix_id,final_photo_path" +
-            "&final_photo_path=not.is.null&is_deleted=eq.false&org_id=eq.hawaii_farming" +
-            `&harvest_date=gte.${since}&order=harvest_date.desc&limit=4000`),
+            "&is_deleted=eq.false&org_id=eq.hawaii_farming" +
+            `&harvest_date=eq.${today}&limit=4000`),
     restGet("invnt_item?select=id,grow_variety_id&grow_variety_id=not.is.null&limit=10000"),
   ]);
   if (!Array.isArray(batches) || !Array.isArray(items)) {
@@ -134,12 +141,6 @@ async function refreshGallery(today: string) {
   }
 
   const varietyOf = new Map<string, string>(items.map((i: any) => [i.id, i.grow_variety_id]));
-  const storedDate = new Map<string, string>();
-  (Array.isArray(stored) ? stored : []).forEach((r: any) => {
-    const prev = storedDate.get(r.group_id);
-    if (!prev || r.gallery_date > prev) storedDate.set(r.group_id, r.gallery_date);
-  });
-
   const summary: any[] = [];
   for (const g of groups) {
     const varieties: string[] = g.variety_ids || [];
@@ -149,34 +150,31 @@ async function refreshGallery(today: string) {
       (g.match_seed_mix && b.grow_lettuce_seed_mix_id) ||
       varieties.includes(varietyOf.get(b.invnt_item_id) || ""));
 
-    const prior = storedDate.get(g.id) ?? null;
-    if (!mine.length) {
-      summary.push({ group_id: g.id, label: g.label, date: prior, photos: 0, updated: false });
-      continue;
-    }
+    const shot = mine.filter((b: any) => b.final_photo_path);
+    const status = !mine.length ? "no_harvest" : (shot.length ? "ok" : "photo_missing");
+    const stamp = new Date().toISOString();
 
-    const latest = mine.reduce((m: string, b: any) => (b.harvest_date > m ? b.harvest_date : m), mine[0].harvest_date);
-    if (prior && prior >= latest) {
-      summary.push({ group_id: g.id, label: g.label, date: prior, photos: 0, updated: false });
-      continue;
-    }
-
-    const rows = mine
-      .filter((b: any) => b.harvest_date === latest)
-      .sort((a: any, b: any) => photoLabel(a).localeCompare(photoLabel(b)))
-      .slice(0, GALLERY_MAX_PHOTOS)
-      .map((b: any, seq: number) => ({
-        group_id: g.id,
-        photo_path: b.final_photo_path,
-        gallery_date: latest,
-        batch_code: photoLabel(b),
-        cultivar: b.invnt_item_id || b.grow_lettuce_seed_mix_id,
-        seq,
-        refreshed_at: new Date().toISOString(),
-      }));
+    // One placeholder row for the two photo-less states, so the group is still
+    // present in the view and the page has a date and a reason to show.
+    const rows = status === "ok"
+      ? shot
+          .sort((a: any, b: any) => photoLabel(a).localeCompare(photoLabel(b)))
+          .slice(0, GALLERY_MAX_PHOTOS)
+          .map((b: any, seq: number) => ({
+            group_id: g.id, status: "ok",
+            photo_path: b.final_photo_path,
+            gallery_date: today,
+            batch_code: photoLabel(b),
+            cultivar: b.invnt_item_id || b.grow_lettuce_seed_mix_id,
+            seq,
+            refreshed_at: stamp,
+          }))
+      : [{ group_id: g.id, status, photo_path: null, gallery_date: today,
+           batch_code: null, cultivar: null, seq: 0, refreshed_at: stamp }];
 
     // Replace rather than upsert: the snapshot holds exactly one day per group,
-    // so the prior day's rows have to go or the tile would show two dates.
+    // and a group that had eight photos yesterday and none today must end up
+    // with the single photo_missing row, not eight stale ones beside it.
     const del = await fetch(`${SUPABASE_URL}/rest/v1/dash_crop_photo?group_id=eq.${encodeURIComponent(g.id)}`,
       { method: "DELETE", headers: restHeaders() });
     if (!del.ok) { console.error("gallery delete failed", g.id, await del.text()); continue; }
@@ -188,7 +186,8 @@ async function refreshGallery(today: string) {
     });
     if (!ins.ok) { console.error("gallery insert failed", g.id, await ins.text()); continue; }
 
-    summary.push({ group_id: g.id, label: g.label, date: latest, photos: rows.length, updated: true });
+    summary.push({ group_id: g.id, label: g.label, date: today, status,
+                   photos: status === "ok" ? rows.length : 0, updated: true });
   }
   return summary;
 }
