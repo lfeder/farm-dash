@@ -1094,7 +1094,9 @@ function buildGalleryGroups(rows) {
   rows.forEach(r => {
     if (!byId.has(r.group_id)) {
       byId.set(r.group_id, { id: r.group_id, label: r.label, sort: +r.sort_order || 0,
-        date: r.gallery_date, status: r.status || (r.photo_path ? 'ok' : 'no_harvest'), photos: [] });
+        // No status at all means the refresh never answered for this group —
+        // not that nothing was harvested. Left as null so the tile can say so.
+        date: r.gallery_date, status: r.status || (r.photo_path ? 'ok' : null), photos: [] });
     }
     // A photo-less row is the group's whole answer — it carries the status and
     // nothing to show. Only real photos go in the array, so photos.length still
@@ -1123,14 +1125,15 @@ function renderGallery() {
     if (!g.photos.length) {
       const note = document.createElement('div');
       const missing = g.status === 'photo_missing';
+      const unknown = !g.status;
       note.className = 'gal-tile gal-empty' + (missing ? ' gal-missing' : '');
       note.innerHTML =
         `<div class="gal-thumb gal-blank"><span class="gal-blank-txt">` +
-          (missing ? 'Photo Missing' : 'No Harvest') +
+          (unknown ? 'No Data' : missing ? 'Photo Missing' : 'No Harvest') +
         `</span></div>` +
         `<div class="gal-meta">` +
           `<div class="gal-name">${escapeHtml(g.label)}</div>` +
-          `<div class="gal-sub"><span>${fmtGalleryDate(g.date)}</span></div>` +
+          `<div class="gal-sub"><span>${g.date ? fmtGalleryDate(g.date) : '—'}</span></div>` +
         `</div>`;
       grid.appendChild(note);
       return;
