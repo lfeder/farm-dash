@@ -69,9 +69,6 @@
 <div id="grid" style="display:none;"></div>
 
 <script>
-const CHEM_SHEET = '1XwavjRPi3xMJClslOjuC_4ONrbdl8l_qw0_JallE2c0';
-const GROW_SHEET = '1VtEecYn-W1pbnIU1hRHfxIpkH2DtK7hj0CpcpiLoziM';
-const GROW_TAB = 'grow_L_seeding';
 
 const ELEMENT_ORDER = ['EC','pH','N','NH4','P','K','Ca','Mg','S','Fe','Mn','B','Cu','Zn','Mo','Na'];
 const POND_COLORS = {
@@ -244,44 +241,57 @@ function renderFarmCharts() {
   }
 }
 
-// --- Data loading (JSONP via gviz) ---
-function fetchSheet(sheetId, tabOrGid, isTab) {
-  return new Promise((resolve, reject) => {
-    const cbName = '_cb_' + Math.random().toString(36).slice(2, 10);
-    let url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json;responseHandler:${cbName}`;
-    if (isTab) url += `&sheet=${encodeURIComponent(tabOrGid)}`;
-    else url += `&gid=${tabOrGid}`;
-    window[cbName] = function(resp) {
-      delete window[cbName];
-      if (resp.status === 'error') { reject(resp.errors); return; }
-      resolve(parseGviz(resp.table));
-    };
-    const s = document.createElement('script');
-    s.src = url;
-    s.onerror = () => { delete window[cbName]; s.remove(); reject('Network error'); };
-    document.head.appendChild(s);
-  });
+// --- Data loading ---
+
+// Lab samples for the crop view. Same table the pond view reads; the crop view
+// keys on a pond name rather than a site id, so site_name is derived here with
+// the same helper the pond view already uses.
+async function loadCropChem() {
+  const client = await DataSource.getClient();
+  const out = [];
+  const PAGE = 1000;
+  for (let page = 0; ; page++) {
+    const { data, error } = await client
+      .from('grow_chemistry_result')
+      .select('site_id,sample_date,nutrient,result')
+      .eq('is_deleted', false)
+      .order('id', { ascending: true })
+      .range(page * PAGE, (page + 1) * PAGE - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    data.forEach(r => out.push({
+      site_name: SITE_FROM_ID(r.site_id),
+      sample_date: r.sample_date,
+      nutrient: r.nutrient,
+      result: r.result,
+    }));
+    if (data.length < PAGE) break;
+  }
+  return out;
 }
 
-function parseGviz(table) {
-  const cols = table.cols.map(c => c.label);
-  return table.rows.map(r => {
-    const obj = {};
-    r.c.forEach((cell, i) => {
-      const col = cols[i];
-      if (!col) return;
-      if (!cell || cell.v == null) { obj[col] = ''; return; }
-      if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
-        const m = cell.v.match(/Date\((\d+),(\d+),(\d+)/);
-        if (m) obj[col] = new Date(+m[1], +m[2], +m[3]);
-        else obj[col] = cell.f || cell.v;
-      } else {
-        obj[col] = cell.v;
-      }
-    });
-    return obj;
-  });
+// What was growing in each pond and when. grow_lettuce_planting_v names its
+// columns to match what this page already expected of the sheet — pond,
+// variety, seedname, ponddate, harvestdate, expectedharvestdate — so
+// getPondDateRanges and buildSeedingLookup are untouched.
+async function loadPlantings() {
+  const client = await DataSource.getClient();
+  const out = [];
+  const PAGE = 1000;
+  for (let page = 0; ; page++) {
+    const { data, error } = await client
+      .from('grow_lettuce_planting_v')
+      .select('pond,variety,seedname,ponddate,harvestdate,expectedharvestdate')
+      .order('ponddate', { ascending: true })
+      .range(page * PAGE, (page + 1) * PAGE - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    out.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return out;
 }
+
 
 function parseDate(v) {
   if (v instanceof Date) return v;
@@ -773,19 +783,18 @@ function renderCharts(variety) {
 (async function init() {
   document.querySelectorAll('.mode-btn').forEach(b => { b.onclick = () => setMode(b.dataset.mode); });
 
-  // The crop view still reads Sheets; the pond view reads Supabase. Load the
-  // sheets best-effort so the pond view survives Sheets being switched off.
+  // Both views read prod now. The crop view used to fetch grow_L_seeding and a
+  // chemistry sheet over gviz, and had been silently disabled since those
+  // stopped being written on 2026-08-09 — this catch dropped the mode without
+  // telling anyone.
   let sheetsOk = true;
   try {
-    const [chem, seeding] = await Promise.all([
-      fetchSheet(CHEM_SHEET, '0', false),
-      fetchSheet(GROW_SHEET, GROW_TAB, true)
-    ]);
+    const [chem, seeding] = await Promise.all([loadCropChem(), loadPlantings()]);
     chemData = chem;
     seedingData = seeding;
   } catch (e) {
     sheetsOk = false;
-    console.warn('Sheets unavailable — crop view disabled, pond view still works.', e);
+    console.warn('Crop-view sources unavailable — pond view still works.', e);
   }
 
   document.getElementById('loading').style.display = 'none';
