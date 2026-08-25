@@ -1055,11 +1055,17 @@ function renderLettuceTable() {
 }
 
 // ── Harvest photo gallery ──
-// Rows come from dash_crop_gallery_v, a snapshot the daily-data-checks edge
-// function rewrites just before the daily email: per crop, the photos from that
-// crop's most recent harvest day. A crop with no new photos keeps its previous
-// day, so each tile carries its own date rather than the page's refDate — the
-// gallery is deliberately NOT re-rendered by the Today/Yesterday toggle.
+// Read live off dash_crop_harvest_v — one row per lettuce batch cut on the day
+// the report is showing, already resolved to its crop group. Every tile is that
+// day's answer, so the gallery moves with the Today/Yesterday toggle.
+//
+// Three states, all read off what is or is not there:
+//   photos        the group has rows, and some carry a photo_path
+//   Photo Missing the group has rows and none of them do
+//   No Harvest    the group has no rows at all
+//
+// The group list is fetched separately because the third state has nothing to
+// hang off — a crop that was not cut leaves no trace in the harvest view.
 let galleryGroups = [];   // [{ id, label, date, photos: [{ path, batch, cultivar }] }]
 
 const PHOTO_BASE = DataSource.SUPABASE_PROJECTS.prod.url + '/storage/v1';
@@ -1089,22 +1095,25 @@ function fmtGalleryDate(iso, opts) {
     .toLocaleDateString('en-US', opts || { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
-function buildGalleryGroups(rows) {
+function buildGalleryGroups(rows, groupRows) {
   const byId = new Map();
+  (groupRows || []).forEach(g => byId.set(g.id, {
+    id: g.id, label: g.label, sort: +g.sort_order || 0, date: null, photos: [],
+  }));
   rows.forEach(r => {
+    // The harvest view can only name groups that are active, but fall back to
+    // its own label so a row is never dropped for want of a group entry.
     if (!byId.has(r.group_id)) {
-      byId.set(r.group_id, { id: r.group_id, label: r.label, sort: +r.sort_order || 0,
-        // No status at all means the refresh never answered for this group —
-        // not that nothing was harvested. Left as null so the tile can say so.
-        date: r.gallery_date, status: r.status || (r.photo_path ? 'ok' : null), photos: [] });
+      byId.set(r.group_id, { id: r.group_id, label: r.label,
+        sort: +r.sort_order || 0, date: null, photos: [] });
     }
-    // A photo-less row is the group's whole answer — it carries the status and
-    // nothing to show. Only real photos go in the array, so photos.length still
-    // means what it says everywhere below.
+    const g = byId.get(r.group_id);
+    // A row proves the crop was cut, whether or not anyone photographed it.
+    g.harvested = true;
+    g.date = g.date || r.harvest_date;
     if (!r.photo_path) return;
-    byId.get(r.group_id).photos.push({
-      path: r.photo_path, batch: r.batch_code || '', cultivar: r.cultivar || '', seq: +r.seq || 0,
-    });
+    g.photos.push({ path: r.photo_path, batch: r.batch_code || '',
+      cultivar: r.cultivar || '', seq: g.photos.length });
   });
   const groups = [...byId.values()];
   groups.forEach(g => g.photos.sort((a, b) => a.seq - b.seq));
@@ -1124,12 +1133,13 @@ function renderGallery() {
     // it renders as a plain div rather than a button that does nothing.
     if (!g.photos.length) {
       const note = document.createElement('div');
-      const missing = g.status === 'photo_missing';
-      const unknown = !g.status;
+      // Harvested with nothing to show is the actionable one — somebody can
+      // still go and take the picture. Not harvested is just the day's answer.
+      const missing = !!g.harvested;
       note.className = 'gal-tile gal-empty' + (missing ? ' gal-missing' : '');
       note.innerHTML =
         `<div class="gal-thumb gal-blank"><span class="gal-blank-txt">` +
-          (unknown ? 'No Data' : missing ? 'Photo Missing' : 'No Harvest') +
+          (missing ? 'Photo Missing' : 'No Harvest') +
         `</span></div>` +
         `<div class="gal-meta">` +
           `<div class="gal-name">${escapeHtml(g.label)}</div>` +
@@ -1375,7 +1385,8 @@ async function loadData() {
   // own errors (return null) so one bad source can't blank the page.
   const swallow = (p, name) => p.catch(e => { console.error(name + ' load error:', e); return null; });
   const [invoiceTable, cukeTable, lettTable, empTable, caTable, poTable,
-         ruleTable, cukePreopTable, lettPreopTable, phTable, cukePoTable, galleryTable] = await Promise.all([
+         ruleTable, cukePreopTable, lettPreopTable, phTable, cukePoTable,
+         galleryTable, cropGroupTable] = await Promise.all([
     // Every feed reads Supabase. Google Sheets was switched off 08/09/26, so
     // the last five sheets-backed feeds here (cuke harvest + the four
     // food-safety ones) moved to prod on 08/11/26.
@@ -1404,7 +1415,8 @@ async function loadData() {
     // Cuke POs by invoice date (prod-only) — daily cuke PO table.
     swallow(DataSource.fetchTable('cuke_pack_orders', { mode: 'prod' }), 'cuke_pack_orders'),
     // Harvest-photo gallery snapshot (prod-only).
-    swallow(DataSource.fetchTable('crop_gallery', { mode: 'prod' }), 'crop_gallery'),
+    swallow(DataSource.fetchTable('crop_harvest', { mode: 'prod', date: isoDate(refDate) }), 'crop_harvest'),
+    swallow(DataSource.fetchTable('crop_groups', { mode: 'prod' }), 'crop_groups'),
   ]);
 
   // invoices_daily is pre-aggregated to date×farm dollar totals in sheets mode
@@ -1444,7 +1456,9 @@ async function loadData() {
 
   // The gallery always shows each crop's latest photo day, so it is rendered
   // once here rather than from render() with the rest of the date-driven page.
-  galleryGroups = galleryTable ? buildGalleryGroups(parseGvizTable(galleryTable)) : [];
+  galleryGroups = buildGalleryGroups(
+    galleryTable ? parseGvizTable(galleryTable) : [],
+    cropGroupTable ? parseGvizTable(cropGroupTable) : []);
   wireGallery();
   renderGallery();
 
