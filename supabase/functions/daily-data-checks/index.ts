@@ -9,30 +9,16 @@
 // with it — same question the dashboard tile answers, asked here so it reaches
 // the mail rather than waiting to be noticed.
 //
-// Mirrors the dashboard's client-side check engine. Sheet/column specifics live
-// in CROP below — keep in sync with lib/data-source.js if the sheets change.
+// Every source is Supabase; Google Sheets was switched off 2026-08-09.
 
 const SUPABASE_URL = Deno.env.get("CHECK_SUPABASE_URL")!; // prod REST base
 const SERVICE_KEY  = Deno.env.get("CHECK_SERVICE_KEY")!;  // prod service_role
 const RESEND_KEY   = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_TO     = (Deno.env.get("CHECK_EMAIL_TO") ?? "").split(",").map(s => s.trim()).filter(Boolean);
 const EMAIL_FROM   = Deno.env.get("CHECK_EMAIL_FROM") ?? "Farm Dash <onboarding@resend.dev>";
-const DASH_URL     = "https://lfeder.github.io/farm-dash/?src=sheets#daily";
+const DASH_URL     = "https://lfeder.github.io/farm-dash/#daily";
 
-const FS   = "1MbHJoJmq0w8hWz8rl9VXezmK-63MFmuK19lz3pu0dfc";
-const GROW = "1VtEecYn-W1pbnIU1hRHfxIpkH2DtK7hj0CpcpiLoziM";
 
-// Per crop (rule.harvest_key): how to read the pre-op and the harvest from sheets.
-const CROP: Record<string, any> = {
-  cuke: {
-    preop:   { sheet: FS,   tab: "fsafe_log_C_gh_pre", dateCol: "A", flagCol: "I", membersCol: "B", sep: "+" },
-    harvest: { sheet: GROW, tab: "grow_C_harvest",     dateCol: "A", dimCol: "G", where: "and B=2026" },
-  },
-  lettuce: {
-    preop:   { sheet: FS,   tab: "fsafe_log_L_gh_pre", dateCol: "A", flagCol: "S" },
-    harvest: { sheet: GROW, tab: "grow_L_seeding",     dateCol: "N", dimCol: "B", where: "" },
-  },
-};
 
 function hstToday(): string {
   const d = new Date(Date.now() - 10 * 3600 * 1000); // HST = UTC-10
@@ -40,13 +26,6 @@ function hstToday(): string {
 }
 
 
-// Minimal gviz CSV reader. Our SELECTed columns never contain commas, so a
-// split on '","' (after trimming the outer quotes) is sufficient.
-async function gviz(sheet: string, tab: string, query: string): Promise<string[][]> {
-  const url = `https://docs.google.com/spreadsheets/d/${sheet}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}&tq=${encodeURIComponent(query)}`;
-  const text = await (await fetch(url)).text();
-  return text.trim().split("\n").filter(Boolean).map(l => l.replace(/^"|"$/g, "").split('","'));
-}
 
 // "Harvested but nobody photographed it" — the same question the dashboard tile
 // answers, asked here so it reaches the 5pm mail instead of waiting for someone
@@ -71,33 +50,16 @@ async function evaluatePhotoRule(rule: any, date: string) {
            run_at: new Date().toISOString() };
 }
 
+// Only photo_logged rules run here now. The two min_distinct_count rules read
+// Google Sheets, which stopped being written on 2026-08-09, and were suspended
+// on 2026-08-25 — an empty pre-op read as "not a harvest day", so they wrote no
+// result, counted no failure, and the mail reported an all-clear nobody earned.
+// Their evaluator and its gviz reader are deleted rather than left to look like
+// working checks. Reinstate against prod when the rules are ported.
 async function evaluateRule(rule: any, date: string) {
   if (rule.check_type === "photo_logged") return await evaluatePhotoRule(rule, date);
-  const cfg = CROP[rule.harvest_key];
-  if (!cfg) return null;
-  const p = cfg.preop;
-  const cols = p.membersCol ? `${p.dateCol},${p.membersCol},${p.flagCol}` : `${p.dateCol},${p.flagCol}`;
-  const preop = (await gviz(p.sheet, p.tab, `select ${cols} where ${p.dateCol} = date '${date}'`)).slice(1);
-  const flagIdx = p.membersCol ? 2 : 1;
-  const approved = preop.filter(r => (r[flagIdx] || "").toUpperCase() === "TRUE");
-  if (!approved.length) return null; // not a harvest day -> no expectation
-
-  let expected = 0;
-  if (String(rule.expected).toLowerCase() === "preop") {
-    const set = new Set<string>();
-    approved.forEach(r => (r[1] || "").split(p.sep || "+").map((s: string) => s.trim()).filter(Boolean).forEach((m: string) => set.add(m)));
-    expected = set.size;
-  } else {
-    expected = Number(rule.expected) || 0;
-  }
-  if (!expected) return null;
-
-  const h = cfg.harvest;
-  const harvest = await gviz(h.sheet, h.tab, `select ${h.dimCol}, count(${h.dimCol}) where ${h.dateCol} = date '${date}' ${h.where} group by ${h.dimCol}`);
-  const actual = Math.max(0, harvest.length - 1);
-  const passed = actual >= expected;
-  const detail = passed ? null : String(rule.message || rule.name).replace("{actual}", String(actual)).replace("{expected}", String(expected));
-  return { rule_id: rule.id, checked_date: date, passed, detail, run_at: new Date().toISOString() };
+  console.warn("no evaluator for check_type", rule.check_type, "- rule", rule.id);
+  return null;
 }
 
 function restHeaders(extra: Record<string, string> = {}) {
