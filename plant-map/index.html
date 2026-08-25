@@ -363,9 +363,6 @@ body.readonly .card-row-bar { cursor: default !important; }
 
 <script>
 // --- Configuration ---
-const SHEET_ID = '1ewWyvaXGkRCvZxjUxBOHGY4PKdMHwKeTA5jTIod48LE';
-const GID = '1615707612';
-const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json;responseHandler:handleSheetResponse&gid=${GID}`;
 
 const COLORS = {"Keiki": "#4CAF50", "Japanese": "#E91E63", "Japanese (5/bag)": "#F8BBD0", "English": "#FF9800", "Mixed": "#9C27B0"};
 
@@ -525,45 +522,7 @@ function parseGvizResponse(response) {
     return rows;
 }
 
-// --- Bag changes: fetch & parse ---
-const BAG_CHANGES_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json;responseHandler:handleBagChanges&sheet=bag_changes`;
-let bagChangesReady = false, mainDataReady = false;
 
-function parseBagChanges(response) {
-    if (response.status !== 'ok') return;
-    const today = new Date(); today.setHours(0,0,0,0);
-    const byGH = {};
-    for (const row of response.table.rows) {
-        const c = row.c;
-        if (!c[0] || !c[0].v || !c[1] || !c[1].v) continue;
-        const gh = String(c[0].v);
-        // Parse date from "Date(year,month,day)"
-        const m = c[1].v.match(/Date\((\d+),(\d+),(\d+)\)/);
-        if (!m) continue;
-        const d = new Date(Number(m[1]), Number(m[2]), Number(m[3]));
-        if (!byGH[gh]) byGH[gh] = [];
-        byGH[gh].push(d);
-    }
-    const result = {};
-    for (const [gh, dates] of Object.entries(byGH)) {
-        dates.sort((a, b) => a - b);
-        let current = null, next = null;
-        for (const d of dates) {
-            if (d < today) current = d;
-            else if (!next) next = d;
-        }
-        let cycles = null;
-        if (current && next) cycles = Math.round((next - current) / (84 * 24 * 60 * 60 * 1000));
-        result[gh] = { current, next, cycles, allDates: dates };
-    }
-    return result;
-}
-
-function handleBagChanges(response) {
-    try { BAG_CHANGES = parseBagChanges(response); } catch(e) { console.error('Bag changes parse error:', e); }
-    bagChangesReady = true;
-    if (mainDataReady) finishInit();
-}
 
 // Build BAG_CHANGES from grow_cuke_seed_batch.next_bag_change_date.
 // HK has a single site_id so its dates fan out to both Hamakua and Kohala cards.
@@ -606,36 +565,6 @@ function finishInit() {
     showOverview();
 }
 
-// --- Global callback for the JSONP-style <script> load ---
-function handleSheetResponse(response) {
-    try {
-        RAW_ROWS = parseGvizResponse(response);
-        if (RAW_ROWS.length === 0) throw new Error('No data rows found in the sheet.');
-
-        DATA = buildData(RAW_ROWS);
-        SUMMARY = computeSummary(DATA);
-        GH_NAMES = Object.keys(DATA);
-
-        MAX_BAGS = 0;
-        for (const gh of Object.values(DATA)) {
-            for (const entries of Object.values(gh.sides)) {
-                for (const entry of entries) {
-                    if (entry.bags > MAX_BAGS) MAX_BAGS = entry.bags;
-                }
-            }
-        }
-
-        mainDataReady = true;
-        if (bagChangesReady) finishInit();
-    } catch (err) {
-        document.getElementById('content').innerHTML =
-            '<div style="text-align:center;padding:60px 20px;color:#e57373;font-size:1.1rem;">' +
-            '<p>Failed to process sheet data.</p>' +
-            '<p style="font-size:0.9rem;margin-top:10px;color:var(--text-secondary);">' + err.message + '</p>' +
-            '</div>';
-        console.error('Sheet parse error:', err);
-    }
-}
 
 function rebuild() {
     DATA = buildData(RAW_ROWS);
@@ -760,8 +689,6 @@ async function loadFromSupabase() {
             for (const entry of entries)
                 if (entry.bags > MAX_BAGS) MAX_BAGS = entry.bags;
     BAG_CHANGES = buildBagChangesFromBatches(batchTbl);
-    mainDataReady = true;
-    bagChangesReady = true;
     finishInit();
 }
 
