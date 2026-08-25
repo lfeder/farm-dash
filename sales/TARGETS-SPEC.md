@@ -1,3 +1,11 @@
+> **Not built.** `budget.html`, `fetch-budget-data.js` and `budget-data.json`
+> were removed on 2026-08-25: the Targets tab was hidden in the nav, the
+> script was run by hand, and it read Google Sheets that stopped being
+> written on 08/09. This spec is kept as the design if Targets is revived —
+> `git show 'HEAD@{2026-08-25}':sales/budget.html` brings the page back.
+> Build it against `finance_sales_budget_week` and `finance_sales_actuals_v`,
+> which is where the visible Budget tab already reads from.
+
 # Targets Dashboard Specification
 
 ## 1. Overview

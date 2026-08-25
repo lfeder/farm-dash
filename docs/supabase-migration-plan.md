@@ -133,7 +133,7 @@ One dashboard at a time, side-by-side verify before moving on.
 3. `daily/index.html` — date aggregation stress test; adds grow views
 4. `chem/index.html` — adds chem-related tables (need new logical tables in config)
 5. `chat/index.html` — widest reader; needs cross-domain config entries
-6. `sales/budget.html` — rework `fetch-budget-data.js` to query Supabase
+6. ~~`sales/budget.html` — rework `fetch-budget-data.js` to query Supabase~~ — removed 2026-08-25 instead; the tab was hidden and the visible Budget tab already reads `finance_sales_budget_week` / `finance_sales_actuals_v`.
 7. `plant-map/index.html` — reads `grow_cuke_*` + `org_site_gh*`. Needs an
    edit write path for variety changes — propose small edge function
    holding a scoped service-role key; anon keys stay read-only
