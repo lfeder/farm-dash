@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lettuce Yields</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260829a"></script>
+<script src="../lib/data-source.js?v=20260829b"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
@@ -198,7 +198,11 @@ function unitLabel(kind) {
 }
 
 // ── Aggregation ──
-function activeRows() {
+function activeRows() { return inFilter().filter(r => !r.disp); }
+
+// Everything the filters allow, dumps included — the charts use activeRows(),
+// the dumped tally below uses this.
+function inFilter() {
   return rows.filter(r =>
     (!filters.year.size || filters.year.has(String(r.year))) &&
     (!filters.pond.size || filters.pond.has(r.pond)) &&
@@ -302,9 +306,21 @@ function render() {
   const avgDays = boards
     ? list.reduce((s, r) => s + r.daysOnPond * r.boards, 0) / boards : 0;
   const seedTxt = filters.seed.size ? `${filters.seed.size} seed${filters.seed.size > 1 ? 's' : ''}` : 'all seeds';
+  // Dumped boards inside the current filters: stated next to the yield they are
+  // held out of, with the share of ponded boards they cost.
+  const dumped = inFilter().filter(r => r.disp);
+  const dumpedBoards = dumped.reduce((s, r) => s + (r.boards || 0), 0);
+  const dumpPct = (boards + dumpedBoards) ? dumpedBoards / (boards + dumpedBoards) * 100 : 0;
+  const reasons = [...new Set(dumped.map(r => r.dispReason).filter(Boolean))];
+  const dumpTxt = dumpedBoards
+    ? ` · ${Math.round(dumpedBoards).toLocaleString()} boards dumped, not counted `
+      + `(${dumpPct.toFixed(1)}% of boards${reasons.length ? ': ' + reasons.join(', ') : ''})`
+    : '';
   document.getElementById('status').textContent =
     `${list.length.toLocaleString()} harvest rows · ${Math.round(lb).toLocaleString()} lb · `
-    + `${seedTxt} · avg ${avgDays.toFixed(1)}d on pond (${(365 / (avgDays || 1)).toFixed(1)} turns/yr)`;
+    + `${seedTxt} · avg ${avgDays.toFixed(1)}d on pond (${(365 / (avgDays || 1)).toFixed(1)} turns/yr)`
+    + dumpTxt;
+  document.getElementById('status').style.color = dumpedBoards ? '#b3402f' : '';
   document.getElementById('metricNote').textContent =
     metric === 'annualized' ? `lb/day x${HARVESTS_PER_YEAR} picking days; lb/bd x365/days-on-pond`
     : (metric === 'lbsf' || metric === 'kgsm') ? `${BOARD_SF} sf/board, annualised per cycle` : '';
@@ -322,7 +338,7 @@ async function load() {
     const { data, error } = await client
       .from('grow_lettuce_seed_batch_v')
       .select('id,harvest_date,pond_side,invnt_item_id,grow_lettuce_seed_mix_id,'
-            + 'number_of_units,lb_per_board,harvest_days')
+            + 'number_of_units,lb_per_board,harvest_days,harvest_disposition,harvest_disposition_reason')
       .eq('is_deleted', false)
       .not('harvest_date', 'is', null)
       .not('lb_per_board', 'is', null)   // estimate-only rows carry max_lb, no actuals
@@ -339,6 +355,12 @@ async function load() {
       const d = +r.harvest_days;
       const days = (d >= DAYS_MIN && d <= DAYS_MAX) ? d : DAYS_FALLBACK;
       rows.push({
+        // Dumped / donated batches carry a real board count and a deliberate zero
+        // weight. They are held out of every yield figure — a dump is a loss, not a
+        // bad harvest — and reported on their own in the status line, so the boards
+        // can't quietly vanish from the record the way a NULL weight would.
+        disp: (r.harvest_disposition || '').trim(),
+        dispReason: (r.harvest_disposition_reason || '').trim(),
         date: r.harvest_date,
         year: yearOf(r.harvest_date),
         week: weekOf(r.harvest_date),

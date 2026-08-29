@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Daily Report</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260829a"></script>
+<script src="../lib/data-source.js?v=20260829b"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
@@ -903,7 +903,14 @@ function renderCukeTable() {
 // ── Lettuce Pounds Table ──
 function renderLettuceTable() {
   const rd = refDate;
-  const dayRows = lettuceGrowRows.filter(r => r._y === rd.getUTCFullYear() && r._m === (rd.getUTCMonth() + 1) && r._d === rd.getUTCDate());
+  const allDayRows = lettuceGrowRows.filter(r => r._y === rd.getUTCFullYear() && r._m === (rd.getUTCMonth() + 1) && r._d === rd.getUTCDate());
+  // Dumped / donated batches carry a harvest date and zero weight on purpose —
+  // the boards came off the pond but produced nothing sellable. Averaging them
+  // into lb/board would read as a bad harvest day rather than a loss, and would
+  // trip the GH-vs-PH mismatch flag, so they are pulled out and shown on their
+  // own line under the table.
+  const dumpRows = allDayRows.filter(r => r.Disposition);
+  const dayRows  = allDayRows.filter(r => !r.Disposition);
   // Order by pond (P1 → P7), natural numeric sort; then by side (A, AB, B, C).
   dayRows.sort((a, b) =>
     String(a.Pond).localeCompare(String(b.Pond), undefined, { numeric: true, sensitivity: 'base' })
@@ -1052,6 +1059,20 @@ function renderLettuceTable() {
     <td class="num">${totPhNet ? Math.round(totPhNet).toLocaleString() : ''}</td>
   `;
   tbody.appendChild(tr);
+
+  // Boards that came off the pond and were thrown away (or given away). Kept out
+  // of every figure above and stated plainly, one line per lane.
+  if (dumpRows.length) {
+    const dumpBoards = dumpRows.reduce((n, r) => n + (Math.round(r.BoardsPerPond) || 0), 0);
+    const parts = dumpRows.map(r => `${r.Pond}${r.Side ? ' ' + r.Side : ''} ${Math.round(r.BoardsPerPond).toLocaleString()} bd`
+      + (r.DispositionReason ? ` (${r.DispositionReason})` : '')
+      + (r.Disposition === 'Donation' ? ' — donated' : ''));
+    const dtr = document.createElement('tr');
+    dtr.innerHTML = `<td colspan="9" style="color:#b3402f;font-weight:600;padding-top:8px">`
+      + `Dumped / donated: ${dumpBoards.toLocaleString()} boards — ${parts.join(' · ')}`
+      + `<span style="font-weight:400;color:#888"> (not counted above)</span></td>`;
+    tbody.appendChild(dtr);
+  }
 }
 
 // ── Harvest photo gallery ──
@@ -1375,6 +1396,8 @@ function normalizeLettuceGrow() {
     r.PoundsPerBoard = r.PoundsPerBoard || 0;
     r.GreenhouseNetWeight = r.GreenhouseNetWeight || 0;
     r.MaxLb = r.MaxLb || 0;
+    r.Disposition = (r.Disposition || '').trim();
+    r.DispositionReason = (r.DispositionReason || '').trim();
   });
 }
 

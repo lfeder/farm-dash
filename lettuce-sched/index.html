@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lettuce Schedule</title>
-<script src="../lib/data-source.js?v=20260829a"></script>
+<script src="../lib/data-source.js?v=20260829b"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
@@ -102,6 +102,7 @@
   .iss-late { color: #b3402f; font-weight: 700; }
   .iss-table select, .iss-table input { font: inherit; font-size: 0.8rem; padding: 2px 5px; border: 1px solid #bbb; border-radius: 4px; }
   .iss-note { width: 190px; }
+  .iss-note.need { border-color: #b3402f; }
   .iss-apply { font: inherit; font-size: 0.8rem; font-weight: 600; padding: 3px 11px; border: 1px solid #25623c; border-radius: 4px; background: #25623c; color: #fff; cursor: pointer; }
   .iss-apply:disabled { background: #ddd; border-color: #ccc; color: #888; cursor: default; }
   .iss-msg { font-size: 0.78rem; }
@@ -155,7 +156,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="issues">Issues<span id="issuesBadge"></span></button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">08-29 12:40</span>
+  <span id="versionStamp" style="display:none">08-29 14:05</span>
 </div>
 
 <div id="content" class="wide">
@@ -320,6 +321,8 @@ async function loadCycles() {
       boards: +r.Boards || 0,
       seed, ponded, end,
       harv: parseUsDate(r.HarvestDate),
+      disp: (r.Disposition || '').trim(),          // '' = sold as normal; 'Dumped' / 'Donation'
+      dispReason: (r.DispositionReason || '').trim(),
       exp: parseUsDate(r.ExpHarvestDate),
     };
   }).filter(c => c.pond && c.seed && c.end && c.end > c.seed)
@@ -408,12 +411,17 @@ function renderLateWarn() {
 
 // One row per late cycle: what it is, then a resolution to choose.
 //   Harvested        — record the cut (harvest_date). Takes it off the pond.
+//   Dumped / Donated — the boards came off but produced nothing sellable: harvest_date
+//                      so the pond clears, zero weights, and a disposition + reason so
+//                      the yield and daily pages can tell a loss from a real harvest.
 //   Still on pond    — push the expected harvest date out; it stops reading late.
 //   Never ponded     — retire the row (is_deleted); it leaves the schedule.
 // All three go through the lettuce_resolve_late_cycle function in Supabase, which
 // only accepts rows that are already flagged late (the dashboard's public key has
 // no write access to grow_lettuce_seed_batch itself).
 let issuesFlash = '';   // one-shot confirmation, shown after the post-save re-render
+// Suggestions only — the reason is free text, so the crew can say what actually happened.
+const DUMP_REASONS = ['Mildew', 'Bolted', 'No order', 'Quality', 'Pests', 'Overgrown'];
 
 function renderIssues() {
   const late = lateCycles();
@@ -425,7 +433,9 @@ function renderIssues() {
     return;
   }
   const today = hstToday(), tYmd = ymd(today);
-  el.innerHTML = flash + `<table class="iss-table">
+  el.innerHTML = flash + `<datalist id="dumpReasons">`
+    + DUMP_REASONS.map(r => `<option value="${esc(r)}">`).join('') + `</datalist>`
+    + `<table class="iss-table">
     <tr><th>Lane</th><th>Seed</th><th class="num">Boards</th><th>Seeded</th><th>Ponded</th>
         <th>Expected</th><th class="num">Days late</th><th>What happened</th><th>Date</th><th>Note</th><th></th></tr>`
     + late.map((c, i) => {
@@ -440,18 +450,22 @@ function renderIssues() {
         <td class="num iss-late">${daysLate}</td>
         <td><select class="iss-act">
               <option value="harvested">Harvested — record the cut</option>
+              <option value="dumped">Dumped — pulled, not sold</option>
+              <option value="donated">Donated — given away</option>
               <option value="reschedule">Still on pond — push expected date</option>
               <option value="retire">Never ponded — retire the row</option>
             </select></td>
         <td><input type="date" class="iss-date" value="${ymd(c.end)}" min="${ymd(c.ponded)}" max="${tYmd}"></td>
-        <td><input type="text" class="iss-note" placeholder="optional note"></td>
+        <td><input type="text" class="iss-note" list="dumpReasons" placeholder="optional note"></td>
         <td><button class="iss-apply">Apply</button> <span class="iss-msg"></span></td>
       </tr>`;
     }).join('')
     + `</table>
     <div class="iss-what"><b>Harvested</b> writes the cut date onto the cycle, exactly as if it had been entered on the day —
-    it comes off the pond map and counts as harvested everywhere. <b>Still on pond</b> moves the expected harvest date only.
-    <b>Never ponded</b> marks the row deleted, so it drops out of the schedule and the pond fill counts.</div>`;
+    it comes off the pond map and counts as harvested everywhere. <b>Dumped</b> and <b>Donated</b> also clear the pond on that
+    date, but record zero pounds against the boards and keep the reason, so the loss shows up on the yield page instead of
+    disappearing. <b>Still on pond</b> moves the expected harvest date only. <b>Never ponded</b> marks the row deleted, so it
+    drops out of the schedule and the pond fill counts.</div>`;
 }
 
 // Date input follows the chosen action: a cut date can't be in the future, a pushed
@@ -461,13 +475,19 @@ document.getElementById('issuesBody').addEventListener('change', e => {
   const tr = sel.closest('tr'), d = tr.querySelector('.iss-date');
   const c = lateCycles()[+tr.dataset.i];
   const tYmd = ymd(hstToday());
-  if (sel.value === 'harvested') {
+  const note = tr.querySelector('.iss-note');
+  if (sel.value === 'harvested' || sel.value === 'dumped' || sel.value === 'donated') {
     d.disabled = false; d.min = ymd(c.ponded); d.max = tYmd; d.value = ymd(c.end);
   } else if (sel.value === 'reschedule') {
     d.disabled = false; d.min = tYmd; d.removeAttribute('max'); d.value = tYmd;
   } else {
     d.disabled = true; d.value = '';
   }
+  // A dump without a reason is a number nobody can act on, so it is required here
+  // and in the database function.
+  const needsReason = sel.value === 'dumped';
+  note.placeholder = needsReason ? 'reason (required)' : 'optional note';
+  note.classList.toggle('need', needsReason);
   tr.querySelector('.iss-msg').textContent = '';
 });
 
@@ -482,7 +502,11 @@ document.getElementById('issuesBody').addEventListener('click', async e => {
   const lane = tr.cells[0].textContent;
   if (!id) { msg.className = 'iss-msg err'; msg.textContent = 'No batch id on this row'; return; }
   if (action !== 'retire' && !date) { msg.className = 'iss-msg err'; msg.textContent = 'Pick a date'; return; }
+  if (action === 'dumped' && !note) { msg.className = 'iss-msg err'; msg.textContent = 'Give a reason'; return; }
+  const boards = tr.cells[2].textContent;
   const label = { harvested: `record ${lane} as harvested ${date}`,
+                  dumped: `record ${lane} — ${boards} boards — as DUMPED ${date} (${note}). It counts as zero pounds`,
+                  donated: `record ${lane} — ${boards} boards — as donated ${date}. It counts as zero pounds`,
                   reschedule: `push ${lane}'s expected harvest to ${date}`,
                   retire: `retire ${lane} — it drops out of the schedule` }[action];
   if (!confirm(`Apply to production: ${label}?`)) return;
@@ -498,6 +522,8 @@ document.getElementById('issuesBody').addEventListener('click', async e => {
     tr.classList.add('done');
     msg.className = 'iss-msg ok'; msg.textContent = 'Saved';
     issuesFlash = { harvested: `Recorded ${lane} as harvested ${date}.`,
+                    dumped: `${lane} recorded as dumped ${date} — ${boards} boards, ${note}.`,
+                    donated: `${lane} recorded as donated ${date} — ${boards} boards.`,
                     reschedule: `${lane}'s expected harvest moved to ${date}.`,
                     retire: `${lane} retired — it no longer appears on the schedule.` }[action];
     await refreshCycles();          // re-read prod so the map and the banner agree
