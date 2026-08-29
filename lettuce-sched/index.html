@@ -165,7 +165,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="issues">Issues<span id="issuesBadge"></span></button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">08-29 16:20</span>
+  <span id="versionStamp" style="display:none">08-29 16:50</span>
 </div>
 
 <div id="content" class="wide">
@@ -1135,17 +1135,26 @@ function laneRowState(tr) {
 function initViz() {
   bVizData = bVizCurrent = {};
   const modes = laneModes();
-  const laneOf = c => {
-    if (c.pond === 'P1') return 'P1AB';
-    if ((c.side || '')[0] === 'C') return c.pond + 'C';   // own lane; never merged into AB
-    if (modes[c.pond] === 'AB') return c.pond + 'AB';
-    return c.side === 'AB' ? c.pond + 'AB' : c.pond + c.side;
+  // Which lane (or lanes) a cycle is drawn in, and with how many boards. The
+  // lane list comes from the pond's A+B / AB mode, so a cycle whose side does
+  // not match the mode has to be placed, not invented a lane for: an A/B cohort
+  // in an AB pond folds into the one lane, and an AB cohort in a split pond is
+  // halved across the two — the same rule the builder uses when it reads the
+  // pond. Returning 'P4AB' while the table lists P4A and P4B, as this did, meant
+  // the map filtered the boards out and drew P4 empty (2026-08-29).
+  const alloc = c => {
+    if (c.pond === 'P1') return [['P1AB', c.boards]];
+    if ((c.side || '')[0] === 'C') return [[c.pond + 'C', c.boards]];   // own lane; never merged
+    if (modes[c.pond] === 'AB') return [[c.pond + 'AB', c.boards]];
+    if (c.side === 'AB') return ['A', 'B'].map(sd =>
+      [c.pond + sd, c.boards * laneWidth(c.pond + sd) / 20]);
+    return [[c.pond + c.side, c.boards]];
   };
   cycles.filter(c => !c.harv && c.end && c.ponded).forEach(c => {
-    const lane = laneOf(c); if (!lane) return;
-    const w = laneWidth(lane);
-    const b = (lane.endsWith('AB') && c.side !== 'AB') ? c.boards : (!lane.endsWith('AB') && c.side === 'AB') ? c.boards * w / 20 : c.boards;
-    (bVizData[lane] = bVizData[lane] || []).push({ ponded: c.ponded, end: c.end, boards: b, name: c.seedName || c.variety });
+    alloc(c).forEach(([lane, b]) => {
+      if (!lane || !(b > 0)) return;
+      (bVizData[lane] = bVizData[lane] || []).push({ ponded: c.ponded, end: c.end, boards: b, name: c.seedName || c.variety });
+    });
   });
   // The builder map runs off the shared banner as-of date (one date picker for
   // the whole page); end-of-day semantics matching the Schedule tab.
