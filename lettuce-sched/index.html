@@ -129,6 +129,15 @@
   .b-form label { display: flex; flex-direction: column; gap: 3px; font-weight: 600; }
   .b-form select, .b-form input { font: inherit; font-weight: 400; padding: 3px 6px; border: 1px solid #bbb; border-radius: 4px; }
   .b-note { font-size: 0.8rem; color: #666; margin: 8px 0; line-height: 1.45; }
+  /* Collapsible builder blocks: fold the inputs and the notes away and the
+     Current/Plan map sits right under the header's date arrows, so stepping a
+     day at a time redraws in place instead of scrolling off the screen. */
+  .b-fold > summary { display: list-item; cursor: pointer; font-size: 0.8rem; font-weight: 700;
+    color: #777; letter-spacing: 0.03em; text-transform: uppercase; padding: 2px 0; outline: none; }
+  .b-fold > summary::marker { color: #bbb; }
+  .b-fold[open] > summary { margin-bottom: 4px; }
+  .b-fold { margin-bottom: 6px; }
+  #bNoteCount { text-transform: none; letter-spacing: 0; font-weight: 600; color: #b3402f; }
   .b-table { border-collapse: collapse; font-size: 0.78rem; margin-top: 6px; }
   .b-table th, .b-table td { border: 1px solid #e2ddd4; padding: 3px 9px; text-align: left; white-space: nowrap; }
   #bLanes th, #bLanes td { padding: 1px 6px; }
@@ -156,7 +165,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="issues">Issues<span id="issuesBadge"></span></button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">08-29 14:05</span>
+  <span id="versionStamp" style="display:none">08-29 16:20</span>
 </div>
 
 <div id="content" class="wide">
@@ -178,14 +187,20 @@
     </div>
     <div id="builderTab" style="display:none;">
       <div class="b-panel">
-        <div class="b-form" style="margin-bottom:8px">
-          <label style="flex-direction:row;align-items:center;gap:5px">Start <select id="bStartWeek"></select></label>
-          <label style="flex-direction:row;align-items:center;gap:5px">Weeks <input id="bWeeks" type="number" min="1" max="26" value="8" style="width:52px"></label>
-          <button id="bGen" class="step-btn" style="font-weight:600">Generate</button>
-        </div>
-        <table class="b-table" id="bLanes"></table>
+        <details class="b-fold" id="bCfgFold" open>
+          <summary>Lanes &amp; patterns</summary>
+          <div class="b-form" style="margin-bottom:8px">
+            <label style="flex-direction:row;align-items:center;gap:5px">Start <select id="bStartWeek"></select></label>
+            <label style="flex-direction:row;align-items:center;gap:5px">Weeks <input id="bWeeks" type="number" min="1" max="26" value="8" style="width:52px"></label>
+            <button id="bGen" class="step-btn" style="font-weight:600">Generate</button>
+          </div>
+          <table class="b-table" id="bLanes"></table>
+        </details>
         <div id="bPreviewWrap" style="display:none;">
-          <div id="bBalance" class="b-note"></div>
+          <details class="b-fold" id="bNotesFold" open>
+            <summary>Notes <span id="bNoteCount"></span></summary>
+            <div id="bBalance" class="b-note"></div>
+          </details>
         </div>
         <div id="bMapWrap" style="margin-top:12px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:0.8rem;color:#555">
@@ -802,6 +817,21 @@ document.getElementById('labelToggle').addEventListener('click', e => {
   g.classList.toggle('show-dens', b.dataset.mode === 'dens');
 });
 
+// Fold state is per browser and outlives a reload: someone stepping the as-of
+// date through a plan keeps their layout instead of re-collapsing every time.
+const FOLD_KEY = 'lsched_builder_folds';
+function wireFolds() {
+  let st = {};
+  try { st = JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') } catch {}
+  document.querySelectorAll('details.b-fold').forEach(d => {
+    if (d.id in st) d.open = st[d.id];
+    d.addEventListener('toggle', () => {
+      st[d.id] = d.open;
+      try { localStorage.setItem(FOLD_KEY, JSON.stringify(st)) } catch {}
+    });
+  });
+}
+
 // ══════════════════════ Builder tab ══════════════════════
 // Patterns/sequences live in Supabase (lettuce_harvest_pattern / lettuce_pattern_rows).
 // The builder generates future sheet rows for one lane: it infers where the lane is
@@ -1147,15 +1177,23 @@ function builderGenerate() {
   const out = [], tsv = [], edits = [];
   bVizData = bVizPlan = {};
   let mism = 0, total = 0, minFillTxt = [];
-  // Runaway-deferral guard. A deferral adds boards to the NEXT event, which can
-  // push that event over target too — so it defers again, and the excess walks
-  // the whole lane (every harvest one event late). Board totals still balance
-  // and the lane still reads full, so nothing downstream catches it; that is
-  // exactly what happened to P3A on 2026-08-07. Cap how many times a cohort can
-  // be pushed, and shout when a chain is long enough to be a cascade.
-  const MAX_DEFER_HOPS = 1;   // a cohort may be left on the pond at most once
-  const DEFER_RUN_WARN = 3;   // consecutive deferring events that look like a cascade
-  const warnTxt = [];
+  // Rolling transition. Changing cycle length changes how many cohorts the pond
+  // carries at once — 24/25 days is 15 events where 21 days was 12 — and the
+  // pond cannot hold both shapes at once. So each event takes off exactly the
+  // template's worth and ponds the same amount back, and whatever the old,
+  // bigger cohorts leave over rolls to the next event, again and again, until
+  // the last of them is gone. Board totals balance at every event and the pond
+  // is never short; the price is that the rolled boards sit longer, which IS
+  // the longer cycle arriving.
+  //
+  // This used to be capped at one hop, on the theory that a chain of deferrals
+  // was always a fault (P3A, 2026-08-07). It is a fault when the template is
+  // simply wrong for the lane, and it is the mechanism when the template is a
+  // deliberate change of cycle length. The two look identical event by event
+  // and differ in whether they end, so the cap is now only a runaway stop and
+  // the report below says when the roll settles and how long boards wait.
+  const MAX_DEFER_HOPS = 40;  // runaway stop, not a policy: ~10 weeks of events
+  const warnTxt = [], infoTxt = [];   // infoTxt: transitions that settle on their own
   document.querySelectorAll('#bLanes tr[data-lane]').forEach(tr => {
     if (!tr.querySelector('.bl-inc').checked) return;
     const lane = tr.dataset.lane;
@@ -1208,7 +1246,10 @@ function builderGenerate() {
       phase = bestK;
     }
     let fill = cap, minFill = cap;
-    let deferRun = 0, maxDeferRun = 0, deferBlocked = 0;   // cascade guard state
+    // Transition state: how much is still rolling, how long the longest-waiting
+    // boards wait, and the last event that had to roll anything (once that stops
+    // happening the lane is fully on the new template).
+    let peakRoll = 0, maxWaitDays = 0, lastBigRollKey = null, lastRoll = 0, deferBlocked = 0;
     const blankPool = [];   // blank boards on the pond, FIFO; harvest date flexible
     const emit = (b, days, blank) => {
       const harv = new Date(d.getTime() + days * DAY);
@@ -1246,8 +1287,9 @@ function builderGenerate() {
             let excess = tot() - target;
             let nk = nextKey();
             if (!nk) { let nd = new Date(d.getTime() + DAY); while (!SLOT_DOW.includes(nd.getUTCDay())) nd = new Date(nd.getTime() + DAY); nk = ymd(nd); offC[nk] = offC[nk] || []; }
-            // Only boards that have not already been pushed this run are eligible:
-            // re-pushing the same boards is what turns one deferral into a cascade.
+            // FIFO at the harvest edge: boards already left behind are cut first,
+            // so what rolls on is always the day's youngest — a parcel waits its
+            // turn rather than being pushed forever.
             const byYoungest = ev.slice()
               .filter(e2 => (e2.hops || 0) < MAX_DEFER_HOPS)
               .sort((a2, b2) => (b2.p || '').localeCompare(a2.p || ''));
@@ -1256,13 +1298,15 @@ function builderGenerate() {
               if (e2.b <= 0) continue;
               const mv = Math.min(e2.b, excess);
               e2.b -= mv; excess -= mv;
-              offC[nk].push({ label: e2.label, b: mv, gen: e2.gen, p: e2.p, hops: (e2.hops || 0) + 1 });
+              // `due` is the event the boards were ORIGINALLY going to come off,
+              // carried along so the wait is measured end to end, not per hop.
+              offC[nk].push({ label: e2.label, b: mv, gen: e2.gen, p: e2.p,
+                hops: (e2.hops || 0) + 1, due: e2.due || k });
               off[nk] = (off[nk] || 0) + mv;
               deferredToday += mv;
               edits.push({ lane, cohort: e2.label, boards: mv, from: k, to: nk, p: e2.p, kind: 'leave on pond — harvest with next event' });
             }
-            // Excess we refused to push rather than start a cascade: the event
-            // simply harvests heavy. Surfaced below instead of hidden.
+            // Only reachable at the runaway stop, which no real transition hits.
             if (excess > 0) deferBlocked += excess;
           } else if (tot() < target) {
             // Deficit: harvest early from the next event's OLDEST boards (they
@@ -1284,8 +1328,22 @@ function builderGenerate() {
           }
           off[k] = tot();                              // reshaped harvest for today
           offUsed = Math.round(off[k]);
-          if (deferredToday > 0) { deferRun++; if (deferRun > maxDeferRun) maxDeferRun = deferRun; }
-          else deferRun = 0;
+          // Boards that waited and are coming off now: how far past their original
+          // event did they get? The longest of those is what the transition costs.
+          ev.forEach(e2 => {
+            if (e2.b > 0 && e2.due) {
+              const w8 = Math.round((new Date(k + 'T00:00:00Z') - new Date(e2.due + 'T00:00:00Z')) / DAY);
+              if (w8 > maxWaitDays) maxWaitDays = w8;
+            }
+          });
+          // A cycle-length change rolls whole slabs of boards while the old
+          // cohorts drain, then settles into a ±1 row split every event — the
+          // sequence is 7,7,8 and a cohort comes off two steps out of phase with
+          // the one it replaces, so a row moves either way forever. Only the
+          // slabs are the transition, so "settled" means the last event that
+          // moved more than a single row.
+          if (deferredToday > 0) { lastRoll = deferredToday; if (deferredToday > w) lastBigRollKey = k; }
+          if (deferredToday > peakRoll) peakRoll = deferredToday;
           if (offUsed > 0) onToday = emit(offUsed, p.days[si]);
         } else if (mode === 'steady') {
           onToday = emit(target, p.days[si]);
@@ -1338,10 +1396,21 @@ function builderGenerate() {
       tsv.push([pondP, sideP, 'BLANK', 'BLANK', '', 0, bp.b, fmtUS(bp.ponded), fmtUS(bp.ponded), fmtUS(end)].join('\t'));
     });
     if (minFill < cap) minFillTxt.push(`${lane} dips to ${minFill}/${cap}`);
-    if (maxDeferRun >= DEFER_RUN_WARN)
-      warnTxt.push(`${lane}: ${maxDeferRun} harvest events in a row deferred — the template's rows/event probably does not match this lane. Check the pattern and phase before applying.`);
+    // A roll that stops inside the window is the transition finishing; one still
+    // going at the last event means the window is too short to see the end of it.
+    if (peakRoll > 0) {
+      const settled = lastBigRollKey && lastBigRollKey < ymd(new Date(end.getTime() - 7 * DAY));
+      if (settled) {
+        infoTxt.push(`${lane}: transition — up to ${Math.round(peakRoll)} boards roll to the next event`
+          + `, longest wait ${maxWaitDays}d; on the new template from `
+          + `${fmtMD(new Date(lastBigRollKey + 'T00:00:00Z'))}`);
+      } else if (lastBigRollKey) {
+        warnTxt.push(`${lane}: still rolling ${Math.round(lastRoll)} boards an event at the end of the window`
+          + ` — the transition needs more weeks than this to finish.`);
+      }
+    }
     if (deferBlocked > 0)
-      warnTxt.push(`${lane}: ${Math.round(deferBlocked)} boards could not be reshaped without re-deferring boards already moved; those events harvest heavy.`);
+      warnTxt.push(`${lane}: ${Math.round(deferBlocked)} boards hit the ${MAX_DEFER_HOPS}-hop runaway stop; those events harvest heavy.`);
   });
   // Fold results into the preview map data: apply split edits to existing
   // cohorts (move boards between harvest dates), then append generated rows.
@@ -1379,10 +1448,14 @@ function builderGenerate() {
   const bal = document.getElementById('bBalance');
   const notes = [];
   if (warnTxt.length) notes.push(`<b style="color:#b3402f">⚠ ${warnTxt.map(esc).join('<br>⚠ ')}</b>`);
+  if (infoTxt.length) notes.push(infoTxt.map(esc).join('<br>'));
   if (minFillTxt.length) notes.push(`Fill: ${minFillTxt.map(esc).join('; ')}`);
   notes.push(`${total} rows generated (${esc(modeName)})`
     + (mism ? ` · <b style="color:#b3402f">${mism} events where boards on ≠ boards off</b>` : ' · every event balances'));
   bal.innerHTML = notes.join('<br>');
+  // Folded, the summary still has to carry the alarm.
+  document.getElementById('bNoteCount').textContent =
+    warnTxt.length ? `— ${warnTxt.length} warning${warnTxt.length > 1 ? 's' : ''}` : '';
   document.getElementById('bPreviewWrap').style.display = '';
   // Harvest split edit list (existing rows to modify by hand / in Supabase later).
   const ed = document.getElementById('bEdits');
@@ -1657,7 +1730,7 @@ document.getElementById('pageTabs').addEventListener('click', async e => {
   document.getElementById('builderTab').style.display = tab === 'builder' ? '' : 'none';
   document.getElementById('patternsTab').style.display = tab === 'patterns' ? '' : 'none';
   if (tab !== 'sched' && tab !== 'issues' && !patterns) {
-    try { await loadPatterns(); builderInit(); }
+    try { await loadPatterns(); builderInit(); wireFolds(); }
     catch (err) { document.getElementById('bRef').textContent = 'Error loading patterns: ' + (err.message || err); }
   }
 });
