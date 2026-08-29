@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lettuce Schedule</title>
-<script src="../lib/data-source.js?v=20260825a"></script>
+<script src="../lib/data-source.js?v=20260829a"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
@@ -88,6 +88,28 @@
   #latewarn { margin: 0 0 12px; background: #fdecea; border: 1px solid #e8a49c; color: #b3402f; border-radius: 6px; padding: 8px 12px; font-size: 0.85rem; font-weight: 600; }
   .g-block.planned { opacity: 0.6; border-style: dashed; }
 
+  /* Issues tab */
+  #issuesBadge { display: none; margin-left: 5px; background: #b3402f; color: #fff; border-radius: 8px; padding: 0 5px; font-size: 0.68rem; }
+  #issuesBadge.on { display: inline; }
+  #pageTabs button.active #issuesBadge { background: #fff; color: #25623c; }
+  #latewarn { cursor: pointer; }
+  #latewarn .go { float: right; font-weight: 700; text-decoration: underline; }
+  .iss-table { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
+  .iss-table th, .iss-table td { border-bottom: 1px solid #eee; padding: 6px 9px; text-align: left; white-space: nowrap; }
+  .iss-table th { background: #faf7f2; color: #777; font-size: 0.72rem; font-weight: 700; border-bottom: 2px solid #c9b896; }
+  .iss-table td.num { text-align: right; }
+  .iss-table tr.done td { color: #999; background: #f6faf7; }
+  .iss-late { color: #b3402f; font-weight: 700; }
+  .iss-table select, .iss-table input { font: inherit; font-size: 0.8rem; padding: 2px 5px; border: 1px solid #bbb; border-radius: 4px; }
+  .iss-note { width: 190px; }
+  .iss-apply { font: inherit; font-size: 0.8rem; font-weight: 600; padding: 3px 11px; border: 1px solid #25623c; border-radius: 4px; background: #25623c; color: #fff; cursor: pointer; }
+  .iss-apply:disabled { background: #ddd; border-color: #ccc; color: #888; cursor: default; }
+  .iss-msg { font-size: 0.78rem; }
+  .iss-msg.err { color: #b3402f; }
+  .iss-msg.ok { color: #2f7d4f; }
+  .iss-what { font-size: 0.78rem; color: #666; margin: 10px 2px 0; line-height: 1.5; }
+  .iss-flash { background: #d3f3dd; border: 1px solid #a8e0bb; color: #2f7d4f; border-radius: 5px; padding: 7px 11px; margin-bottom: 10px; font-size: 0.83rem; font-weight: 600; }
+
   /* Issues + legend */
   .issue { border-bottom: 1px solid #eee; padding: 7px 4px; font-size: 0.85rem; }
   .issue:last-child { border-bottom: none; }
@@ -130,10 +152,10 @@
       <button data-mode="rows" class="active">Rows</button><button data-mode="days">Days</button><button data-mode="dens">Density</button>
     </span>
     <span class="toggle" id="pageTabs" style="margin-left:24px">
-      <button data-tab="sched" class="active">Schedule</button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
+      <button data-tab="sched" class="active">Schedule</button><button data-tab="issues">Issues<span id="issuesBadge"></span></button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">08-25 09:10</span>
+  <span id="versionStamp" style="display:none">08-29 12:40</span>
 </div>
 
 <div id="content" class="wide">
@@ -144,6 +166,14 @@
     <div id="schedTab">
       <div id="gantt"></div>
       <div class="legend" id="legend"></div>
+    </div>
+    <div id="issuesTab" style="display:none;">
+      <div class="b-panel">
+        <div class="section-title">Past expected harvest, no harvest recorded</div>
+        <div class="b-note">Each row is a cycle whose expected harvest date has gone by with nothing entered against it.
+        Pick what actually happened and hit Apply — it writes straight to production.</div>
+        <div id="issuesBody"></div>
+      </div>
     </div>
     <div id="builderTab" style="display:none;">
       <div class="b-panel">
@@ -259,7 +289,9 @@ function varietyColor(key) {
 
 const MIN_ROWS = 1000;   // 2026 query normally returns ~1,300 rows; fewer ⇒ sheet likely filtered
 
-async function load() {
+// Fetch prod and rebuild `cycles`. Split out of load() so the Issues tab can
+// re-read after a write instead of making the user reload the page.
+async function loadCycles() {
   const table = await DataSource.fetchTable('lettuce_schedule');
 
   // A basic filter on the source sheet silently truncates the gviz feed. We can't
@@ -279,6 +311,7 @@ async function load() {
     const ponded = parseUsDate(r.PondDate);
     const end = parseUsDate(r.HarvestDate) || parseUsDate(r.ExpHarvestDate);
     return {
+      id: r.BatchId || '',                     // grow_lettuce_seed_batch.id — the Issues tab writes by it
       pond: (r.Pond || '').trim(),
       side: (r.Side || '').trim(),
       variety: (r.Variety || '').trim(),
@@ -292,6 +325,16 @@ async function load() {
   }).filter(c => c.pond && c.seed && c.end && c.end > c.seed)
     // Keep only cycles active during 2026 (seeded by year-end, harvest in/after Jan).
     .filter(c => c.end.getTime() >= Date.UTC(2026, 0, 1) && c.seed.getTime() <= Date.UTC(2026, 11, 31));
+}
+
+async function refreshCycles() {
+  await loadCycles();
+  render();
+  renderBMap();
+}
+
+async function load() {
+  await loadCycles();
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('main').style.display = 'block';
@@ -322,7 +365,147 @@ function render() {
   document.getElementById('asofDow').textContent = DOWS[asOf.getUTCDay()];
   renderGantt(asOf);
   renderLegend();
+  renderIssues();
 }
+
+// ══════════════════════ Late cycles (banner + Issues tab) ══════════════════════
+// A cycle is late when its expected harvest has gone by with no harvest recorded.
+// The off-pond filter hides these from the map, so they are surfaced here — each is
+// either a harvest nobody entered, lettuce genuinely still standing, or a plan row
+// that was never really ponded. The Issues tab resolves them one at a time.
+//
+// Always measured against REAL today, not the as-of date: rolling the view into the
+// future simulates those harvests, it doesn't make them late. Strictly BEFORE today,
+// because the day's cycles are cut mid-day (10am-3pm) and only read as late once the
+// harvest day is over.
+function lateCycles() {
+  const realToday = hstToday();
+  return cycles
+    .filter(c => !c.harv && c.end && c.end < realToday && c.ponded && c.ponded <= realToday)
+    .sort((a, b) => a.end - b.end || (a.pond + a.side).localeCompare(b.pond + b.side));
+}
+
+function renderLateWarn() {
+  const late = lateCycles();
+  const lw = document.getElementById('latewarn');
+  const badge = document.getElementById('issuesBadge');
+  badge.textContent = late.length || '';
+  badge.classList.toggle('on', late.length > 0);
+  if (!late.length) { lw.style.display = 'none'; return; }
+  const byLane = {};
+  late.forEach(c => {
+    const k = c.pond + c.side;
+    (byLane[k] = byLane[k] || { n: 0, b: 0, oldest: c.end }).n++;
+    byLane[k].b += c.boards;
+    if (c.end < byLane[k].oldest) byLane[k].oldest = c.end;
+  });
+  const parts = Object.keys(byLane).sort().map(k =>
+    `${k}: ${byLane[k].n}× ${Math.round(byLane[k].b)} bd (oldest ${fmtMD(byLane[k].oldest)})`);
+  lw.innerHTML = `<span class="go">Fix these ▸</span>⚠ ${late.length} cycle${late.length > 1 ? 's' : ''} `
+    + `past expected harvest with no harvest recorded — ${esc(parts.join(' · '))}`;
+  lw.style.display = '';
+}
+
+// One row per late cycle: what it is, then a resolution to choose.
+//   Harvested        — record the cut (harvest_date). Takes it off the pond.
+//   Still on pond    — push the expected harvest date out; it stops reading late.
+//   Never ponded     — retire the row (is_deleted); it leaves the schedule.
+// All three go through the lettuce_resolve_late_cycle function in Supabase, which
+// only accepts rows that are already flagged late (the dashboard's public key has
+// no write access to grow_lettuce_seed_batch itself).
+let issuesFlash = '';   // one-shot confirmation, shown after the post-save re-render
+
+function renderIssues() {
+  const late = lateCycles();
+  const el = document.getElementById('issuesBody');
+  const flash = issuesFlash ? `<div class="iss-flash">${esc(issuesFlash)}</div>` : '';
+  issuesFlash = '';
+  if (!late.length) {
+    el.innerHTML = flash + `<div class="none">Nothing past due — every ponded cycle whose expected harvest has passed has a harvest recorded.</div>`;
+    return;
+  }
+  const today = hstToday(), tYmd = ymd(today);
+  el.innerHTML = flash + `<table class="iss-table">
+    <tr><th>Lane</th><th>Seed</th><th class="num">Boards</th><th>Seeded</th><th>Ponded</th>
+        <th>Expected</th><th class="num">Days late</th><th>What happened</th><th>Date</th><th>Note</th><th></th></tr>`
+    + late.map((c, i) => {
+      const daysLate = Math.round((today - c.end) / DAY);
+      return `<tr data-i="${i}" data-id="${esc(c.id)}">
+        <td><b>${esc(c.pond + c.side)}</b></td>
+        <td>${esc(c.seedName)} <span style="color:#999">(${esc(c.variety)})</span></td>
+        <td class="num">${Math.round(c.boards)}</td>
+        <td>${fmtMD2(c.seed)}</td>
+        <td>${fmtMD2(c.ponded)}</td>
+        <td>${fmtMD2(c.end)}</td>
+        <td class="num iss-late">${daysLate}</td>
+        <td><select class="iss-act">
+              <option value="harvested">Harvested — record the cut</option>
+              <option value="reschedule">Still on pond — push expected date</option>
+              <option value="retire">Never ponded — retire the row</option>
+            </select></td>
+        <td><input type="date" class="iss-date" value="${ymd(c.end)}" min="${ymd(c.ponded)}" max="${tYmd}"></td>
+        <td><input type="text" class="iss-note" placeholder="optional note"></td>
+        <td><button class="iss-apply">Apply</button> <span class="iss-msg"></span></td>
+      </tr>`;
+    }).join('')
+    + `</table>
+    <div class="iss-what"><b>Harvested</b> writes the cut date onto the cycle, exactly as if it had been entered on the day —
+    it comes off the pond map and counts as harvested everywhere. <b>Still on pond</b> moves the expected harvest date only.
+    <b>Never ponded</b> marks the row deleted, so it drops out of the schedule and the pond fill counts.</div>`;
+}
+
+// Date input follows the chosen action: a cut date can't be in the future, a pushed
+// expected date can't be in the past, and a retired row needs no date at all.
+document.getElementById('issuesBody').addEventListener('change', e => {
+  const sel = e.target.closest('.iss-act'); if (!sel) return;
+  const tr = sel.closest('tr'), d = tr.querySelector('.iss-date');
+  const c = lateCycles()[+tr.dataset.i];
+  const tYmd = ymd(hstToday());
+  if (sel.value === 'harvested') {
+    d.disabled = false; d.min = ymd(c.ponded); d.max = tYmd; d.value = ymd(c.end);
+  } else if (sel.value === 'reschedule') {
+    d.disabled = false; d.min = tYmd; d.removeAttribute('max'); d.value = tYmd;
+  } else {
+    d.disabled = true; d.value = '';
+  }
+  tr.querySelector('.iss-msg').textContent = '';
+});
+
+document.getElementById('issuesBody').addEventListener('click', async e => {
+  const btn = e.target.closest('.iss-apply'); if (!btn) return;
+  const tr = btn.closest('tr');
+  const id = tr.dataset.id;
+  const action = tr.querySelector('.iss-act').value;
+  const date = tr.querySelector('.iss-date').value || null;
+  const note = tr.querySelector('.iss-note').value.trim() || null;
+  const msg = tr.querySelector('.iss-msg');
+  const lane = tr.cells[0].textContent;
+  if (!id) { msg.className = 'iss-msg err'; msg.textContent = 'No batch id on this row'; return; }
+  if (action !== 'retire' && !date) { msg.className = 'iss-msg err'; msg.textContent = 'Pick a date'; return; }
+  const label = { harvested: `record ${lane} as harvested ${date}`,
+                  reschedule: `push ${lane}'s expected harvest to ${date}`,
+                  retire: `retire ${lane} — it drops out of the schedule` }[action];
+  if (!confirm(`Apply to production: ${label}?`)) return;
+  btn.disabled = true;
+  msg.className = 'iss-msg'; msg.textContent = 'Saving…';
+  try {
+    const r = await fetch(`${SB.url}/rest/v1/rpc/lettuce_resolve_late_cycle`, {
+      method: 'POST',
+      headers: { apikey: SB.key, Authorization: `Bearer ${SB.key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_batch_id: id, p_action: action, p_date: date, p_note: note }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || ('Supabase ' + r.status));
+    tr.classList.add('done');
+    msg.className = 'iss-msg ok'; msg.textContent = 'Saved';
+    issuesFlash = { harvested: `Recorded ${lane} as harvested ${date}.`,
+                    reschedule: `${lane}'s expected harvest moved to ${date}.`,
+                    retire: `${lane} retired — it no longer appears on the schedule.` }[action];
+    await refreshCycles();          // re-read prod so the map and the banner agree
+  } catch (err) {
+    btn.disabled = false;
+    msg.className = 'iss-msg err'; msg.textContent = err.message || String(err);
+  }
+});
 
 // ── Pond rows: one row per pond/side, cycles tiled by board size in harvest
 // order (next-to-harvest on the left). A pond header shows current fill vs cap.
@@ -354,31 +537,7 @@ function renderGantt(today) {
   const GERM_RES = 20;
   const ROW_PX = PV ? Math.max(4, Math.min(14, Math.floor((availTrack - GUT_W - 26 - 12) / (110 + GERM_RES)))) : 6;
 
-  // Late-harvest checker: cycles whose expected harvest is on/before the as-of
-  // date but have no actual harvest recorded. The off-pond filter hides these,
-  // so surface them here — each is either an unrecorded harvest or lettuce
-  // genuinely overdue on the pond.
-  // Always measured against REAL today, not the as-of date: rolling the view into
-  // the future simulates those harvests, it doesn't make them late.
-  const realToday = hstToday();
-  // Strictly BEFORE today: today's cycles are cut mid-day (10am-3pm), so they
-  // only count as late once the harvest day is over.
-  const late = cycles.filter(c => !c.harv && c.end && c.end < realToday && c.ponded && c.ponded <= realToday)
-    .sort((a, b) => a.end - b.end);
-  const lw = document.getElementById('latewarn');
-  if (late.length) {
-    const byLane = {};
-    late.forEach(c => {
-      const k = c.pond + c.side;
-      (byLane[k] = byLane[k] || { n: 0, b: 0, oldest: c.end }).n++;
-      byLane[k].b += c.boards;
-      if (c.end < byLane[k].oldest) byLane[k].oldest = c.end;
-    });
-    const parts = Object.keys(byLane).sort().map(k =>
-      `${k}: ${byLane[k].n}× ${Math.round(byLane[k].b)} bd (oldest ${fmtMD(byLane[k].oldest)})`);
-    lw.textContent = `⚠ ${late.length} cycle${late.length > 1 ? 's' : ''} past expected harvest with no harvest recorded — ${parts.join(' · ')}`;
-    lw.style.display = '';
-  } else lw.style.display = 'none';
+  renderLateWarn();
 
   const g = document.getElementById('gantt');
   g.innerHTML = '';
@@ -805,26 +964,27 @@ function builderInit() {
       // Lane defaults per Lenny's 08/04 plan; lanes not listed fall back to a
       // guess from the newest cycle length. (P1AB pattern still undecided:
       // 21/__/21/__ vs 17/__/18/__ — defaulting to 21/__/21/__.)
+      // Mixed lanes run 24/24/25/25 as of 2026-08-29 (was 21/21/21/21).
       const DEFAULTS = {
         P1AB: { pat: '17/__/18/__', seed: 'Astro' },
-        P2B: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P3A: { pat: '28/28/28/28', seed: '3310' },
-        P3B: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P2C: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P3C: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P4A: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P4B: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P4AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P5AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P6AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
-        P7AB: { pat: '21/21/21/21', seed: 'Mixed Version 2.0' },
+        P2B: { pat: '24/24/25/25', seed: 'Mixed Version 2.0' },
+        P3A: { pat: '24/24/25/25', seed: 'Mixed Version 2.0' },
+        P3B: { pat: '24/24/25/25', seed: 'Mixed Version 2.0' },
+        P2C: { pat: '24/24/25/25', seed: 'Mixed Version 2.0' },
+        P3C: { pat: '24/24/25/25', seed: 'Mixed Version 2.0' },
+        P4A: { pat: '24/24/25/25', seed: 'Mixed Version 2.0' },
+        P4B: { pat: '24/24/25/25', seed: 'Mixed Version 2.0' },
+        P4AB: { pat: '24/24/25/25', seed: 'Mixed Version 2.0' },
+        P5AB: { pat: '24/24/25/25', seed: 'Mixed Version 2.0' },
+        P6AB: { pat: '24/24/25/25', seed: 'Mixed Version 2.0' },
+        P7AB: { pat: '24/24/25/25', seed: 'Mixed Version 2.0' },
       };
       const saved = laneConfig[lane];
       const def = DEFAULTS[lane];
       const guessDays = lastC ? Math.round((lastC.end - lastC.ponded) / DAY) : 21;
       const guess = (saved && patterns[saved.pattern] && saved.pattern)
         || (def && patterns[def.pat] && def.pat)
-        || Object.keys(patterns).find(p => patterns[p].days[0] === guessDays && patterns[p].seqs[laneClass(lane)]) || '21/21/21/21';
+        || Object.keys(patterns).find(p => patterns[p].days[0] === guessDays && patterns[p].seqs[laneClass(lane)]) || '24/24/25/25';
       const pondOf = lane.slice(0, 2);
       const flip = pondOf === 'P1' ? '' :
         `<button class="step-btn bl-flip" data-pond="${pondOf}" title="${lane.endsWith('AB') ? 'Split into A + B' : 'Merge into AB'}" style="padding:0 6px">${lane.endsWith('AB') ? '+' : '−'}</button>`;
@@ -1467,12 +1627,18 @@ document.getElementById('pageTabs').addEventListener('click', async e => {
   document.querySelectorAll('#pageTabs button').forEach(x => x.classList.toggle('active', x === b));
   const tab = b.dataset.tab;
   document.getElementById('schedTab').style.display = tab === 'sched' ? '' : 'none';
+  document.getElementById('issuesTab').style.display = tab === 'issues' ? '' : 'none';
   document.getElementById('builderTab').style.display = tab === 'builder' ? '' : 'none';
   document.getElementById('patternsTab').style.display = tab === 'patterns' ? '' : 'none';
-  if (tab !== 'sched' && !patterns) {
+  if (tab !== 'sched' && tab !== 'issues' && !patterns) {
     try { await loadPatterns(); builderInit(); }
     catch (err) { document.getElementById('bRef').textContent = 'Error loading patterns: ' + (err.message || err); }
   }
+});
+
+// The warning banner is the way most people will get here: click it, land on Issues.
+document.getElementById('latewarn').addEventListener('click', () => {
+  document.querySelector('#pageTabs button[data-tab="issues"]').click();
 });
 
 load().catch(err => {
