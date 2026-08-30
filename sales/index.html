@@ -512,29 +512,43 @@ function toData(s, { div = 1, cut = false } = {}) {
   return Array.from({ length: N }, (_, i) => (s.has[i] && (!cut || (i + 1) <= max)) ? Math.round(s.arr[i] / div * 10) / 10 : null);
 }
 // Ordered + fulfilled cases per bucket, from the PO book (finance_po_fill_v).
+// ordRec is the ordered subtotal for lines that already carry a fulfillment
+// row, which is what makes the coverage test below possible.
 function sPoFill(codeSet, year) {
-  const N = budN(), ord = Array(N).fill(0), ful = Array(N).fill(0), has = Array(N).fill(false);
+  const N = budN(), ord = Array(N).fill(0), ordRec = Array(N).fill(0), ful = Array(N).fill(0), has = Array(N).fill(false);
   const yk = budgetPeriod === 'weekly' ? 'ISOYear' : 'Year';
   const ik = budgetPeriod === 'weekly' ? 'ISOWeek' : 'Month';
   (poFill || []).forEach(r => { if (r[yk] !== year) return; if (!codeSet.has(r.ProductCode)) return;
     const i = (+r[ik]) - 1; if (i < 0 || i >= N) return;
-    ord[i] += +r.Ordered || 0; ful[i] += +r.Fulfilled || 0; has[i] = true; });
-  return { ord, ful, has };
+    ord[i] += +r.Ordered || 0; ordRec[i] += +r.OrderedRec || 0; ful[i] += +r.Fulfilled || 0; has[i] = true; });
+  return { ord, ordRec, ful, has };
 }
+// Fulfillment is keyed in over the days after the order, so a recent bucket
+// holds lines nobody has filled in yet. Those carry no fulfillment row at all,
+// and a line that genuinely shipped nothing is recorded as a zero — so an
+// absent row means unrecorded, not unfilled, and counting it as a total short
+// invents a cliff at the right edge of every chart.
+//
+// Two guards. Divide by ordRec, not ord, so the ratio only ever speaks for the
+// lines it has actually seen; and drop a bucket whose coverage is too thin for
+// that sample to stand in for the week. Settled buckets sit at 99-100%
+// coverage and are untouched by both.
+const PO_COVERAGE_MIN = 0.9;
+const poCovered = (s, i) => s.has[i] && s.ordRec[i] > 0 && s.ordRec[i] >= s.ord[i] * PO_COVERAGE_MIN;
 // % short per bucket: (filled / ordered - 1) * 100. Negative = we came up short
 // of the PO, positive = over-filled (the overage is billed, so it is real).
-// Always cut at the last closed bucket: fulfillment lags the order by days, so
-// the open period always looks catastrophically short until it closes.
+// Still cut at the last closed bucket, which the coverage test then backs up.
 function toPctShort(s) {
   const N = budN(), max = budMaxIdx();
-  return Array.from({ length: N }, (_, i) => (s.has[i] && s.ord[i] > 0 && (i + 1) <= max)
-    ? Math.round((s.ful[i] / s.ord[i] - 1) * 1000) / 10 : null);
+  return Array.from({ length: N }, (_, i) => (poCovered(s, i) && (i + 1) <= max)
+    ? Math.round((s.ful[i] / s.ordRec[i] - 1) * 1000) / 10 : null);
 }
-// Same ratio over every closed bucket to date -> the panel's YTD figure.
+// Same ratio over every closed, covered bucket to date -> the panel's YTD
+// figure. Skipping the thin buckets keeps YTD in step with the plotted line.
 function ytdPctShort(s) {
   const max = budMaxIdx();
   let o = 0, f = 0;
-  for (let i = 0; i < budN(); i++) if (s.has[i] && (i + 1) <= max) { o += s.ord[i]; f += s.ful[i]; }
+  for (let i = 0; i < budN(); i++) if (poCovered(s, i) && (i + 1) <= max) { o += s.ordRec[i]; f += s.ful[i]; }
   return o ? Math.round((f / o - 1) * 100) : null;
 }
 // % y-axis window, rounded to a whole 10 and always including 0. Starts from

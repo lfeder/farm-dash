@@ -9,7 +9,19 @@
 --   * order_quantity = 0 lines are always_on_po shells, not real orders
 -- Bucketed on sales_po.order_date: ordered and fulfilled then always land in
 -- the same period, so the ratio never straddles a week boundary.
-create or replace view finance_po_fill_v as
+--
+-- ordered_recorded is the ordered-case subtotal for lines that already carry a
+-- fulfillment row. Fulfillment is keyed in days after the order, so a bucket
+-- near "now" holds lines nobody has filled in yet; those must not be read as
+-- 100%-short. A line that truly shipped nothing gets a row with
+-- fulfilled_quantity = 0, so an absent row means unrecorded, not unfilled, and
+-- ordered_recorded is the honest denominator for the fill ratio. Consumers
+-- divide `fulfilled` by `ordered_recorded` and suppress a bucket whose
+-- ordered_recorded / ordered coverage is too thin to trust.
+-- Dropped rather than replaced: ordered_recorded sits mid-list, and
+-- create-or-replace can only append columns to an existing view.
+drop view if exists finance_po_fill_v;
+create view finance_po_fill_v as
 with f as (
   select sales_po_line_id, sum(fulfilled_quantity) as fulfilled
   from sales_po_fulfillment
@@ -23,6 +35,8 @@ with f as (
          li.farm_id,
          li.sales_product_id                      as product_code,
          sum(li.order_quantity)                   as ordered,
+         sum(li.order_quantity) filter (where f.sales_po_line_id is not null)
+                                                  as ordered_recorded,
          sum(coalesce(f.fulfilled, 0))            as fulfilled
   from sales_po_line li
   join sales_po p on p.id = li.sales_po_id
@@ -36,7 +50,8 @@ with f as (
     and p.order_date >= date '2025-01-01'
   group by 1, 2, 3, 4, 5, 6
 )
-select isoyear, isoweek, year, month, farm_id, product_code, ordered, fulfilled,
+select isoyear, isoweek, year, month, farm_id, product_code,
+       ordered, coalesce(ordered_recorded, 0) as ordered_recorded, fulfilled,
        row_number() over (order by isoyear, isoweek, year, month, farm_id, product_code) as id
 from a;
 

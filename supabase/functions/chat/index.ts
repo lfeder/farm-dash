@@ -246,6 +246,13 @@ cucumbers and lettuce, revenue over $10M/yr, all sold in-state.
   from QuickBooks. Use _edi_v when the question is about current sales figures.
 - Dollar and case figures live on invoice rows; pounds are usually derived
   from case counts via sales_product.case_net_weight — do not hardcode weights.
+- finance_po_fill_v: fill rate is fulfilled / ordered_recorded, never
+  fulfilled / ordered. Fulfillment is keyed in over the days after the order,
+  so recent lines have no fulfillment row yet and `ordered` counts them as
+  100%-short. ordered_recorded is the ordered subtotal for lines that do have
+  one; a line that truly shipped nothing is recorded as a zero, so it still
+  counts. Report a period's coverage (ordered_recorded / ordered) when it is
+  below ~90% — that period is still settling and its fill rate is provisional.
 
 ## Known gaps (these are answers, not missing data)
 
