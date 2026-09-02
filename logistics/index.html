@@ -92,7 +92,7 @@ h1{margin:0; font-size:30px; font-weight:700; letter-spacing:-.02em}
    the same colour and weight as them, separated by nothing but the .45 the
    others are faded to, so the day boundary had to be found rather than seen. */
 .lane{stroke:var(--line-2); stroke-width:1}
-.col{stroke:var(--line); stroke-width:1.5}
+.col{stroke:#b1bfc7; stroke-width:3}
 .hr{stroke:var(--line-2); stroke-width:1; opacity:.45}
 .move{stroke:var(--ink); stroke-width:2; stroke-linecap:round}
 .wait{stroke:var(--ink); stroke-width:2; stroke-dasharray:2 3; opacity:.6}
@@ -159,6 +159,13 @@ h1{margin:0; font-size:30px; font-weight:700; letter-spacing:-.02em}
 .page[hidden]{display:none}
 code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--card-2);
   border:1px solid var(--line-2); border-radius:4px; padding:0 4px}
+
+/* The day count, in the corner of the journey bar. Only ever filled for a
+   single journey -- see app.js. */
+.res{margin-left:auto; display:flex; align-items:baseline; gap:5px}
+.res b{font-family:"IBM Plex Mono",monospace; font-size:22px; font-weight:600; line-height:1}
+.res small{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); font-weight:600}
+.res em{font-style:normal; font-size:10.5px; color:var(--ink-3)}
 
 /* ---------- the task list, now a reading rather than a form ---------- */
 .grid{display:grid; gap:0 10px; align-items:center;
@@ -378,6 +385,7 @@ code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--ca
         <span class="seg" id="pick-when"></span>
         <span class="picks" id="pick-jrns"></span>
         <span class="note" id="src"></span>
+        <span class="res" id="jdays"></span>
       </div>
       <div class="body">
         <div class="axis" id="axis"></div>
@@ -1657,6 +1665,15 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
                  winSpan(winOf(flow, o.pl));
         }).join('; ') + '.</div>';
     }
+    // How long it takes is a fact about one journey. Several of them have no
+    // single duration between them, so the corner is empty rather than
+    // averaged -- which is why this went away the first time, and why it comes
+    // back beside the journey chips instead of over the chart: an empty right
+    // end of a bar you are already reading explains itself.
+    document.getElementById('jdays').innerHTML = flow.many ? '' :
+      '<b>' + r.days + '</b><small>' + (r.days === 1 ? 'day' : 'days') + '</small>' +
+      '<em>' + dur(r.hrs) + ' end to end, ' + dur(r.still) + ' waiting</em>';
+
     document.getElementById('warn').innerHTML = warn;
     document.getElementById('tnote').textContent =
       flow.tasks.length + ' legs · ' + (flow.branches || []).length + ' branches · ' +
