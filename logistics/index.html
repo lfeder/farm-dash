@@ -26,11 +26,11 @@ body{margin:0; background:var(--ground); color:var(--ink); font-size:15px; line-
   font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   -webkit-font-smoothing:antialiased}
 .wrap{max-width:1240px; margin:0 auto; padding:32px 24px 80px; display:flex; flex-direction:column; gap:24px}
-header{display:flex; flex-wrap:wrap; align-items:flex-end; gap:16px 28px;
-  border-bottom:2px solid var(--ink); padding-bottom:16px}
+header{display:flex; flex-wrap:wrap; align-items:center; gap:10px 20px;
+  border-bottom:2px solid var(--ink); padding-bottom:10px}
 h1{margin:0; font-size:30px; font-weight:700; letter-spacing:-.02em}
 .sub{color:var(--ink-2); font-size:14px; margin:2px 0 0}
-.built{margin:3px 0 0; font-family:"IBM Plex Mono",monospace; font-size:10.5px;
+.built{margin:0 0 0 auto; font-family:"IBM Plex Mono",monospace; font-size:10.5px;
   letter-spacing:.02em; color:var(--ink-3)}
 .panel{background:var(--card); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow)}
 .panel-hd{display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:13px 18px;
@@ -45,7 +45,8 @@ h1{margin:0; font-size:30px; font-weight:700; letter-spacing:-.02em}
 .btn.solid{background:var(--ink); border-color:var(--ink); color:var(--card); font-weight:600}
 .btn.solid:hover{background:var(--accent); border-color:var(--accent); color:#fff}
 .seg{display:inline-flex; border:1px solid var(--line); border-radius:7px; overflow:hidden}
-.seg a{padding:5px 12px; font-size:12.5px; color:var(--ink-2); cursor:pointer; white-space:nowrap;
+.seg a{padding:4px 12px; font-size:12.5px; color:var(--ink-2); cursor:pointer; white-space:nowrap;
+  display:flex; flex-direction:column; align-items:center; line-height:1.25;
   border-left:1px solid var(--line)}
 .seg a:first-child{border-left:none}
 .seg a.on{background:var(--accent); color:#fff; font-weight:600}
@@ -156,7 +157,7 @@ h1{margin:0; font-size:30px; font-weight:700; letter-spacing:-.02em}
 @media (max-width:1150px){ .tasks{overflow-x:auto} .grid{min-width:1120px} }
 
 /* ---------- tabs ---------- */
-.tabs{margin-left:auto}
+.tabs{margin-left:0}
 .page{display:flex; flex-direction:column; gap:24px}
 .page[hidden]{display:none}
 code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--card-2);
@@ -164,9 +165,8 @@ code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--ca
 
 /* The day count, in the corner of the journey bar. Only ever filled for a
    single journey -- see app.js. */
-.res{display:flex; align-items:baseline; gap:5px; margin-left:4px}
-.res b{font-family:"IBM Plex Mono",monospace; font-size:22px; font-weight:600; line-height:1}
-.res small{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); font-weight:600}
+.seg a small{font-family:"IBM Plex Mono",monospace; font-size:10px; font-weight:500;
+  opacity:.72; letter-spacing:.02em}
 
 /* ---------- the task list, now a reading rather than a form ---------- */
 .grid{display:grid; gap:0 10px; align-items:center;
@@ -371,22 +371,22 @@ code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--ca
 </head>
 <body>
 <div class="wrap">
+  <!-- One row: the name, what you are looking at, and which build it is. The
+       title had a line of its own and the tabs a line of their own, which cost
+       two rows of the window to four words and three buttons. -->
   <header>
-    <div>
-      <h1>Logistics Map</h1>
-      <!-- Which build you are looking at. GitHub Pages serves this with a ten
-           minute max-age and the dashboard is iframed inside aloha.ag, so a
-           stale copy is easy to mistake for a change that did not take. -->
-      <p class="built">built 2026-09-02 13:00 PDT</p>
-    </div>
+    <h1>Logistics</h1>
     <nav class="seg tabs" id="tabs"></nav>
+    <!-- GitHub Pages serves this with a ten minute max-age and the dashboard is
+         iframed inside aloha.ag, so a stale copy is easy to mistake for a
+         change that did not take. -->
+    <p class="built">built 2026-09-02 13:08 PDT</p>
   </header>
 
   <!-- Flow -->
   <section class="page" id="page-flow">
     <div class="panel">
       <div class="panel-hd">
-        <h2>Journey</h2>
         <span class="seg" id="pick-when"></span>
         <span class="picks" id="pick-jrns"></span>
         <span class="note" id="src"></span>
@@ -1537,7 +1537,7 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
-  var TABS = [['flow', 'Flow'], ['orders', 'Orders'], ['hours', 'Hours']];
+  var TABS = [['flow', 'Map'], ['orders', 'Orders'], ['hours', 'Hours']];
   function paint() {
     seg('tabs', TABS, S.tab, function (v) { S.tab = v; save(); paint(); });
     TABS.forEach(function (t) {
@@ -1611,14 +1611,6 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
                  winSpan(winOf(flow, o.pl));
         }).join('; ') + '.</div>';
     }
-    // How long it takes is a fact about one journey. Several of them have no
-    // single duration between them, so it is blank rather than averaged. The
-    // hours are on the task list a scroll below, so the chip row carries the
-    // one number you cannot get by looking at the chart -- reading five days
-    // off the axis means counting the midnight rules.
-    document.getElementById('jdays').innerHTML = flow.many ? '' :
-      '<b>' + r.days + '</b><small>' + (r.days === 1 ? 'day' : 'days') + '</small>';
-
     document.getElementById('warn').innerHTML = warn;
     document.getElementById('tnote').textContent =
       flow.tasks.length + ' legs · ' + (flow.branches || []).length + ' branches · ' +
@@ -1776,6 +1768,24 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
   }
 
 
+  // Every run behind a chip that the cut-day choice lets through, measured the
+  // way the corner used to measure the selection: first start to last stop, in
+  // days. Distinct values collapse to a range.
+  function daysOf(key) {
+    var when = (S.sel || {}).when || [];
+    var runs = F.filter(function (f) {
+      return jrnKey(f) === key && (!when.length || when.indexOf(f.start) >= 0);
+    });
+    var out = [];
+    runs.forEach(function (f) {
+      var d = read(f).days;
+      if (out.indexOf(d) < 0) out.push(d);
+    });
+    if (!out.length) return '';
+    out.sort(function (a, b) { return a - b; });
+    return '(' + (out.length > 1 ? out[0] + '\u2013' + out[out.length - 1] : out[0]) + ')';
+  }
+
   function jrnFor(key) {
     for (var i = 0; i < F.length; i++) if (jrnKey(F[i]) === key) return F[i];
     return null;
@@ -1807,14 +1817,10 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
     var host = document.getElementById('pick-jrns');
     if (!host) return;
     var crops = uniq(F.map(function (f) { return f.crop || ''; }));
-    // The day count rides inside the row rather than beside it. As a sibling
-    // of .picks it was a second flex item after one that fills the line, so it
-    // wrapped to a line of its own however short it got; inside, it is the item
-    // after the last chip and breaks only when the chips themselves do.
     host.innerHTML = crops.map(function (c, n) {
       return '<span class="lbl">' + esc(c) + '</span><span class="seg" id="pick-c' + n +
         '"></span>';
-    }).join('') + '<span class="res" id="jdays"></span>';
+    }).join('');
     crops.forEach(function (c, n) {
       var mine = F.filter(function (f) { return (f.crop || '') === c; });
       // Journeys to the same customer sit together: 140 twice over is one
@@ -1833,9 +1839,16 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
       // In the journey's own colour, and in the stronger of its two shades: a
       // chip is the journey, not one run of it. Colour is the whole point of
       // the chip -- it is how you find that thread again in the chart.
+      //
+      // Under the name, how many days it takes. It used to be one figure beside
+      // the row, which meant it existed only while exactly one journey was on;
+      // per chip it is there for all of them at once, which is the comparison
+      // the row is for. A chip covers both cut days, so a journey whose two
+      // runs differ -- Kauai catches a different boat off each -- reads as a
+      // range rather than picking one.
       seg('pick-c' + n, opts.map(function (k) {
         var f = jrnFor(k);
-        return [k, f ? jrnLabel(f) : k, f ? 'j' + hueOf(f.name) + 'a' : ''];
+        return [k, f ? jrnLabel(f) : k, f ? 'j' + hueOf(f.name) + 'a' : '', daysOf(k)];
       }), S.sel.jrn || [], function (v) { toggle('jrn', v); });
     });
   }
@@ -1848,8 +1861,9 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
     el.innerHTML = opts.map(function (o) {
       var on = chosen.some(function (c) { return String(o[0]) === String(c); });
       var tone = o[2] ? ' ' + o[2] : '';
+      var sub = o[3] ? '<small>' + esc(o[3]) + '</small>' : '';
       return '<a data-v="' + esc(o[0]) + '" class="' + esc((on ? 'on' : '') + tone) +
-        '">' + esc(o[1]) + '</a>';
+        '">' + esc(o[1]) + sub + '</a>';
     }).join('');
     [].slice.call(el.querySelectorAll('a')).forEach(function (a) {
       a.onclick = function () { cb(a.getAttribute('data-v')); };
