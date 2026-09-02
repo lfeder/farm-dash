@@ -377,7 +377,7 @@ code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--ca
       <!-- Which build you are looking at. GitHub Pages serves this with a ten
            minute max-age and the dashboard is iframed inside aloha.ag, so a
            stale copy is easy to mistake for a change that did not take. -->
-      <p class="built">built 2026-09-02 12:59 PDT</p>
+      <p class="built">built 2026-09-02 13:00 PDT</p>
     </div>
     <nav class="seg tabs" id="tabs"></nav>
   </header>
@@ -1701,9 +1701,15 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
 
   // We cut on the anchor day and the day after, and both feed the same
   // departure, so the pair is the honest label for the choice.
+  //
+  // The pair named is the two days the journeys START, which is the day after
+  // the anchor and the one after that -- Sun anchors Mon/Tue, Wed anchors
+  // Thu/Fri. A label only: `start` stays the anchor day everywhere it is used,
+  // which is what the chart is drawn from and what the sheet's Start Day counts
+  // from. Change this and you change what the chips read, nothing else.
   function cutLabel(day) {
     var i = DOW.indexOf(day);
-    return i < 0 ? day : day + '/' + DOW[(i + 1) % 7];
+    return i < 0 ? day : DOW[(i + 1) % 7] + '/' + DOW[(i + 2) % 7];
   }
 
   function uniq(list) {
