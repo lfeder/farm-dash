@@ -175,7 +175,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="issues">Issues<span id="issuesBadge"></span></button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">09-02 09:55</span>
+  <span id="versionStamp" style="display:none">09-02 10:20</span>
 </div>
 
 <div id="content" class="wide">
@@ -1600,34 +1600,43 @@ function bApplyState(pastRows) {
     + `${bPlan.inserts.length} new${skipped}`;
 }
 
+async function bPlanRpc(b, dry) {
+  const r = await fetch(`${SB.url}/rest/v1/rpc/lettuce_apply_plan`, {
+    method: 'POST',
+    headers: { apikey: SB.key, Authorization: `Bearer ${SB.key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_dry_run: dry, p_plan: {
+      label: b.label, start: b.start, weeks: b.weeks, lanes: b.lanes,
+      edits: b.edits.map(e => ({ id: e.id, chunks: e.chunks })),
+      clear: b.clear, inserts: b.inserts } }),
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.message || body.hint || ('Supabase ' + r.status));
+  return body;
+}
+
 document.getElementById('bApply').addEventListener('click', async () => {
   if (!bPlan) return;
   const b = bPlan;
   const btn = document.getElementById('bApply'), msg = document.getElementById('bApplyMsg');
-  const splits = b.edits.reduce((s, e) => s + e.chunks.length - 1, 0);
-  const lines = ['Apply this plan to production?', '',
-    `  ${b.edits.length} cycles on the pond re-cut (${splits} pieces split onto their own rows)`,
-    `  ${b.clear.length} planned cycles replaced`,
-    `  ${b.inserts.length} new cycles written`,
-    `  ${b.lanes.join(', ')} — ${b.weeks} weeks from ${b.start}`, ''];
-  if (b.blanks) lines.push(`${b.blanks} blanks are NOT written — that pond space stays empty.`);
-  if (b.blocked.length) lines.push('Left alone: ' + b.blocked.map(x => `${x.lane} (`
-    + (x.sideMix ? 'production has one AB row where the builder has A and B' : `${x.stale} replaced rows are already on the pond`) + ')').join('; '));
-  lines.push('', 'This writes straight to production. It can be undone right after.');
-  if (!confirm(lines.join('\n'))) return;
   btn.disabled = true;
-  msg.className = 'b-apply-msg'; msg.textContent = 'Writing…';
+  msg.className = 'b-apply-msg'; msg.textContent = 'Checking against production…';
   try {
-    const r = await fetch(`${SB.url}/rest/v1/rpc/lettuce_apply_plan`, {
-      method: 'POST',
-      headers: { apikey: SB.key, Authorization: `Bearer ${SB.key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_plan: {
-        label: b.label, start: b.start, weeks: b.weeks, lanes: b.lanes,
-        edits: b.edits.map(e => ({ id: e.id, chunks: e.chunks })),
-        clear: b.clear, inserts: b.inserts } }),
-    });
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(body.message || body.hint || ('Supabase ' + r.status));
+    // Dry run first: the database does the entire apply and throws it away, so the
+    // numbers below are what it agreed to write, not what the browser hoped for. A
+    // plan production would refuse fails here, before anyone is asked to confirm.
+    const chk = await bPlanRpc(b, true);
+    const lines = ['Apply this plan to production?', '',
+      `  ${chk.edited} cycles on the pond re-cut (${chk.split_rows} pieces split onto their own rows)`,
+      `  ${chk.replaced} planned cycles replaced`,
+      `  ${chk.inserted} new cycles written`,
+      `  ${b.lanes.join(', ')} — ${b.weeks} weeks from ${b.start}`, ''];
+    if (b.blanks) lines.push(`${b.blanks} blanks are NOT written — that pond space stays empty.`);
+    if (b.blocked.length) lines.push('Left alone: ' + b.blocked.map(x => `${x.lane} (`
+      + (x.sideMix ? 'production has one AB row where the builder has A and B' : `${x.stale} replaced rows are already on the pond`) + ')').join('; '));
+    lines.push('', 'This writes straight to production. It can be undone right after.');
+    if (!confirm(lines.join('\n'))) { bApplyState(0); return; }
+    msg.className = 'b-apply-msg'; msg.textContent = 'Writing…';
+    const body = await bPlanRpc(b, false);
     bLastApply = body;
     bPlan = null;                       // one apply per generated plan
     msg.className = 'b-apply-msg ok';

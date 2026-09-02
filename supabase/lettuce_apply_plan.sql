@@ -34,7 +34,11 @@ comment on table archive.lettuce_plan_apply is
 create index if not exists lettuce_plan_apply_applied_idx
   on archive.lettuce_plan_apply (applied_at desc);
 
-create or replace function public.lettuce_apply_plan(p_plan jsonb)
+-- p_dry_run does the whole apply and then throws it away: same validation, same
+-- counts, nothing written. The dashboard calls it that way first, so the confirm
+-- dialog quotes numbers the database agreed to rather than the browser's guess.
+drop function if exists public.lettuce_apply_plan(jsonb);
+create or replace function public.lettuce_apply_plan(p_plan jsonb, p_dry_run boolean default false)
 returns jsonb
 language plpgsql
 security definer
@@ -73,6 +77,8 @@ declare
   v_n_ins   int := 0;
 begin
   v_stamp := '[' || v_today || ' ' || v_tag || ']';
+  -- Everything below runs in a sub-transaction so a dry run can be discarded whole.
+  begin
 
   if v_start is null then
     raise exception 'the plan needs a start date';
@@ -270,9 +276,18 @@ begin
   end loop;
 
   update archive.lettuce_plan_apply
-     set result = jsonb_build_object('edited', v_n_edit, 'split_rows', v_n_split,
-                                     'replaced', v_n_clear, 'inserted', v_n_ins)
-   where run_id = v_run;
+       set result = jsonb_build_object('edited', v_n_edit, 'split_rows', v_n_split,
+                                       'replaced', v_n_clear, 'inserted', v_n_ins)
+     where run_id = v_run;
+
+    if p_dry_run then
+      -- Counters are plain variables, so they survive the unwind; the writes do not.
+      raise exception using errcode = 'ZZ001', message = 'dry run';
+    end if;
+  exception when sqlstate 'ZZ001' then
+    return jsonb_build_object('dry_run', true, 'edited', v_n_edit, 'split_rows', v_n_split,
+                              'replaced', v_n_clear, 'inserted', v_n_ins);
+  end;
 
   return jsonb_build_object('run_id', v_run, 'tag', v_tag, 'edited', v_n_edit,
                             'split_rows', v_n_split, 'replaced', v_n_clear, 'inserted', v_n_ins);
@@ -333,7 +348,7 @@ begin
 end
 $function$;
 
-revoke all on function public.lettuce_apply_plan(jsonb)    from public;
+revoke all on function public.lettuce_apply_plan(jsonb, boolean)    from public;
 revoke all on function public.lettuce_rollback_plan(uuid)  from public;
-grant execute on function public.lettuce_apply_plan(jsonb)   to anon, authenticated, service_role;
+grant execute on function public.lettuce_apply_plan(jsonb, boolean) to anon, authenticated, service_role;
 grant execute on function public.lettuce_rollback_plan(uuid) to anon, authenticated, service_role;
