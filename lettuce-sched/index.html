@@ -175,7 +175,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="issues">Issues<span id="issuesBadge"></span></button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">09-02 10:20</span>
+  <span id="versionStamp" style="display:none">09-02 10:35</span>
 </div>
 
 <div id="content" class="wide">
@@ -1629,7 +1629,7 @@ document.getElementById('bApply').addEventListener('click', async () => {
       `  ${chk.edited} cycles on the pond re-cut (${chk.split_rows} pieces split onto their own rows)`,
       `  ${chk.replaced} planned cycles replaced`,
       `  ${chk.inserted} new cycles written`,
-      `  ${b.lanes.join(', ')} — ${b.weeks} weeks from ${b.start}`, ''];
+      `  ${b.lanes.join(', ')} — ${b.weeks} weeks from ${b.start}`];
     if (b.blanks) lines.push(`${b.blanks} blanks are NOT written — that pond space stays empty.`);
     if (b.blocked.length) lines.push('Left alone: ' + b.blocked.map(x => `${x.lane} (`
       + (x.sideMix ? 'production has one AB row where the builder has A and B' : `${x.stale} replaced rows are already on the pond`) + ')').join('; '));
