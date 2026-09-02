@@ -30,6 +30,8 @@ header{display:flex; flex-wrap:wrap; align-items:flex-end; gap:16px 28px;
   border-bottom:2px solid var(--ink); padding-bottom:16px}
 h1{margin:0; font-size:30px; font-weight:700; letter-spacing:-.02em}
 .sub{color:var(--ink-2); font-size:14px; margin:2px 0 0}
+.built{margin:3px 0 0; font-family:"IBM Plex Mono",monospace; font-size:10.5px;
+  letter-spacing:.02em; color:var(--ink-3)}
 .panel{background:var(--card); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow)}
 .panel-hd{display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:13px 18px;
   border-bottom:1px solid var(--line-2)}
@@ -372,6 +374,10 @@ code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--ca
   <header>
     <div>
       <h1>Logistics Map</h1>
+      <!-- Which build you are looking at. GitHub Pages serves this with a ten
+           minute max-age and the dashboard is iframed inside aloha.ag, so a
+           stale copy is easy to mistake for a change that did not take. -->
+      <p class="built">built 2026-09-02 12:59 PDT</p>
     </div>
     <nav class="seg tabs" id="tabs"></nav>
   </header>
