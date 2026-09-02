@@ -103,6 +103,16 @@
   .iss-table select, .iss-table input { font: inherit; font-size: 0.8rem; padding: 2px 5px; border: 1px solid #bbb; border-radius: 4px; }
   .iss-note { width: 190px; }
   .iss-note.need { border-color: #b3402f; }
+  /* Builder → production. Deliberately the loudest control on the page: it is the
+     only button in the Builder that writes to the app's own table. */
+  .b-apply { font: inherit; font-size: 0.8rem; font-weight: 600; padding: 3px 11px; margin-left: 12px;
+             border: 1px solid #25623c; border-radius: 4px; background: #25623c; color: #fff; cursor: pointer; }
+  .b-apply:disabled { background: #ddd; border-color: #ccc; color: #888; cursor: default; }
+  .b-apply-msg { font-size: 0.8rem; }
+  .b-apply-msg.err { color: #b3402f; font-weight: 600; }
+  .b-apply-msg.ok  { color: #2f7d4f; font-weight: 600; }
+  .b-undo { font: inherit; font-size: 0.78rem; padding: 2px 8px; margin-left: 8px; border: 1px solid #b3402f;
+            border-radius: 4px; background: #fff; color: #b3402f; cursor: pointer; }
   .iss-apply { font: inherit; font-size: 0.8rem; font-weight: 600; padding: 3px 11px; border: 1px solid #25623c; border-radius: 4px; background: #25623c; color: #fff; cursor: pointer; }
   .iss-apply:disabled { background: #ddd; border-color: #ccc; color: #888; cursor: default; }
   .iss-msg { font-size: 0.78rem; }
@@ -165,7 +175,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="issues">Issues<span id="issuesBadge"></span></button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">09-02 09:10</span>
+  <span id="versionStamp" style="display:none">09-02 09:55</span>
 </div>
 
 <div id="content" class="wide">
@@ -209,6 +219,8 @@
             </span>
             <button id="bLabels" class="step-btn" style="margin-left:12px" title="Print tags for changed/new cycles only">Print labels</button>
             <button id="bPrintMap" class="step-btn" title="Printable walking sheet of the map">Print map</button>
+            <button id="bApply" class="b-apply" title="Write this plan to grow_lettuce_seed_batch" disabled>Apply plan to production</button>
+            <span id="bApplyMsg" class="b-apply-msg"></span>
             <span style="margin-left:16px"><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#5cab4a;vertical-align:-1px"></span> existing</span>
             <span><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#1e5e2e;vertical-align:-1px"></span> moved</span>
             <span><span class="sw" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#2c7fb8;vertical-align:-1px"></span> new</span>
@@ -1109,6 +1121,11 @@ function builderInit() {
   syncIncAll();
   // Property assignment (not addEventListener) so rebuilds don't stack handlers.
   document.getElementById('bGen').onclick = builderGenerate;
+  // Any change to the lanes, the start week or the horizon makes the generated plan
+  // stale: Apply always writes the plan you are looking at, never a remembered one.
+  document.getElementById('bCfgFold').addEventListener('change', () => {
+    if (bPlan) { bPlan = null; bApplyState(0); }
+  });
   // Startup map: today's ponds from existing data, before any generation.
   initViz();
 }
@@ -1184,6 +1201,12 @@ function builderGenerate() {
   const mode = 'split';       // "Neutral" — reshape harvests via adjacent splits
   const replace = true;       // planned rows >= start are always replaced
   const out = [], tsv = [], edits = [];
+  // Apply payload, built as the plan is: prod rows to re-cut (by batch id), planned
+  // rows the plan replaces, lanes that can be written at all. Nothing here changes
+  // the plan — it is the same plan, addressed to production.
+  const planEdits = [], planClear = [], planLanes = [], planBlocked = [];
+  const todayT = hstToday().getTime();
+  bPlan = null;
   bVizData = bVizPlan = {};
   let mism = 0, total = 0, minFillTxt = [];
   // Rolling transition. Changing cycle length changes how many cohorts the pond
@@ -1226,14 +1249,27 @@ function builderGenerate() {
     // Outgoing-harvest calendar. With "replace planned rows" on, rows whose pond
     // date is on/after the start are assumed deleted and excluded.
     const off = {}, offC = {};   // offC: same calendar with cohort identity (for split edits)
+    // Written-back state for this lane: what each existing prod row looks like now
+    // (so an unchanged cohort is recognisable), which planned rows the plan drops,
+    // and the two things that make a lane unwritable — a builder A/B lane reading a
+    // prod AB row (it plans half a row: fine to look at, wrong to write), and rows
+    // the plan drops that are already on the pond (a start week in the past).
+    const origById = {}, laneClear = [];
+    let sideMix = false, stale = 0;
     cycles.filter(c => c.pond === pondP && !c.harv && c.end
-        && (c.side === sideP || (sideP === 'AB' ? ['A', 'B'].includes(c.side) : c.side === 'AB'))
-        && !(replace && c.ponded && c.ponded.getTime() >= startT))
+        && (c.side === sideP || (sideP === 'AB' ? ['A', 'B'].includes(c.side) : c.side === 'AB')))
       .forEach(c => {
-        const b = (sideP !== 'AB' && c.side === 'AB') ? c.boards * w / 20 : c.boards;
+        if (replace && c.ponded && c.ponded.getTime() >= startT) {
+          if (c.ponded.getTime() < todayT) stale++; else if (c.id) laneClear.push(c.id);
+          return;
+        }
+        const half = sideP !== 'AB' && c.side === 'AB';
+        const b = half ? c.boards * w / 20 : c.boards;
+        if (half) sideMix = true;
         off[ymd(c.end)] = (off[ymd(c.end)] || 0) + b;
         const k = ymd(c.end);
-        (offC[k] = offC[k] || []).push({ label: `${c.seedName || c.variety} ponded ${fmtMD(c.ponded || c.seed)}`, b, p: ymd(c.ponded || c.seed) });
+        (offC[k] = offC[k] || []).push({ label: `${c.seedName || c.variety} ponded ${fmtMD(c.ponded || c.seed)}`, b, p: ymd(c.ponded || c.seed), id: c.id });
+        if (c.id) origById[c.id] = { end: k, boards: b };
         (bVizData[lane] = bVizData[lane] || []).push({ ponded: c.ponded, end: c.end, boards: b, name: c.seedName || c.variety });
       });
     // Auto-phase: slide the sequence over the first cycle's outgoing harvests
@@ -1266,6 +1302,7 @@ function builderGenerate() {
       (offC[ymd(harv)] = offC[ymd(harv)] || []).push({ label: (blank ? 'BLANK' : 'new') + ` ponded ${fmtMD(d)}`, b, gen: true, p: ymd(d) });
       out.push({ lane, pond: pondP, side: sideP, rows: Math.round(b / w * 10) / 10, boards: Math.round(b),
         seedName: blank ? 'BLANK' : seedName, dens: blank ? 0 : dens, blank,
+        lot: blank ? '' : seedLot, pat,
         seed: new Date(d.getTime() - germDays * DAY), ponded: new Date(d.getTime()), harv, days, off: 0, fill: 0 });
       tsv.push([pondP, sideP, blank ? 'BLANK' : variety, blank ? 'BLANK' : seedName, blank ? '' : seedLot,
         blank ? 0 : dens, Math.round(b), fmtUS(new Date(d.getTime() - germDays * DAY)), fmtUS(d), fmtUS(harv)].join('\t'));
@@ -1309,7 +1346,7 @@ function builderGenerate() {
               e2.b -= mv; excess -= mv;
               // `due` is the event the boards were ORIGINALLY going to come off,
               // carried along so the wait is measured end to end, not per hop.
-              offC[nk].push({ label: e2.label, b: mv, gen: e2.gen, p: e2.p,
+              offC[nk].push({ label: e2.label, b: mv, gen: e2.gen, p: e2.p, id: e2.id,
                 hops: (e2.hops || 0) + 1, due: e2.due || k });
               off[nk] = (off[nk] || 0) + mv;
               deferredToday += mv;
@@ -1329,7 +1366,7 @@ function builderGenerate() {
                 if (e2.gen || e2.b <= 0) continue;     // don't harvest our own new cohorts early
                 const mv = Math.min(e2.b, need);
                 e2.b -= mv; need -= mv;
-                ev.push({ label: e2.label, b: mv, p: e2.p });
+                ev.push({ label: e2.label, b: mv, p: e2.p, id: e2.id });
                 off[nk] = (off[nk] || 0) - mv;
                 edits.push({ lane, cohort: e2.label, boards: mv, from: nk, to: k, p: e2.p, kind: 'harvest early — with this event' });
               }
@@ -1420,7 +1457,52 @@ function builderGenerate() {
     }
     if (deferBlocked > 0)
       warnTxt.push(`${lane}: ${Math.round(deferBlocked)} boards hit the ${MAX_DEFER_HOPS}-hop runaway stop; those events harvest heavy.`);
+
+    // ── Apply payload for this lane. Where the split edit list above is a diary of
+    // moves, production needs the destination: for each existing row, the pieces it
+    // ends up as. Reading it off the final harvest calendar means chained deferrals
+    // collapse into one write per row instead of a hop-by-hop replay.
+    const byId = {};
+    Object.keys(offC).forEach(k => offC[k].forEach(en => {
+      if (en.gen || !en.id || !(en.b > 0.5)) return;
+      (byId[en.id] = byId[en.id] || {})[k] = (byId[en.id][k] || 0) + en.b;
+    }));
+    const laneEdits = [];
+    Object.keys(byId).forEach(id => {
+      const o = origById[id]; if (!o) return;
+      const list = Object.keys(byId[id]).sort()
+        .map(date => ({ date, boards: Math.round(byId[id][date]) }));
+      // Boards are conserved by construction; rounding is the only drift, and the
+      // database refuses a split that does not add up, so settle it on the biggest
+      // piece here rather than failing the whole apply there.
+      const diff = Math.round(o.boards) - list.reduce((s2, x) => s2 + x.boards, 0);
+      if (diff) list.reduce((m, x) => x.boards > m.boards ? x : m, list[0]).boards += diff;
+      if (list.some(x => x.boards <= 0)) return;
+      if (list.length === 1 && list[0].date === o.end) return;   // untouched
+      laneEdits.push({ id, lane, chunks: list });
+    });
+    if (sideMix || stale) planBlocked.push({ lane, sideMix, stale });
+    else { planEdits.push(...laneEdits); planClear.push(...laneClear); planLanes.push(lane); }
   });
+  // ── The plan, addressed to production. Blanks are pond space deliberately left
+  // empty, so they are not rows to write; a plan whose first ponding is already in
+  // the past cannot be written at all (production would be planting yesterday).
+  {
+    const start = document.getElementById('bStartWeek').value;
+    const onLane = new Set(planLanes);
+    const planIns = out.filter(r => !r.blank && onLane.has(r.lane)).map(r => ({
+      lane: r.lane, seed_name: r.seedName, lot: r.lot || null, dens: r.dens,
+      boards: r.boards, rows: r.rows, pattern: r.pat,
+      seed_date: ymd(r.seed), pond_date: ymd(r.ponded), harv_date: ymd(r.harv) }));
+    const past = planIns.filter(r => r.pond_date < ymd(hstToday())).length;
+    bPlan = (planEdits.length || planClear.length || planIns.length) && !past ? {
+      start, weeks, lanes: planLanes, edits: planEdits, clear: planClear, inserts: planIns,
+      label: `${planLanes.length} lanes, ${weeks}w from ${start}`,
+      blanks: out.filter(r => r.blank && onLane.has(r.lane)).length, blocked: planBlocked,
+    } : null;
+    bApplyState(past);
+  }
+
   // Fold results into the preview map data: apply split edits to existing
   // cohorts (move boards between harvest dates), then append generated rows.
   edits.forEach(e => {
@@ -1496,8 +1578,98 @@ function builderGenerate() {
   document.getElementById('bDetailsWrap').style.display = '';
 }
 
+// ── Apply to production. The Builder is otherwise read-only; this is the one
+// place it writes, and it writes through lettuce_apply_plan — a SECURITY DEFINER
+// function that refuses anything harvested, anything already on the pond, and any
+// split that does not conserve boards. Every run stores a pre-image, so Undo is a
+// real undo and not a second guess.
+function bApplyState(pastRows) {
+  const btn = document.getElementById('bApply'), msg = document.getElementById('bApplyMsg');
+  msg.className = 'b-apply-msg';
+  if (!bPlan) {
+    btn.disabled = true;
+    msg.textContent = pastRows
+      ? `Plan starts in the past (${pastRows} rows would pond before today) — move the start week forward to write it.`
+      : '';
+    return;
+  }
+  btn.disabled = false;
+  const skipped = bPlan.blocked.length
+    ? ` · ${bPlan.blocked.length} lane${bPlan.blocked.length > 1 ? 's' : ''} left alone` : '';
+  msg.textContent = `${bPlan.edits.length} to re-cut · ${bPlan.clear.length} planned rows replaced · `
+    + `${bPlan.inserts.length} new${skipped}`;
+}
+
+document.getElementById('bApply').addEventListener('click', async () => {
+  if (!bPlan) return;
+  const b = bPlan;
+  const btn = document.getElementById('bApply'), msg = document.getElementById('bApplyMsg');
+  const splits = b.edits.reduce((s, e) => s + e.chunks.length - 1, 0);
+  const lines = ['Apply this plan to production?', '',
+    `  ${b.edits.length} cycles on the pond re-cut (${splits} pieces split onto their own rows)`,
+    `  ${b.clear.length} planned cycles replaced`,
+    `  ${b.inserts.length} new cycles written`,
+    `  ${b.lanes.join(', ')} — ${b.weeks} weeks from ${b.start}`, ''];
+  if (b.blanks) lines.push(`${b.blanks} blanks are NOT written — that pond space stays empty.`);
+  if (b.blocked.length) lines.push('Left alone: ' + b.blocked.map(x => `${x.lane} (`
+    + (x.sideMix ? 'production has one AB row where the builder has A and B' : `${x.stale} replaced rows are already on the pond`) + ')').join('; '));
+  lines.push('', 'This writes straight to production. It can be undone right after.');
+  if (!confirm(lines.join('\n'))) return;
+  btn.disabled = true;
+  msg.className = 'b-apply-msg'; msg.textContent = 'Writing…';
+  try {
+    const r = await fetch(`${SB.url}/rest/v1/rpc/lettuce_apply_plan`, {
+      method: 'POST',
+      headers: { apikey: SB.key, Authorization: `Bearer ${SB.key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_plan: {
+        label: b.label, start: b.start, weeks: b.weeks, lanes: b.lanes,
+        edits: b.edits.map(e => ({ id: e.id, chunks: e.chunks })),
+        clear: b.clear, inserts: b.inserts } }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.message || body.hint || ('Supabase ' + r.status));
+    bLastApply = body;
+    bPlan = null;                       // one apply per generated plan
+    msg.className = 'b-apply-msg ok';
+    msg.innerHTML = `Applied — ${body.edited} re-cut, ${body.split_rows} split off, `
+      + `${body.replaced} replaced, ${body.inserted} written. `
+      + `<button class="b-undo" id="bUndo">Undo this apply</button>`;
+    await refreshCycles();              // re-read prod so the maps show what is really there
+  } catch (err) {
+    btn.disabled = false;
+    msg.className = 'b-apply-msg err'; msg.textContent = err.message || String(err);
+  }
+});
+
+document.getElementById('bApplyMsg').addEventListener('click', async e => {
+  if (!e.target.closest('#bUndo') || !bLastApply) return;
+  const a = bLastApply;
+  if (!confirm(`Undo ${a.tag}? It puts back the ${a.edited + a.replaced} rows the apply changed `
+    + `and removes the ${a.inserted + a.split_rows} it wrote. Anything harvested since is left alone.`)) return;
+  const msg = document.getElementById('bApplyMsg');
+  msg.className = 'b-apply-msg'; msg.textContent = 'Undoing…';
+  try {
+    const r = await fetch(`${SB.url}/rest/v1/rpc/lettuce_rollback_plan`, {
+      method: 'POST',
+      headers: { apikey: SB.key, Authorization: `Bearer ${SB.key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_run: a.run_id }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.message || ('Supabase ' + r.status));
+    bLastApply = null;
+    msg.className = 'b-apply-msg ok';
+    msg.textContent = `Undone — ${body.restored} rows put back, ${body.deleted} removed`
+      + (body.skipped_harvested ? `, ${body.skipped_harvested} left as harvested` : '') + '.';
+    await refreshCycles();
+  } catch (err) {
+    msg.className = 'b-apply-msg err'; msg.textContent = err.message || String(err);
+  }
+});
+
 // ── Preview pond map: the proposed schedule (existing cycles with split edits
 // applied + generated rows) drawn like the Schedule tab, at a scrubable date.
+let bPlan = null;            // last generated plan, addressed to production (null = nothing to apply)
+let bLastApply = null;       // result of the last apply, so it can be undone
 let bVizData = null;         // dataset the map is showing
 let bLaneRowX = 0;           // widest tiled track seen (print sizing)
 let bMapMode = 'current';    // 'current' | 'plan' | 'both'
