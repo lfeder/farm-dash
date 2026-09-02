@@ -159,14 +159,13 @@ code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--ca
 /* ---------- the task list, now a reading rather than a form ---------- */
 .grid{display:grid; gap:0 10px; align-items:center;
   grid-template-columns:22px 24px minmax(130px,1.2fr) minmax(90px,.8fr)
-    118px 118px 62px minmax(90px,.9fr) minmax(0,1.6fr);}
+    118px 118px 62px minmax(0,1.6fr);}
 .cell{padding:6px 0; border-bottom:1px solid var(--line-2); height:100%;
   display:flex; align-items:center; min-width:0}
 .cell.nm{font-weight:600; font-size:13px}
 .cell.plc{font-size:12.5px; color:var(--ink-2)}
 .cell.tm{font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--ink-2)}
 .cell.tm.out{color:var(--bad); font-weight:600}
-.cell.aft{font-size:11.5px; color:var(--ink-3)}
 .cell.nt{font-size:11.5px; color:var(--ink-3); line-height:1.35; padding-right:2px}
 .cell.nt em{font-style:normal; color:var(--ink-3)}
 .row.bad .cell{background:var(--accent-soft)}
@@ -1317,7 +1316,12 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
   }
 
   // ── The task list, which is a reading of the Markdown ─────────────────────
-  var COLS = ['', '', 'Task', 'Place', 'Starts', 'Stops', 'Takes', 'After', 'Note'];
+  // No After column. It listed what a task came after -- its predecessor --
+  // under a heading that reads as what comes next, so it was routinely taken
+  // backwards. The order it described is already the order of the rows, and
+  // the chart draws the same dependency as a link. The data behind it is
+  // untouched: t.after still feeds the links and the scheduling.
+  var COLS = ['', '', 'Task', 'Place', 'Starts', 'Stops', 'Takes', 'Note'];
   function taskTable(flow, r) {
     var head = '';
     var body = flow.tasks.map(function (t, i) {
@@ -1332,7 +1336,6 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
       r.pts.forEach(function (x) { if (x.id === t.id) p = x; });
       var len = num(t.e) - num(t.s);
       var still = false;   // see the chart: a leg is a step, not a place change
-      var pre = (t.after || []).filter(function (id) { return r.byId[id]; });
       var where = t.at || t.place || 'Somewhere';
       var badS = outside(flow, where, num(t.s));
       var badE = outside(flow, where, num(t.e));
@@ -1347,8 +1350,6 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
         (badE ? ' title="' + esc(where) + ' is shut then."' : '') + '>' + stamp(num(t.e)) + '</div>' +
         '<div class="cell dur' + (len < 0 ? ' bad' : still && len > .01 ? ' still' : '') + '">' +
         (len < 0 ? 'backwards' : dur(len)) + '</div>' +
-        '<div class="cell aft">' + (pre.length
-          ? pre.map(function (id) { return esc(r.byId[id].name); }).join(', ') : '—') + '</div>' +
         '<div class="cell nt">' + esc(t.note || '') + '</div>' +
         '</div>';
     }).join('');
