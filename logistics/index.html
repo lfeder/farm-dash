@@ -1475,16 +1475,11 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
             '<td class="nt">' + esc(w.note || '') + '</td></tr>';
         }).join('') + '</tbody></table>';
     }
-    // Ours. No days and no window on purpose -- a leg between two of these is
-    // bounded by the schedule and nothing else, so it can never read as late.
-    if ((R.sites || []).length) {
-      out += '<h4>Our own places</h4>' +
-        '<table class="otbl hrs"><thead><tr><th>Place</th><th>Note</th></tr></thead><tbody>' +
-        R.sites.map(function (s) {
-          return '<tr><th class="hf">' + esc(s.place) + '</th>' +
-            '<td class="nt">' + esc(s.note || '') + '</td></tr>';
-        }).join('') + '</tbody></table>';
-    }
+    // Our own places are deliberately not listed here. They have no days and no
+    // window -- a leg between two of them is bounded by the schedule and nothing
+    // else -- and a table of blanks under a page about opening hours only
+    // invited the question of what the blanks meant. They stay in
+    // reference.json as the record of which places are ours.
     if (R.sailings.length) {
       out += '<h4>Young Brothers sailings</h4>' +
         '<table class="otbl hrs"><thead><tr><th>Route</th><th>Departs</th><th>Arrives</th>' +
