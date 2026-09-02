@@ -25,10 +25,10 @@
   nav .tab:hover { color: #ccc; }
   nav .tab.active { color: #4ecca3; border-bottom-color: #4ecca3; }
   nav .picker { display: none; }
-  /* Phone: 12 tabs is ~1150px of nav, three times a phone's width, and the row
+  /* Phone: 14 tabs is ~1300px of nav, three times a phone's width, and the row
      neither wraps nor scrolls — everything past the fourth tab was unreachable.
      Below 700px the tabs collapse into a native <select>, which opens the OS
-     picker showing all 12 at once. Desktop keeps the tab row untouched. */
+     picker showing all 14 at once. Desktop keeps the tab row untouched. */
   @media (max-width: 700px) {
     nav { padding: 0 12px; gap: 10px; }
     nav .brand { margin-right: 0; }
@@ -73,6 +73,12 @@ const DASHBOARDS = [
   { id: 'weather',   label: 'Weather',   src: 'weather/index.html' },
   { id: 'fsafe',    label: 'Food Safety', src: 'fsafe/index.html' },
   { id: 'pack',     label: 'Pack Plan',  src: 'pack/index.html' },
+  // Built elsewhere and copied in: each is a single self-contained file that
+  // `python3 build.py` writes in its own repo (farm/freight-model and
+  // farm/task-vis). Copy the built index.html over the one here to publish —
+  // there is nothing to build on this side.
+  { id: 'freight',  label: 'Freight',   src: 'freight/index.html' },
+  { id: 'logistics', label: 'Logistics', src: 'logistics/index.html' },
 ];
 
 const tabs = document.getElementById('tabs');
@@ -82,7 +88,7 @@ const iframes = {};
 
 // Bump on deploy to bust the browser's cache of the iframe sub-pages (they have
 // no other cache-busting, so otherwise a stale copy lingers after a push).
-const BUILD_VER = '20260830a';
+const BUILD_VER = '20260901a';
 
 // Each sub-page pins its own data sources now (no global sheets/prod toggle),
 // so we only append the cache-busting version.
