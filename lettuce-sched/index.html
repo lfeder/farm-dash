@@ -175,7 +175,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="issues">Issues<span id="issuesBadge"></span></button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">09-02 10:35</span>
+  <span id="versionStamp" style="display:none">09-02 11:05</span>
 </div>
 
 <div id="content" class="wide">
@@ -1029,22 +1029,32 @@ function builderInit() {
     + lanes.map(lane => {
       const ev = laneEvents(lane);
       const lastC = cycles.filter(c => (c.pond + c.side) === lane && c.ponded).sort((a, b) => a.ponded - b.ponded).pop();
-      // Lane defaults per Lenny's 08/04 plan; lanes not listed fall back to a
-      // guess from the newest cycle length. (P1AB pattern still undecided:
-      // 21/__/21/__ vs 17/__/18/__ — defaulting to 21/__/21/__.)
-      // Mixed lanes run 22/23/22/24 as of 2026-09-02 (was 24/24/25/25).
+      // Lane defaults; lanes not listed fall back to a guess from the newest cycle
+      // length. A lane's SAVED config (lettuce_builder_lane_config) still wins over
+      // the default — that is the point of saving one.
       const DEFAULTS = {
+        // P1AB and P2A are their own crops — Astro and watercress — and keep their
+        // own cycle lengths. Everything from P2B on is the mixed-lettuce template,
+        // in whichever shape the pond is running: A + B, merged AB, or the 1-board C.
+        // (P2AB is deliberately absent: merging P2 would fold the watercress side in.)
         P1AB: { pat: '17/__/18/__', seed: 'Astro' },
-        P2B: { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
-        P3A: { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
-        P3B: { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
-        P2C: { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
-        P3C: { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
-        P4A: { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
-        P4B: { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P2B:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P2C:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P3A:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P3B:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P3AB: { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P3C:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P4A:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P4B:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
         P4AB: { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P5A:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P5B:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
         P5AB: { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P6A:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P6B:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
         P6AB: { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P7A:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
+        P7B:  { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
         P7AB: { pat: '22/23/22/24', seed: 'Mixed Version 2.0' },
       };
       const saved = laneConfig[lane];
