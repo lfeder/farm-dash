@@ -162,10 +162,9 @@ code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--ca
 
 /* The day count, in the corner of the journey bar. Only ever filled for a
    single journey -- see app.js. */
-.res{margin-left:auto; display:flex; align-items:baseline; gap:5px}
+.res{display:flex; align-items:baseline; gap:5px; margin-left:4px}
 .res b{font-family:"IBM Plex Mono",monospace; font-size:22px; font-weight:600; line-height:1}
 .res small{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); font-weight:600}
-.res em{font-style:normal; font-size:10.5px; color:var(--ink-3)}
 
 /* ---------- the task list, now a reading rather than a form ---------- */
 .grid{display:grid; gap:0 10px; align-items:center;
@@ -384,8 +383,8 @@ code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--ca
         <h2>Journey</h2>
         <span class="seg" id="pick-when"></span>
         <span class="picks" id="pick-jrns"></span>
-        <span class="note" id="src"></span>
         <span class="res" id="jdays"></span>
+        <span class="note" id="src"></span>
       </div>
       <div class="body">
         <div class="axis" id="axis"></div>
@@ -1666,13 +1665,12 @@ window.REF = {"hours":[{"place":"140","days":[0,1,1,1,1,1,1],"open":4.0,"close":
         }).join('; ') + '.</div>';
     }
     // How long it takes is a fact about one journey. Several of them have no
-    // single duration between them, so the corner is empty rather than
-    // averaged -- which is why this went away the first time, and why it comes
-    // back beside the journey chips instead of over the chart: an empty right
-    // end of a bar you are already reading explains itself.
+    // single duration between them, so it is blank rather than averaged. The
+    // hours are on the task list a scroll below, so the chip row carries the
+    // one number you cannot get by looking at the chart -- reading five days
+    // off the axis means counting the midnight rules.
     document.getElementById('jdays').innerHTML = flow.many ? '' :
-      '<b>' + r.days + '</b><small>' + (r.days === 1 ? 'day' : 'days') + '</small>' +
-      '<em>' + dur(r.hrs) + ' end to end, ' + dur(r.still) + ' waiting</em>';
+      '<b>' + r.days + '</b><small>' + (r.days === 1 ? 'day' : 'days') + '</small>';
 
     document.getElementById('warn').innerHTML = warn;
     document.getElementById('tnote').textContent =
