@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case &amp; Pallet Weights</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Case &amp; Pallet Weights</h1>
+    </div>
+    <nav class="seg">/*__NAV__*/</nav>
+  </header>
+
+  <section class="panel">
+    <div class="panel-hd">
+      <h2>Packaging weights</h2>
+      <button class="reset" id="reset">Reset to defaults</button>
+    </div>
+    <div class="inputs" id="inputs"></div>
+  </section>
+
+  <section class="panel">
+    <div class="scroll" style="padding:4px 18px 18px"><table id="shipped"></table></div>
+  </section>
+
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  "use strict";
+  var D = window.FREIGHT_DATA, P = D.products || [], ROWS = D.rows;
+
+
+  var FIELDS = [
+    { k:'caseBox',       label:'Case box',        def:1,   step:0.25, unit:'lb per case' },
+    { k:'caseBoxRetail', label:'Retail case box', def:0.5, step:0.25, unit:'lb per LR / WR case' },
+    { k:'palletTare',    label:'Pallet tare',     def:40,  step:5,    unit:'lb per pallet' }
+  ];
+  var V = loadSettings(D);
+
+  var host = document.getElementById('inputs');
+  FIELDS.forEach(function (f) {
+    var w = document.createElement('div'); w.className = 'f';
+    w.innerHTML = '<label for="in-' + f.k + '">' + f.label + '</label>' +
+      '<div class="row"><input id="in-' + f.k + '" type="number" min="0" step="' + f.step +
+      '" value="' + V[f.k] + '"></div><span class="unit">' + f.unit + '</span>';
+    host.appendChild(w);
+    w.querySelector('input').addEventListener('input', function (e) {
+      var n = parseFloat(e.target.value);
+      V[f.k] = isFinite(n) && n >= 0 ? n : 0;
+      persist();
+      render();
+    });
+  });
+  document.getElementById('reset').addEventListener('click', function () {
+    FIELDS.forEach(function (f) { V[f.k] = f.def; document.getElementById('in-' + f.k).value = f.def; });
+    persist();
+    render();
+  });
+
+  // Shared with the freight model so the two pages cannot disagree about what a
+  // pallet weighs. Storage may be unavailable (file:// origin, blocked site
+  // data); the freight page falls back to the same defaults, so this is safe.
+  function persist() { saveSettings(V); }
+
+  function box(p) { return p.retail ? V.caseBoxRetail : V.caseBox; }
+  function n1(v) { return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function lbs(v) { return Math.round(v).toLocaleString('en-US'); }
+
+  function table(list) {
+    var farms = {};
+    list.forEach(function (p) { (farms[p.farm || 'Other'] || (farms[p.farm || 'Other'] = [])).push(p); });
+    var body = Object.keys(farms).sort().map(function (f) {
+      var label = f === 'Cuke' ? 'Cucumber' : f;
+      return '<tr><td colspan="10" style="padding-top:13px;font-size:10px;letter-spacing:.1em;' +
+        'text-transform:uppercase;color:var(--ink-3);font-weight:700;border-bottom:none">' + label + '</td></tr>' +
+        farms[f].map(function (p) {
+          var b = box(p), bill = p.net + b;
+          var cpp = p.cases_per_pallet;
+          return '<tr>' +
+            '<td><strong>' + p.id + '</strong></td>' +
+            '<td style="text-align:left;font-size:12px;color:var(--ink-2)">' + p.name + '</td>' +
+            '<td class="num' + (p.overridden ? ' over' : '') + '">' + n1(p.net) + '</td>' +
+            '<td class="num">' + n1(b) + '</td>' +
+            '<td class="num">' + n1(bill) + '</td>' +
+            '<td class="num">' + (cpp || '&mdash;') + '</td>' +
+            '<td class="num">' + (cpp ? lbs(cpp * p.net) : '&mdash;') + '</td>' +
+            '<td class="num">' + (cpp ? lbs(cpp * bill + V.palletTare) : '&mdash;') + '</td>' +
+            '</tr>';
+        }).join('');
+    }).join('');
+    return '<thead><tr><th>Code</th><th>Product</th><th>Net lb<br>per case</th><th>Box lb<br>per case</th>' +
+      '<th>Billable<br>per case</th><th>Max cases<br>per pallet</th>' +
+      '<th>Full pallet<br>&mdash; product</th>' +
+      '<th>Weight w/ case<br>and pallet</th></tr></thead><tbody>' +
+      body + '</tbody>';
+  }
+
+  function render() {
+    var shipped = P.filter(function (p) { return p.cases_shipped > 0; });
+
+    document.getElementById('shipped').innerHTML =
+      table(shipped);
+
+    // ---- what actually shipped, by crop
+    var agg = {};
+    ROWS.forEach(function (r) {
+      var a = agg[r.crop] || (agg[r.crop] = { pallets: {}, cases: 0, lbs: 0, std: 0, retail: 0 });
+      a.pallets[r.dt] = (a.pallets[r.dt] || 0) + r.pallets;
+      a.cases += r.cases; a.lbs += r.product_lbs;
+      a.std += r.cases_std || 0; a.retail += r.cases_retail || 0;
+    });
+    var vol = [['Lettuce', 'Lettuce'], ['Cuke', 'Cucumber']].map(function (p) {
+      var a = agg[p[0]]; if (!a) return '';
+      var pal = Object.keys(a.pallets).reduce(function (x, k) { return x + a.pallets[k]; }, 0);
+      var bx = a.std * V.caseBox + a.retail * V.caseBoxRetail;
+      var tare = pal * V.palletTare, tot = a.lbs + bx + tare;
+      return '<tr><td>' + p[1] + '</td>' +
+        '<td class="num">' + pal + '</td><td class="num">' + a.cases.toLocaleString('en-US') + '</td>' +
+        '<td class="num">' + lbs(a.lbs) + '</td><td class="num">' + lbs(bx) + '</td>' +
+        '<td class="num">' + lbs(tare) + '</td><td class="num">' + lbs(tot) + '</td>' +
+        '<td class="num">' + (tot > 0 ? (100 * (bx + tare) / tot).toFixed(1) : '0.0') + '%</td>' +
+        '<td class="num">' + (pal ? Math.round(tot / pal) : 0) + '</td></tr>';
+    }).join('');
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

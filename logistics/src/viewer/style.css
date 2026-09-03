@@ -1,0 +1,358 @@
+:root{
+  color-scheme: only light;
+  --ground:#eef1f3; --card:#ffffff; --card-2:#f6f8f9;
+  /* Two steps down from the ink, each half the remaining distance to it.
+     They were far enough down that a table of them read as greyed out --
+     the times and places in the task list are the content, not an aside. */
+  --ink:#141b1f; --ink-2:#2f3a40; --ink-3:#465157;
+  --line:#d8dfe3; --line-2:#e8edef;
+  --accent:#d4541f; --accent-soft:#fbeee7;
+  --good:#1d7a52; --bad:#b3341c;
+  --band:#e8f2ec; --band-2:#cfe3d8;
+  --shadow:0 1px 2px rgba(20,27,31,.06), 0 8px 24px -12px rgba(20,27,31,.18);
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--ground); color:var(--ink); font-size:15px; line-height:1.5;
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px; margin:0 auto; padding:32px 24px 80px; display:flex; flex-direction:column; gap:24px}
+header{display:flex; flex-wrap:wrap; align-items:center; gap:10px 20px;
+  border-bottom:2px solid var(--ink); padding-bottom:10px}
+h1{margin:0; font-size:30px; font-weight:700; letter-spacing:-.02em}
+.sub{color:var(--ink-2); font-size:14px; margin:2px 0 0}
+.built{margin:0 0 0 auto; font-family:"IBM Plex Mono",monospace; font-size:10.5px;
+  letter-spacing:.02em; color:var(--ink-3)}
+.panel{background:var(--card); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow)}
+.panel-hd{display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:13px 18px;
+  border-bottom:1px solid var(--line-2)}
+.panel-hd h2{margin:0; font-size:12px; letter-spacing:.11em; text-transform:uppercase;
+  color:var(--ink-2); font-weight:600}
+.lbl{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); font-weight:600}
+.note{font-size:11.5px; color:var(--ink-3)}
+.btn{background:none; border:1px solid var(--line); color:var(--ink-2); font:inherit; font-size:12px;
+  padding:4px 12px; border-radius:6px; cursor:pointer}
+.btn:hover{border-color:var(--accent); color:var(--accent)}
+.btn.solid{background:var(--ink); border-color:var(--ink); color:var(--card); font-weight:600}
+.btn.solid:hover{background:var(--accent); border-color:var(--accent); color:#fff}
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:7px; overflow:hidden}
+.seg a{padding:4px 12px; font-size:12.5px; color:var(--ink-2); cursor:pointer; white-space:nowrap;
+  display:flex; flex-direction:column; align-items:center; line-height:1.25;
+  border-left:1px solid var(--line)}
+.seg a:first-child{border-left:none}
+.seg a.on{background:var(--accent); color:#fff; font-weight:600}
+.seg a:hover:not(.on){background:var(--card-2)}
+
+/* A journey chip wears its thread's colour: off, as the swatch that finds the
+   line in the chart; on, as the line itself. The hue is pinned to the journey,
+   so what a chip shows is what the chart draws. */
+.seg a.j0a,.seg a.j1a,.seg a.j2a,.seg a.j3a,.seg a.j4a{font-weight:600}
+.seg a.j0a{color:var(--j0a)} .seg a.j1a{color:var(--j1a)} .seg a.j2a{color:var(--j2a)}
+.seg a.j3a{color:var(--j3a)} .seg a.j4a{color:var(--j4a)}
+.seg a.on.j0a{background:var(--j0a)} .seg a.on.j1a{background:var(--j1a)}
+.seg a.on.j2a{background:var(--j2a)} .seg a.on.j3a{background:var(--j3a)}
+.seg a.on.j4a{background:var(--j4a)}
+.seg a.on.j0a,.seg a.on.j1a,.seg a.on.j2a,.seg a.on.j3a,.seg a.on.j4a{color:#fff}
+
+/* The cut day is a different question from which journey, so it stays out of
+   the thread palette entirely: the two days are one grey and a lighter one. */
+#pick-when a.on{background:#4a5257; color:#fff}
+#pick-when a.on + a.on{background:#9aa3a8}
+
+/* ---------- the chart: time across, place down ---------- */
+.body{padding:14px 18px 14px}
+/* Two rows: the day names, then the hour each four-hour mark stands for, so a
+   bar can be placed in the day without counting gridlines. */
+.axis{padding-bottom:2px}
+.axrow{display:flex; gap:12px}
+.hours-axis{position:relative; flex:1 1 auto; min-width:0; height:14px}
+.hlab{position:absolute; transform:translateX(-50%); font-family:"IBM Plex Mono",monospace;
+  font-size:8.5px; color:var(--ink-3); white-space:nowrap; top:0}
+.hlab.mid{color:var(--ink-2); font-weight:600}
+.gut{flex:0 0 128px; display:flex; flex-direction:column}
+.days{flex:1 1 auto; min-width:0; display:flex}
+.day{flex:1 1 0; text-align:center; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-3); font-weight:600; border-left:1px solid var(--line-2); padding-bottom:3px}
+.day:first-child{border-left:none}
+.day.cut{color:var(--accent)}
+.chart{display:flex; gap:12px}
+.lane-lbl{display:flex; flex-direction:column; align-items:flex-end; justify-content:center;
+  font-size:10.5px; font-weight:600; color:var(--ink-2); line-height:1.15; text-align:right}
+.plot{position:relative; flex:1 1 auto; min-width:0}
+.svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible}
+.svg line{vector-effect:non-scaling-stroke}
+/* Midnight is the ruling that matters -- a journey is read in days, and the
+   two-hourly lines are only there to let you place a bar within one. It was
+   the same colour and weight as them, separated by nothing but the .45 the
+   others are faded to, so the day boundary had to be found rather than seen. */
+.lane{stroke:var(--line-2); stroke-width:1}
+.col{stroke:#b1bfc7; stroke-width:3}
+.hr{stroke:var(--line-2); stroke-width:1; opacity:.45}
+.move{stroke:var(--ink); stroke-width:2; stroke-linecap:round}
+.wait{stroke:var(--ink); stroke-width:2; stroke-dasharray:2 3; opacity:.6}
+/* A prereq's stop and the next start need not meet. Where they do not, the gap
+   is drawn for what it is rather than closed up. */
+/* The clock's lanes, tinted so the region has a name rather than just an
+   edge. Behind everything, so a bar still reads on top of it. */
+.aside{fill:#f2f5f6}
+/* The link is part of the thread, so it wears the thread's colour. Dashed
+   rather than solid because it is the waiting, not the work -- but no fainter
+   than the steps it joins, since the descent is what you follow. */
+.link{stroke:var(--ink-3); stroke-width:2; stroke-dasharray:3 3.5; opacity:.9}
+.link.back{stroke:var(--bad); opacity:.9; stroke-dasharray:3 3}
+.legend{display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; padding-top:14px; margin-top:10px;
+  border-top:1px solid var(--line-2); font-size:11.5px; color:var(--ink-2)}
+.legend span{display:inline-flex; align-items:center; gap:5px}
+
+/* ---------- the list ---------- */
+/* Every task carries the same fields, so every row is the same grid and the
+   columns line up down the page. That is only possible because a task now says
+   when it starts and when it stops outright, rather than each kind of task
+   needing its own controls. */
+.tasks{padding:0 18px 18px}
+.grid{display:grid; gap:0 8px; align-items:center;
+  grid-template-columns:
+    22px 24px minmax(120px,1fr) minmax(88px,150px)
+    62px 92px 62px 92px 52px auto 22px 22px 22px 22px;}
+.gh{font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3);
+  font-weight:600; padding:10px 0 6px; border-bottom:1px solid var(--line); white-space:nowrap}
+.gh.r{text-align:right}
+.row{display:contents}
+.row>*{min-width:0}
+.cell{padding:4px 0; border-bottom:1px solid var(--line-2); height:100%;
+  display:flex; align-items:center; gap:3px}
+.row.lit .cell{background:var(--accent-soft)}
+.row.bad .cell{background:var(--accent-soft)}
+.n{font-family:"IBM Plex Mono",monospace; font-size:10px; color:var(--ink-3); font-weight:600;
+  justify-content:flex-end; padding-right:3px}
+.ico{cursor:pointer; color:var(--ink-2); justify-content:center}
+.ico:hover{color:var(--accent)}
+.dur{font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--ink-3);
+  justify-content:flex-end; white-space:nowrap}
+/* A task that stops where it started is standing still, and that is the one
+   thing on this screen worth spotting from across the room. */
+.dur.still{color:var(--accent); font-weight:600}
+.dur.bad{color:var(--bad); font-weight:600}
+.noterow input:focus{outline:none; border-color:var(--accent); background:var(--card)}
+.warn{margin:12px 18px 0; padding:9px 12px; border:1px solid var(--bad); border-radius:7px;
+  background:var(--accent-soft); color:var(--bad); font-size:12.5px}
+
+/* ---------- opening hours, which belong to a place ---------- */
+/* A window is a fact about a door, not about a task: Costco receiving is open
+   4 to 11 whether or not anything is driving towards it. */
+.dcell{display:inline-flex; gap:1px}
+.d{width:17px; height:20px; border:1px solid var(--line); background:var(--card); color:var(--ink-3);
+  font-family:inherit; font-size:9.5px; font-weight:600; border-radius:3px; cursor:pointer; padding:0}
+.d.on{background:var(--good); border-color:var(--good); color:#fff}
+.d:hover{border-color:var(--accent)}
+@media (max-width:1150px){ .tasks{overflow-x:auto} .grid{min-width:1120px} }
+
+/* ---------- tabs ---------- */
+.tabs{margin-left:0}
+.page{display:flex; flex-direction:column; gap:24px}
+.page[hidden]{display:none}
+code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--card-2);
+  border:1px solid var(--line-2); border-radius:4px; padding:0 4px}
+
+/* The day count, in the corner of the journey bar. Only ever filled for a
+   single journey -- see app.js. */
+.seg a small{font-family:"IBM Plex Mono",monospace; font-size:10px; font-weight:500;
+  opacity:.72; letter-spacing:.02em}
+
+/* ---------- the task list, now a reading rather than a form ---------- */
+.grid{display:grid; gap:0 10px; align-items:center;
+  grid-template-columns:22px 24px minmax(130px,1.2fr) minmax(90px,.8fr)
+    118px 118px 62px minmax(0,1.6fr);}
+.cell{padding:6px 0; border-bottom:1px solid var(--line-2); height:100%;
+  display:flex; align-items:center; min-width:0}
+.cell.nm{font-weight:600; font-size:13px}
+.cell.plc{font-size:12.5px; color:var(--ink-2)}
+.cell.tm{font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--ink-2)}
+.cell.tm.out{color:var(--bad); font-weight:600}
+.cell.nt{font-size:11.5px; color:var(--ink-3); line-height:1.35; padding-right:2px}
+.cell.nt em{font-style:normal; color:var(--ink-3)}
+.row.bad .cell{background:var(--accent-soft)}
+.tasks{padding:0 18px 18px}
+
+/* ---------- orders and hours ---------- */
+.otbl{width:100%; border-collapse:collapse}
+.otbl th,.otbl td{text-align:right; padding:5px 10px 5px 0; white-space:nowrap; border:none}
+.otbl thead th{font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3);
+  font-weight:600; padding-bottom:6px; border-bottom:2px solid var(--ink)}
+.otbl tbody th{text-align:left; font-size:12px; font-weight:600; color:var(--ink-2)}
+.otbl th.wk{vertical-align:middle; font-family:"IBM Plex Mono",monospace; font-size:11px}
+.otbl th.hf{font-weight:500; color:var(--ink-3); font-size:11.5px}
+.otbl tr.wkstart th,.otbl tr.wkstart td{border-top:1px solid var(--line-2)}
+.otbl tr.grp th{font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3);
+  border-top:2px solid var(--ink); padding-top:10px; text-align:left}
+.otbl td b{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:14px; font-weight:600; color:var(--ink)}
+.otbl td s{text-decoration:none; margin-left:4px; font-family:"IBM Plex Mono",monospace;
+  font-size:10px; color:var(--ink-3)}
+.otbl td u{text-decoration:none; color:var(--ink-3); font-size:14px}
+.otbl.hrs td.dcell,.otbl.hrs td.mono,.otbl.hrs td.nt{text-align:left}
+.otbl.hrs .mono{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-2)}
+.otbl.hrs .d{display:inline-block; width:17px; height:20px; line-height:19px; text-align:center;
+  border:1px solid var(--line); border-radius:3px; background:var(--card); color:var(--ink-3);
+  font-size:9.5px; font-weight:600; margin-right:1px}
+.otbl.hrs .d.on{background:var(--good); border-color:var(--good); color:#fff}
+.body h4{margin:18px 0 8px; font-size:11px; letter-spacing:.11em; text-transform:uppercase;
+  color:var(--ink-2); font-weight:600}
+.body h4:first-child{margin-top:0}
+.hint{margin:14px 0 0; font-size:11.5px; color:var(--ink-3); line-height:1.5}
+.hint b{color:var(--ink-2); font-weight:600}
+
+/* The unit belongs to the column. Saying "cs" and "lb" against every figure was
+   repeating in ninety places what the header can say twice, and it made the
+   numbers fight for the eye with their own labels. */
+.otbl.orders .grp2{text-align:center; border-bottom:none; padding-bottom:2px}
+.otbl.orders tr.units th{font-size:9.5px; letter-spacing:.06em; text-transform:none;
+  color:var(--ink-3); font-weight:500; text-align:right; padding-bottom:6px;
+  border-bottom:2px solid var(--ink)}
+.otbl.orders thead tr:first-child th{border-bottom:none}
+.otbl td.fig{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:11.5px; color:var(--ink); text-align:right; padding-right:10px}
+.otbl td.fig:nth-of-type(even){padding-right:22px}
+.otbl.hrs tr.unk td,.otbl.hrs tr.unk th{opacity:.6}
+.otbl.hrs td.mono u{text-decoration:none; color:var(--ink-3)}
+.unconfirmed{color:var(--bad); font-weight:600}
+
+/* ---------- pack line ---------- */
+/* Three case types at three rates, so the minutes are the point and the cases
+   are how you get there. Six figures, in the order the columns come. */
+.rates{display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; padding:0 0 14px;
+  border-bottom:1px solid var(--line-2)}
+.rate{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-2)}
+/* A plain text box. The number spinner's arrows are a smaller target than the
+   digit they change and nobody nudges a pack rate one step at a time. */
+.rate input{width:52px; font-family:"IBM Plex Mono",monospace; font-size:12px; padding:3px 8px;
+  border:1px solid var(--line); border-radius:5px; background:var(--card); color:var(--ink);
+  text-align:right}
+.rate input:focus{outline:none; border-color:var(--accent)}
+.otbl.orders tr.minrow td,.otbl.orders tr.minrow th{color:var(--accent); font-weight:600;
+  border-bottom:1px solid var(--line); padding-bottom:7px}
+
+/* Branches. Two threads leaving the same morning -- the pallet and the clock
+   running beside it -- and the whole point is that they are separate until they
+   meet, so they do not share a colour. */
+/* A hue per journey, a shade per run of it: dark for the earlier cut, light
+   for the later one. Two runs of one journey read as one journey. */
+:root{
+  --j0a:#b0201f; --j0b:#e07370;
+  --j1a:#16609f; --j1b:#5f9ad0;
+  --j2a:#17714a; --j2b:#57a888;
+  --j3a:#6f36a3; --j3b:#a678cd;
+  --j4a:#c25e10; --j4b:#e59a4a;
+}
+.move.j0a{stroke:var(--j0a)}
+.move.j0b{stroke:var(--j0b)}
+.move.j1a{stroke:var(--j1a)}
+.move.j1b{stroke:var(--j1b)}
+.move.j2a{stroke:var(--j2a)}
+.move.j2b{stroke:var(--j2b)}
+.move.j3a{stroke:var(--j3a)}
+.move.j3b{stroke:var(--j3b)}
+.move.j4a{stroke:var(--j4a)}
+.move.j4b{stroke:var(--j4b)}
+.wait.j0a{stroke:var(--j0a)}
+.wait.j0b{stroke:var(--j0b)}
+.wait.j1a{stroke:var(--j1a)}
+.wait.j1b{stroke:var(--j1b)}
+.wait.j2a{stroke:var(--j2a)}
+.wait.j2b{stroke:var(--j2b)}
+.wait.j3a{stroke:var(--j3a)}
+.wait.j3b{stroke:var(--j3b)}
+.wait.j4a{stroke:var(--j4a)}
+.wait.j4b{stroke:var(--j4b)}
+
+/* ---------- the two pack days ---------- */
+/* Hours across, in the order they are packed. The 6.5 h day still decides how
+   much off-island LW lands on day 1; it is just no longer drawn. */
+.packdays{padding:0 0 16px}
+.pd{display:flex; align-items:center; gap:12px; padding:5px 0}
+.pd-l{flex:0 0 84px; font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--ink-3); font-weight:600}
+/* The track is only a measuring rail: both days are scaled against the same
+   width, but an empty tail is not a thing that happens, so nothing is drawn
+   past the last segment. */
+.pd-bar{position:relative; flex:1 1 auto; min-width:0; height:26px; display:flex}
+/* The clock the bars are read against, on the same track so a segment can be
+   placed in the day rather than only measured. */
+.pd-axis{padding-bottom:0}
+.pd-scale{height:14px; display:block}
+.pd-t{position:absolute; transform:translateX(-50%); top:0; font-family:"IBM Plex Mono",monospace;
+  font-size:8.5px; color:var(--ink-3); white-space:nowrap}
+.pd-s{display:flex; align-items:center; justify-content:center; overflow:hidden; white-space:nowrap;
+  font-size:10px; font-weight:600; color:#fff}
+.pd-s:first-child{border-radius:5px 0 0 5px}
+.pd-s:last-child{border-radius:0 5px 5px 0}
+.pd-s:only-child{border-radius:5px}
+.pd-s.k{background:var(--ink)}
+.pd-s.o{background:var(--accent)}
+.pd-s.f{background:var(--good)}
+.pd-s.r{background:var(--ink-3)}
+.pd-h{flex:0 0 76px; text-align:right; font-family:"IBM Plex Mono",monospace; font-size:12px;
+  font-weight:600; color:var(--ink)}
+.pd-h.over{color:var(--bad)}
+.pd-lb{flex:0 0 82px; text-align:right; font-family:"IBM Plex Mono",monospace; font-size:11px;
+  color:var(--ink-3)}
+ 
+/* Three labels a leg: the hour at each end against its own dot, and the name on
+   the bar between them. Hanging the name off one end made a flat bar read as
+   though the name belonged to the far end of it. */
+.pt{fill:var(--card); stroke-width:2; pointer-events:none}
+/* Something big enough to hover, over a dot too small to aim at. */
+.hit{fill:transparent}
+.link.j0a{stroke:var(--j0a)}
+.link.j0b{stroke:var(--j0b)}
+.link.j1a{stroke:var(--j1a)}
+.link.j1b{stroke:var(--j1b)}
+.link.j2a{stroke:var(--j2a)}
+.link.j2b{stroke:var(--j2b)}
+.link.j3a{stroke:var(--j3a)}
+.link.j3b{stroke:var(--j3b)}
+.link.j4a{stroke:var(--j4a)}
+.link.j4b{stroke:var(--j4b)}
+.pt.j0a{stroke:var(--j0a)}
+.pt.j0b{stroke:var(--j0b)}
+.pt.j1a{stroke:var(--j1a)}
+.pt.j1b{stroke:var(--j1b)}
+.pt.j2a{stroke:var(--j2a)}
+.pt.j2b{stroke:var(--j2b)}
+.pt.j3a{stroke:var(--j3a)}
+.pt.j3b{stroke:var(--j3b)}
+.pt.j4a{stroke:var(--j4a)}
+.pt.j4b{stroke:var(--j4b)}
+/* A halo rather than a box. A filled box the size of the name paints over
+   whatever dots sit behind it, and the dots are the chart. */
+.ln{position:absolute; display:flex; align-items:center; gap:3px;
+  font-size:10px; font-weight:600; line-height:1.2; pointer-events:none;
+  padding:1px 4px;
+  text-shadow:0 0 3px var(--card), 0 0 3px var(--card), 0 0 3px var(--card),
+              0 0 2px var(--card), 0 0 2px var(--card)}
+.ln .nw{white-space:nowrap}
+.ln.j0a{color:var(--j0a)}
+.ln.j0b{color:var(--j0b)}
+.ln.j1a{color:var(--j1a)}
+.ln.j1b{color:var(--j1b)}
+.ln.j2a{color:var(--j2a)}
+.ln.j2b{color:var(--j2b)}
+.ln.j3a{color:var(--j3a)}
+.ln.j3b{color:var(--j3b)}
+.ln.j4a{color:var(--j4a)}
+.ln.j4b{color:var(--j4b)}
+/* A name hangs off its leg's start dot, so it is anchored left and centred
+   on whatever row the placement rule gave it. */
+.ln{transform:translate(0,-50%); margin-left:7px}
+
+/* A journey's name, said once above its own run of rows. */
+.grid .grp{grid-column:1/-1; padding:12px 0 3px; font-size:11px; font-weight:700;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3)}
+.grid .grp:first-child{padding-top:2px}
+
+
+/* One row of journeys per crop, each behind its own name. */
+.picks{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.picks .lbl{margin-left:6px}
+.picks .lbl:first-child{margin-left:0}
+
+.warn-in{color:var(--bad)}

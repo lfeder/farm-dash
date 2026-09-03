@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shorts</title>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Shorts</h1>
+    </div>
+    <nav class="seg">/*__NAV__*/</nav>
+  </header>
+
+  <section class="panel">
+    <div class="panel-hd">
+      <h2>By customer</h2>
+      <span class="seg sm" id="crop-toggle" style="margin-left:auto"></span>
+    </div>
+    <div class="scroll" style="padding:4px 18px 18px"><table id="customers"></table></div>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var D = window.FREIGHT_DATA;
+
+  var V = loadSettings(D);
+  var MAX_CPP = maxCasesFn(D);
+  // AP and AP - Foodland are one customer under two names, so they count as one
+  // here. Every other group holds genuinely separate customers -- the Costco
+  // stores, the two Sam's clubs -- and stays split.
+  var SAME_CUSTOMER = { 'AP - Foodland': 'AP' };
+  function who(name) { return SAME_CUSTOMER[name] || name || '(no customer)'; }
+
+  var CROP = 'all';
+  // Costco Maui and Kauai are not on the barge the containers ride, and Farm
+  // Link goes loose chill, so a short pallet of theirs costs nothing to fix --
+  // it was never going to take a container space. They are left out entirely.
+  var LOOSE_ONLY = {};
+  (D.loose_only || []).forEach(function (c) { LOOSE_ONLY[c] = 1; });
+  var openCust = {};
+
+  function n0(n) { return Math.round(n).toLocaleString('en-US'); }
+  function pct(n) { return Math.round(n) + '%'; }
+  function mdy(s) { var p = s.split('-'); return p[1] + '/' + p[2]; }
+  // A pallet is short when it carries fewer cases than its product's pallet
+  // holds. The gap is what it would take to fill it.
+  // How full a pallet is, when it may hold several products at once. Each
+  // product takes a share of the pallet equal to its cases over what a pallet of
+  // that product holds, and the shares add up: 10 LF of 36, 15 LR of 56 and 16
+  // WR of 56 is 0.28 + 0.27 + 0.29, so that pallet is 84% full -- not a number
+  // any single product's capacity would give you.
+  //
+  // The gap is then how many more cases, at the same mix, would fill it. For a
+  // pallet of one product that reduces exactly to max minus cases.
+  function shortOf(r) {
+    var mix = r.mix || {}, fill = 0, codes = Object.keys(mix);
+    if (!codes.length) {
+      var one = MAX_CPP((r.prods || '').split('/')[0]);
+      fill = one ? r.cases / one : 0;
+    } else {
+      codes.forEach(function (c) {
+        var cap = MAX_CPP(c);
+        if (cap > 0) fill += mix[c] / cap;
+      });
+    }
+    var gap = fill > 0 ? Math.round(r.cases * (1 / fill - 1)) : 0;
+    return {
+      fill: fill,
+      full: fill > 0 ? Math.round(r.cases / fill) : 0,   // the pallet's own capacity, at this mix
+      short: fill < 0.995,
+      gap: Math.max(0, gap)
+    };
+  }
+
+  function heat(p) {
+    // one scale, so a row reads the same wherever it appears
+    return p >= 75 ? 'var(--bad)' : p >= 50 ? 'var(--warn)' : 'var(--ink)';
+  }
+
+  // One entry per PHYSICAL pallet, not per allocation row. A pallet split across
+  // two POs appears twice in the detail -- and pallets are only ever shared
+  // within one customer, so combining them cannot merge two customers' freight.
+  // Counted per row, a shared pallet is two short pallets instead of one, and
+  // each half is charged the shortfall against a whole pallet's capacity.
+  function rows() {
+    var by = {};
+    (D.detail || []).forEach(function (r) {
+      if (!(r.prods || '').split('/')[0]) return;
+      if (LOOSE_ONLY[r.customer]) return;
+      if (CROP !== 'all' && r.crop !== CROP) return;
+      var k = [r.dt, r.container, r.space, r.pallet_number].join('|');
+      (by[k] || (by[k] = [])).push(r);
+    });
+    return Object.keys(by).map(function (k) {
+      var rs = by[k], first = rs[0];
+      var names = {};
+      rs.forEach(function (r) { names[who(r.customer)] = 1; });
+      var owners = Object.keys(names);
+      return {
+        dt: first.dt, container: first.container, space: first.space,
+        pallet_number: first.pallet_number,
+        crop: first.crop, grp: first.grp || '',
+        // shared pallets stay one customer, so the group names it
+        customer: owners.length === 1 ? owners[0] : (first.grp || owners.join(' / ')),
+        po: rs.map(function (r) { return r.po; }).filter(Boolean).join(', '),
+        prods: Object.keys(rs.reduce(function (a, r) {
+          (r.prods || '').split('/').forEach(function (c) { a[c] = 1; }); return a;
+        }, {})).sort().join('/'),
+        cases: rs.reduce(function (a, r) { return a + r.cases; }, 0),
+        mix: rs.reduce(function (a, r) {
+          Object.keys(r.mix || {}).forEach(function (c) { a[c] = (a[c] || 0) + r.mix[c]; });
+          return a;
+        }, {}),
+        shared: rs.length > 1
+      };
+    });
+  }
+
+  function render() {
+    var all = rows();
+
+    var byCust = {};
+    all.forEach(function (r) {
+      var s = shortOf(r);
+      var k = r.customer || '(no customer)';
+      var c = byCust[k] || (byCust[k] = { n: 0, s: 0, gap: 0, grp: r.grp || '' });
+      c.n++; if (s.short) { c.s++; c.gap += s.gap; }
+    });
+
+
+    document.getElementById('crop-toggle').innerHTML =
+      [['all', 'Both'], ['Cuke', 'Cucumber'], ['Lettuce', 'Lettuce']].map(function (c) {
+        return '<a href="#" data-crop="' + c[0] + '"' + (CROP === c[0] ? ' class="on"' : '') +
+          '>' + c[1] + '</a>';
+      }).join('');
+
+    // The short pallets behind one row, with the PO on each. Same shape either
+    // way round; only the leading column changes.
+    function detail(list, lead, span) {
+      return '<tr class="wtdetail"><td colspan="' + span + '"><div class="wtwrap">' +
+        '<table class="wttbl"><thead><tr>' +
+        '<th style="text-align:left">' + lead.head + '</th>' +
+        '<th style="text-align:left">Pallet</th><th style="text-align:left">PO</th>' +
+        '<th>Product</th><th class="num">Cases</th><th class="num">Gap</th>' +
+        '<th style="text-align:left">Rode</th></tr></thead><tbody>' +
+        list.map(function (r) {
+          var s = shortOf(r);
+          return '<tr><td style="text-align:left">' + lead.cell(r) + '</td>' +
+            '<td style="text-align:left">' + r.pallet_number +
+              (r.shared ? ' <span style="color:var(--ink-3);font-size:11px">shared</span>' : '') + '</td>' +
+            '<td style="text-align:left;color:var(--ink-3)">' + (r.po || '&mdash;') + '</td>' +
+            '<td>' + r.prods + '</td>' +
+            '<td class="num">' + r.cases + ' <span style="color:var(--ink-3)">of ' + s.full + '</span></td>' +
+            '<td class="num" style="color:var(--accent);font-weight:600">' + s.gap + '</td>' +
+            '<td style="text-align:left;color:var(--ink-3)">' +
+              (r.container === 'box' ? 'box truck' : r.container + ' container') + '</td></tr>';
+        }).join('') + '</tbody></table></div></td></tr>';
+    }
+
+    document.getElementById('customers').innerHTML =
+      '<thead><tr><th>Customer</th>' +
+      '<th class="num">Pallets</th><th class="num">Short</th><th class="num">Short</th>' +
+      '</tr></thead><tbody>' +
+      Object.keys(byCust).sort(function (a, b) {
+        return (byCust[b].s / byCust[b].n) - (byCust[a].s / byCust[a].n) ||
+               byCust[b].gap - byCust[a].gap;
+      }).map(function (k) {
+        var c = byCust[k], p = 100 * c.s / c.n;
+        return '<tr class="dayrow" data-cust="' + k.replace(/"/g, '') + '">' +
+          '<td><strong>' + k + '</strong></td>' +
+          '<td class="num">' + c.n + '</td>' +
+          '<td class="num">' + c.s + '</td>' +
+          '<td class="num" style="color:' + heat(p) + ';font-weight:600">' + pct(p) + '</td></tr>' +
+          (openCust[k] ? detail(
+            all.filter(function (r) { return (r.customer || '(no customer)') === k && shortOf(r).short; })
+               .sort(function (a, b) { return a.dt < b.dt ? -1 : 1; }),
+            { head: 'Sailing', cell: function (r) { return mdy(r.dt); } }, 4) : '');
+      }).join('') + '</tbody>';
+
+    Array.prototype.forEach.call(document.querySelectorAll('#customers tr[data-cust]'), function (tr) {
+      tr.addEventListener('click', function () {
+        var k = tr.getAttribute('data-cust');
+        if (openCust[k]) { delete openCust[k]; } else { openCust[k] = 1; }
+        render();
+      });
+    });
+
+    document.getElementById('crop-toggle').onclick = function (e) {
+      var a = e.target.closest ? e.target.closest('a[data-crop]') : null;
+      if (!a) return;
+      e.preventDefault();
+      CROP = a.getAttribute('data-crop');
+      render();
+    };
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

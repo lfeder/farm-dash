@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Freight Cost Model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Freight Cost Model</h1>
+    </div>
+    <nav class="seg">/*__NAV__*/</nav>
+  </header>
+
+  <section class="panel">
+    <div class="panel-hd"><h2>Cost by ship day</h2>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:10px">
+        <span style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600">Cases a stacked space</span>
+        <span id="stack-toggle"></span>
+      </span>
+      <span class="segsm" id="split-toggle"></span></div>
+    <div class="scroll" style="padding:4px 18px 18px"><table id="daily"></table></div>
+  </section>
+
+  <section class="notes">
+    <h2>What to do about it</h2>
+    <ul id="todo"></ul>
+  </section>
+
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  "use strict";
+  var D = window.FREIGHT_DATA;
+
+  // Floor slots per container. Fixed, not an input: it is a property of the
+  // container itself and matches MAX_CONTAINER_SPACES in the palletization code.
+  var V = loadSettings(D);
+
+  var M = buildModel(V, D);
+  var ROWS = M.ROWS, DAYS = M.DAYS, SCEN = M.SCEN, stack = M.stack,
+      DETAIL = M.DETAIL, MAX_CPP = M.MAX_CPP, SHORT_CPP = M.SHORT_CPP,
+      spacesOfKey = M.spacesOfKey, BOX = M.BOX, billable = M.billable,
+      current = M.current, LOOSE = M.LOOSE;
+
+  var openWt = {};   // 'dt|container' -> weight drill-down open
+  var view3d = {};   // and the angle each one is turned to
+  var openBox = {};  // 'dt' -> box truck orders open
+
+  // Whether a PO may be split between the box trucks and a container. Believed
+  // not to be allowed, but nobody has confirmed it, so the model runs both ways.
+  var SPLIT_PO = true;
+
+  // ---- formatting ---------------------------------------------------------
+  function money(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
+  function money4(n) { return '$' + n.toFixed(2); }
+  function lbs(n) { return Math.round(n).toLocaleString('en-US'); }
+  function mdy(s) { var p = s.split('-'); return p[1] + '/' + p[2]; }
+
+  // ---- render -------------------------------------------------------------
+  function render() {
+    var totals = M.totals();
+
+
+    // ---- daily table
+    var head = '<thead>' +
+      '<tr class="grouphd"><th></th>' +
+        '<th colspan="5" class="grp">Cucumber container</th>' +
+        '<th colspan="6" class="grp">Box trucks</th><th></th>' +
+        '</tr>' +
+      '<tr><th>Ship day</th>' +
+        '<th class="grp">Pal</th><th>lb/pal</th><th>Weight</th><th>Spaces<br>Full</th>' +
+        '<th>Cuke wt<br>used</th>' +
+        '<th class="grp">Pallets</th><th>Container-<br>able</th>' +
+        '<th>Could<br>fit</th><th>lb<br>saved</th><th>Container<br>after</th>' +
+        '<th>Potential savings</th>' +
+        '<th class="grp">Notes</th>' +
+        '</tr></thead>';
+    var span = 13;
+    // A container is sold by the space, so what matters is how much weight each
+    // space is actually carrying against what it could. Measured on the cucumber
+    // spaces: lettuce has no pallet-rate alternative to be compared against.
+    // What the pallet actually is, from its case count. The app's pallet_type
+    // does not track height: two thirds of what it calls Stackable carries more
+    // than its product's short limit, up to a full 66 cases.
+    function palletShape(r) {
+      var code = (r.prods || '').split('/')[0];
+      if (r.cases >= MAX_CPP(code)) return 'full';
+      if (r.cases <= SHORT_CPP(code)) return 'stackable';
+      return '<span class="shortmark">short</span>';
+    }
+
+    // What a container could weigh if every space held a full pallet of the
+    // heaviest cucumber code -- JR, JW and KW all reach it at 66 cases of 16 lb.
+    // One fixed ceiling for every sailing, rather than each space measured
+    // against a full pallet of whatever happened to be in it.
+    var CEILING = (function () {
+      var best = 0;
+      Object.keys(D.pallet_cases || {}).forEach(function (c) {
+        var p = null;
+        (D.products || []).forEach(function (x) { if (x.id === c) p = x; });
+        if (!p || p.farm !== 'Cuke') return;
+        var n = Math.min(D.pallet_cases[c].full, V.stackCases);
+        var lb = n * p.net + n * (p.retail ? V.caseBoxRetail : V.caseBox) + V.palletTare;
+        if (lb > best) best = lb;
+      });
+      return best * V.spaces;
+    })();
+
+    var lbSpace = function (d, kind) {
+      var key = d.dt + '|' + kind;
+      var sp = spacesOfKey(key);
+      if (!sp.length) return '<td class="num" style="color:var(--ink-3)">&mdash;</td>';
+      var act = sp.reduce(function (a, x) { return a + x.billable; }, 0);
+      var pct = CEILING > 0 ? 100 * act / CEILING : 0;
+      return '<td class="num wt' + (pct < 85 ? ' win' : '') + '" data-wt="' + key + '">' +
+        pct.toFixed(0) + '%</td>';
+    };
+    // A cell is one crop inside one container: pallet count and billable weight
+    // per pallet, which is what the container is actually being paid to move.
+    var cell = function (d, kind, crop, first) {
+      var c = (d.ctr[kind] || {})[crop];
+      var cls = first ? ' class="num grp"' : ' class="num"';
+      if (!c || !c.pallets) return '<td' + cls + ' style="color:var(--ink-3)">&mdash;</td>' +
+        '<td class="num" style="color:var(--ink-3)">&mdash;</td>' +
+        '<td class="num" style="color:var(--ink-3)">&mdash;</td>';
+      return '<td' + cls + '>' + c.pallets + '</td>' +
+        '<td class="num">' + lbs(billable(c) / c.pallets) + '</td>' +
+        '<td class="num">' + lbs(billable(c)) + '</td>';
+    };
+    // Floor spaces occupied out of 18. A container costs the full rate at any
+    // fill level, so this is what a part-empty sailing is paying for.
+    var pct = function (d, kind) {
+      var f = d.fill[kind];
+      if (!f) return '<td class="num" style="color:var(--ink-3)">&mdash;</td>';
+      var v = 100 * f.spaces / V.spaces;
+      return '<td class="num">' + v.toFixed(0) + '%</td>';
+    };
+    var body = DAYS.map(function (d, di) {
+      var row = '<tr class="dayrow" data-day="' + d.dt + '">' +
+        '<td>' + mdy(d.dt) + ' <span style="color:var(--ink-3);font-size:11.5px">' + d.dow + '</span></td>' +
+        cell(d, 'cucumber', 'Cuke', true) + pct(d, 'cucumber') + lbSpace(d, 'cucumber') +
+        (function () {
+          // Pallets on the trucks, then how many of those a container could
+          // serve at all -- Maui, Kauai and Farm Link never can -- then how many
+          // would actually have fitted in the room the container had.
+          if (!d.box.pallets) {
+            return '<td class="num grp">&mdash;</td><td class="num">&mdash;</td>' +
+              '<td class="num">&mdash;</td><td class="num">&mdash;</td>' +
+              '<td class="num">&mdash;</td><td class="num">&mdash;</td>';
+          }
+          var m = M.missedMoves(d, SPLIT_PO);
+          var able = (BOX[d.dt] || {}).spillover || 0;
+          return '<td class="num grp bx" data-bx="' + d.dt + '">' + d.box.pallets + '</td>' +
+            '<td class="num">' + (able || '<span style="color:var(--ink-3)">&mdash;</span>') + '</td>' +
+            '<td class="num' + (m ? ' win' : '') + '">' +
+              (m ? m.pallets.length + m.swaps.length
+                 : '<span style="color:var(--ink-3)">&mdash;</span>') + '</td>' +
+            '<td class="num">' + (m ? lbs(m.lbs + m.swapLbs)
+              : '<span style="color:var(--ink-3)">&mdash;</span>') + '</td>' +
+            (function () {
+              // What the container would weigh once those pallets are in it --
+              // shown on every sailing, so the column reads as the container's
+              // weight whether or not anything moved into it.
+              var c = (d.ctr['cucumber'] || {}).Cuke;
+              var now = c ? billable(c) : 0;
+              if (!now) return '<td class="num" style="color:var(--ink-3)">&mdash;</td>';
+              return '<td class="num">' + lbs(now + (m ? m.lbs + m.swapLbs : 0)) + '</td>';
+            })() +
+            '<td class="num' + (m ? ' win' : '') + '">' +
+              (m ? money(m.value) : '<span style="color:var(--ink-3)">&mdash;</span>') + '</td>';
+        })() +
+        (function () {
+          // A dot when that sailing has anything written against one of its
+          // spaces, so the note is findable without opening every day.
+          var any = Object.keys(SPACE_NOTES).some(function (k) {
+            return k.indexOf(d.dt + '|') === 0;
+          });
+          return '<td class="num grp">' + (any ? '<span class="notedot">&#9679;</span>' : '') + '</td>';
+        })() +
+        '</tr>';
+      var extra = '';
+      var ckey = d.dt + '|cucumber';
+      if (openWt[ckey] || openBox[d.dt]) {
+        var mm = M.missedMoves(d, SPLIT_PO);
+        // Loose-chill freight first is the wrong order once a truck is drawn as
+        // runs: what can never ride a container should not be spread across the
+        // decks. Sorted by customer, the grey pallets group themselves.
+        var order = function (a, b) {
+          return (LOOSE[b.customer] ? 1 : 0) - (LOOSE[a.customer] ? 1 : 0) ||
+                 (a.customer || '').localeCompare(b.customer || '');
+        };
+        var bl = (DETAIL[d.dt + '|box'] || []).slice().sort(order);
+
+        // The trucks carry on in the same columns as the container, under a
+        // break rather than in a table of their own: it is one sailing, and a
+        // pallet's whole story is which side of that break it sits on. A truck
+        // has no floor spaces, so the space column carries the run instead.
+        var boxRows = function (rows) {
+          return '<tr class="breakrow"><td colspan="6">Box trucks</td></tr>' +
+            rows.map(function (r, i) {
+              var loose = !!LOOSE[r.customer];
+              var code = (r.prods || '').split('/')[0];
+              var bill = r.product_lbs + r.cases * V.caseBox + V.palletTare;
+              var hold = MAX_CPP(code) * ((r.cases ? r.product_lbs / r.cases : 0) + V.caseBox) +
+                         V.palletTare;
+              var pct = hold > 0 ? 100 * bill / hold : 0;
+              // A rule where the run changes, since a run is a whole truck trip
+              // and the break is the thing that costs money.
+              var cls = (loose ? ' dim' : '') +
+                        (i > 0 && i % V.capLarge === 0 ? ' runbreak' : '');
+              return '<tr' + (cls ? ' class="' + cls.trim() + '"' : '') + '>' +
+                '<td class="num">' + (Math.floor(i / V.capLarge) + 1) + '</td>' +
+                '<td style="text-align:left">' + (r.customer || '&mdash;') + '</td>' +
+                '<td>' + r.prods + '</td>' +
+                '<td class="num">' + r.cases + '</td>' +
+                '<td class="num"><span class="pair"><b>' + lbs(bill) + '</b><i>/</i><s>' +
+                  lbs(hold) + '</s></span></td>' +
+                '<td class="num' + (!loose && pct < 85 ? ' win' : '') + '">' +
+                  pct.toFixed(0) + '%</td></tr>';
+            }).join('');
+        };
+
+        // One side of the sailing: the container drawn on the left, the runs it
+        // could not take stacked beside it, the whole load tabulated underneath.
+        var side = function (label, sub, host, bays, table) {
+          return '<div class="drillside"><div class="drillhd">' + label +
+            '<span>' + sub + '</span></div>' +
+            '<div class="drill3d">' + host + bays + '</div>' +
+            '<div class="drilltbl">' + table + '</div></div>';
+        };
+
+        var ctrLb = function (spaces) {
+          return spaces.reduce(function (a, x) { return a + x.billable; }, 0);
+        };
+        var before = M.spacesOfKey(ckey);
+        var after = mm ? spacesFromPacked(V, M, mm.afterSpaces) : null;
+        var abl = mm ? mm.afterBox.slice().sort(order) : null;
+
+        extra += '<tr class="wtdetail"><td colspan="' + span + '"><div class="drill">' +
+          '<div class="drillcols">' +
+          side('As loaded', lbs(ctrLb(before)) + ' lb aboard, ' + bl.length + ' on the trucks',
+               space3dHost(ckey), truckDetail(V, M, d.dt, bl),
+               loadTable(V, M, ckey, SPACE_NOTES, boxRows(bl))) +
+          (after
+            ? side('Optimized',
+                   lbs(ctrLb(after)) + ' lb aboard, ' + abl.length + ' on the trucks',
+                   '<div class="wt3d" id="wt3d-' + d.dt + '-after"></div>',
+                   truckDetail(V, M, d.dt, abl, '-after', true),
+                   loadTableOf(V, after, ckey + '|after', null, boxRows(abl)))
+            : '<div class="drillside"><div class="drillhd">Optimized<span>nothing to move' +
+              '</span></div></div>') +
+          '</div></div></td></tr>';
+      }
+      // The lettuce container is opened from its own weight cell, so it keeps
+      // its own row below.
+      var lkey = d.dt + '|lettuce';
+      if (openWt[lkey]) {
+        var ld = spaceDetail(V, M, lkey, SPACE_NOTES);
+        if (ld) extra += '<tr class="wtdetail"><td colspan="' + span + '">' + ld + '</td></tr>';
+      }
+      return row + extra;
+    }).join('');
+    var avgFill = function (kind) {
+      var used = DAYS.filter(function (d) { return d.fill[kind]; });
+      if (!used.length) return '<td class="num">&mdash;</td>';
+      var m = used.reduce(function (a, d) { return a + d.fill[kind].spaces; }, 0) / used.length;
+      return '<td class="num">' + (100 * m / V.spaces).toFixed(0) + '%</td>';
+    };
+    var sumCell = function (kind, crop, first) {
+      var pal = 0, bill = 0;
+      DAYS.forEach(function (d) {
+        var c = (d.ctr[kind] || {})[crop];
+        if (c) { pal += c.pallets; bill += billable(c); }
+      });
+      return '<td class="num' + (first ? ' grp' : '') + '">' +
+          (pal ? Math.round(pal / DAYS.length) : '&mdash;') + '</td>' +
+        '<td class="num">' + (pal ? lbs(bill / pal) : '&mdash;') + '</td>' +
+        '<td class="num">' + (pal ? lbs(bill / DAYS.length) : '&mdash;') + '</td>';
+    };
+    var lbSpaceTot = function (kind) {
+      var act = 0, n = 0;
+      DAYS.forEach(function (d) {
+        var sp = spacesOfKey(d.dt + '|' + kind);
+        if (!sp.length) return;
+        n++;
+        sp.forEach(function (x) { act += x.billable; });
+      });
+      if (!n || !CEILING) return '<td class="num" style="color:var(--ink-3)">&mdash;</td>';
+      var pct = 100 * (act / n) / CEILING;
+      return '<td class="num' + (pct < 85 ? ' win' : '') + '">' + pct.toFixed(0) + '%</td>';
+    };
+    var boxPal = DAYS.reduce(function (a, d) { return a + d.box.pallets; }, 0);
+    var foot = '<tfoot><tr><td>TOTAL</td>' +
+      sumCell('cucumber', 'Cuke', true) + avgFill('cucumber') + lbSpaceTot('cucumber') +
+      '<td class="num grp">' + Math.round(boxPal / DAYS.length) + '</td>' +
+      '<td class="num">' + Math.round(
+        DAYS.reduce(function (a, d) { return a + ((BOX[d.dt] || {}).spillover || 0); }, 0) / DAYS.length) + '</td>' +
+      (function () {
+        var n = 0, v = 0, ctrLb = 0, movedLb = 0;
+        DAYS.forEach(function (d) {
+          var m = M.missedMoves(d, SPLIT_PO);
+          if (m) { n += m.pallets.length + m.swaps.length; v += m.value; movedLb += m.lbs + m.swapLbs; }
+          var c = (d.ctr['cucumber'] || {}).Cuke;
+          if (c) ctrLb += billable(c);
+        });
+        return '<td class="num' + (n ? ' win' : '') + '">' + Math.round(n / DAYS.length) + '</td>' +
+          '<td class="num">' + lbs(movedLb / DAYS.length) + '</td>' +
+          '<td class="num">' + lbs((ctrLb + movedLb) / DAYS.length) + '</td>';
+      })() +
+      (function () {
+        var v = DAYS.reduce(function (a, d) {
+          var m = M.missedMoves(d, SPLIT_PO);
+          return a + (m ? m.value : 0);
+        }, 0);
+        // TOTAL closes with its own Notes cell; the annualised row then spans
+        // everything up to Potential savings so the figure lands under the
+        // column it annualises, and its Notes cell carries no rule of its own.
+        return '<td class="num' + (v ? ' win' : '') + '">' + money(v) + '</td>' +
+          '<td class="grp"></td></tr>' +
+          '<tr><td colspan="' + (span - 2) +
+            '" style="text-align:right;border-top:none;color:var(--ink-2)">Annualized</td>' +
+          '<td class="num win" style="border-top:none;font-size:17px">' +
+            money(v * V.annualize) + '</td>' +
+          '<td class="grp" style="border-top:none"></td>';
+      })() +
+      '</tr></tfoot>';
+    document.getElementById('daily').innerHTML =
+      head + '<tbody>' + body + '</tbody>' + foot;
+
+    // Drawn after the table, so the placeholder exists to draw into.
+    // Both drawings run smaller here than on the Lettuce page: the container and
+    // the runs beside it have to share half the width between them.
+    var DRILL_GEOM = scaleGeom(0.78);
+    Object.keys(openWt).forEach(function (key) {
+      if (key.indexOf('|cucumber') > 0) return;   // drawn with its trucks below
+      mountSpaceDetail(V, M, key, view3d, DRILL_GEOM);
+    });
+    Object.keys(openBox).forEach(function (dt) {
+      var order = function (a, b) {
+        return (LOOSE[b.customer] ? 1 : 0) - (LOOSE[a.customer] ? 1 : 0) ||
+               (a.customer || '').localeCompare(b.customer || '');
+      };
+      // Every pallet is judged once, on the left, and keeps that colour and that
+      // height on the right -- otherwise restacking repaints it and you cannot
+      // see where anything went.
+      var d = DAYS.filter(function (x) { return x.dt === dt; })[0];
+      var mm = d && M.missedMoves(d, SPLIT_PO);
+
+      // Number every pallet that changes place, so the same one can be found
+      // again in the arrangement beside it. Both halves of a swap are numbered:
+      // they are two pallets moving, not one.
+      var label = {}, n = 0;
+      if (mm) {
+        mm.pallets.forEach(function (p) { label[p.pallet_number] = ++n; });
+        mm.swaps.forEach(function (x) {
+          label[x.from.pallet_number] = ++n;
+          label[x.into.n] = ++n;
+        });
+        // A pallet that stays aboard but ends up sharing a space has moved too --
+        // it was lifted onto something, or something was lifted onto it. Without
+        // this only the pallets changing vehicle were numbered, and the repack
+        // inside the container was invisible.
+        var pairedBefore = {};
+        M.spacesOfKey(dt + '|cucumber').forEach(function (x) {
+          if (x.rows.length > 1) x.rows.forEach(function (r) { pairedBefore[r.pallet_number] = 1; });
+        });
+        mm.afterSpaces.forEach(function (x) {
+          if (x.pals.length < 2) return;
+          x.pals.forEach(function (p) {
+            var r = p.rows[0];
+            if (!r || label[r.pallet_number] || pairedBefore[r.pallet_number]) return;
+            label[r.pallet_number] = ++n;
+          });
+        });
+      }
+
+      var paint = mountSpaceDetail(V, M, dt + '|cucumber', view3d, DRILL_GEOM, null, label) || {};
+      paint = mountTruckDetail(V, M, dt, (DETAIL[dt + '|box'] || []).slice().sort(order),
+        view3d, DRILL_GEOM, '', paint, label) || paint;
+
+      // and the same sailing as it could have gone out
+      if (!mm) return;
+      mount3dInto('wt3d-' + dt + '-after', V, M, spacesFromPacked(V, M, mm.afterSpaces),
+        V.spaces, view3d, dt + '|after', DRILL_GEOM, SHORT_CPP, paint, label);
+      mountTruckDetail(V, M, dt, mm.afterBox.slice().sort(order), view3d, DRILL_GEOM,
+        '-after', paint, label, true);
+    });
+
+    stepToggle(document.getElementById('stack-toggle'), V, 'stackCases', STACK_STEPS,
+      function (n) { return n; }, render);
+    document.getElementById('split-toggle').innerHTML =
+      '<a data-s="0"' + (!SPLIT_PO ? ' class="on"' : '') + '>PO stays whole</a>' +
+      '<a data-s="1"' + (SPLIT_PO ? ' class="on"' : '') + '>PO may split</a>';
+    Array.prototype.forEach.call(document.querySelectorAll('#split-toggle a'), function (el) {
+      el.addEventListener('click', function () { SPLIT_PO = el.getAttribute('data-s') === '1'; render(); });
+    });
+
+    // The whole row opens the sailing -- both what was in the container and what
+    // rode the trucks, since they are two halves of the same day.
+    Array.prototype.forEach.call(document.querySelectorAll('tr.dayrow'), function (tr) {
+      tr.addEventListener('click', function () {
+        var dt = tr.getAttribute('data-day'), key = dt + '|cucumber';
+        var open = openWt[key] || openBox[dt];
+        // One sailing at a time: opening a row closes whatever was open, so the
+        // drawings you are looking at always belong to the row you just clicked.
+        openWt = {}; openBox = {};
+        if (!open) { openWt[key] = 1; openBox[dt] = 1; }
+        render();
+      });
+    });
+
+    document.getElementById('todo').innerHTML = [
+      // The ceiling: every space holding one full-height pallet of the heaviest
+      // case we actually ship. Nothing loaded can bill more than this, so it is
+      // the number every sailing's weight should be read against. Computed from
+      // the product sheet rather than typed, so it follows a case-weight change.
+      (function () {
+        var NET = {};
+        (D.products || []).forEach(function (p) { NET[p.id] = p.net; });
+        var seen = {};
+        (D.detail || []).forEach(function (r) {
+          if (r.crop === 'Cuke') seen[(r.prods || '').split('/')[0]] = 1;
+        });
+        var best = 0, codes = [];
+        Object.keys(seen).forEach(function (c) {
+          var net = NET[c] === undefined ? 16 : NET[c];
+          var lb = MAX_CPP(c) * (net + V.caseBox) + V.palletTare;
+          if (lb > best) { best = lb; codes = [c]; }
+          else if (lb === best) { codes.push(c); }
+        });
+        if (!best) return '';
+        var code = codes.sort()[0], net = NET[code] === undefined ? 16 : NET[code];
+        return 'Potential weight &mdash; ' + V.spaces + ' pallets, full height, heaviest cases = '
+          + lbs(best * V.spaces) + '&nbsp;lb.';
+      })(),
+      'Increase KR to 16&nbsp;lb.',
+      'Why are local box truck runs sometimes in the palletization tables and sometimes not?',
+      'If possible, put full pallets in the container and shorts in loose chill.',
+      'If possible, put heavier pallets (KW, JW, JR) in the container and KR in loose chill.',
+      (function () {
+        var o = D.case_weight_override || {}, k = Object.keys(o).sort();
+        if (!k.length) return '';
+        return k.join(' and ') + ' are overridden to ' + o[k[0]] + '&nbsp;lb per case.';
+      })()
+    ].filter(Boolean).map(function (x) { return '<li>' + x + '</li>'; }).join('');
+
+
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

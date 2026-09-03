@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YB v Aloha Air</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>YB v Aloha Air</h1>
+    </div>
+    <nav class="seg">/*__NAV__*/</nav>
+  </header>
+
+  <section class="panel">
+    <div style="padding:18px" id="why"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-hd"><h2>The lettuce container, sailing by sailing</h2></div>
+    <div class="scroll" style="padding:4px 18px 18px"><table id="sailings"></table></div>
+  </section>
+
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  "use strict";
+  var D = window.FREIGHT_DATA;
+
+  var V = loadSettings(D);
+  var PAL = null;      // pallets a sailing; null until the page picks a default
+  var M = buildModel(V, D);
+  var openDay = {};   // dt -> lettuce container drill-down open
+  var view3d = {};    // and the angle each is turned to
+  var DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function mdy(x) { var p = x.split('-'); return p[1] + '/' + p[2]; }
+
+  function money(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
+  function n0(n) { return Math.round(n).toLocaleString('en-US'); }
+  function rate(n) { return '$' + n.toFixed(2); }
+
+  // Billable weight of a pallet, the way every carrier here weighs it.
+  function palLbs(r) { return r.product_lbs + r.cases * V.caseBox + V.palletTare; }
+
+  function render() {
+    var A = V.annualize, s = D.ship_days;
+    var T = M.totals();
+    var saving = (T[0].total - T[1].total) * A;
+
+    // Weight per pallet, by crop, from the day-level rows rather than the pallet
+    // list: a pallet shared between two POs appears twice in the detail, which
+    // counted 189 lettuce pallets against the 179 that actually shipped and
+    // dragged the average down to 241.
+    var crop = { Lettuce: { pal: 0, lb: 0 }, Cuke: { pal: 0, lb: 0 } };
+    (D.rows || []).forEach(function (r) {
+      var c = crop[r.crop];
+      if (!c) return;
+      c.pal += r.pallets;
+      c.lb += r.product_lbs + (r.cases_std || 0) * V.caseBox +
+              (r.cases_retail || 0) * V.caseBoxRetail + r.pallets * V.palletTare;
+    });
+    var L = crop.Lettuce, C = crop.Cuke;
+    var lPerPal = L.pal ? L.lb / L.pal : 0, cPerPal = C.pal ? C.lb / C.pal : 0;
+
+    // What a pound costs each way. The container is a flat price, so its rate is
+    // whatever you divide that price by -- which is the entire argument.
+    var ctrNoLoad = V.containerRate + V.drayage;      // the lettuce container is not loaded for us
+
+    // ---- the weight, then the two ways of moving it -------------------------
+    // Both sides read the same way: what a sailing costs, over the pounds it
+    // moves, to a price a pound -- then the same again for a year. The air rate
+    // is the editable figure because it is the one still being negotiated, and
+    // it is that box's price a pound, so it is not printed twice.
+    var sailings = s * A;
+    if (PAL === null) PAL = V.palSailing;
+
+    // Everything on both sides is driven from the pallet count, so changing it
+    // moves the weight, the freight and the number of truck runs together --
+    // which is the point, since air pays for a third run at seventeen pallets
+    // while the container's price does not move at all.
+    var wt = PAL * lPerPal;
+    var ctrPerLb = wt > 0 ? ctrNoLoad / wt : 0;
+    var airFreight = wt * V.airRate;
+    // Fractional rather than rounded up: a part-full truck to the airport still
+    // has room for whatever else is going, so charging air for a whole empty
+    // run overstates it.
+    var airRuns = Math.round((PAL / V.capLarge) * 10) / 10;
+    var airTruck = airRuns * runVariable(V, 'air');
+    var airTotal = airFreight + airTruck;
+
+    function row(label, value, unit) {
+      return '<div class="r"><span>' + label + '</span>' +
+        '<span class="n">' + value + (unit ? ' <span class="u">' + unit + '</span>' : '') +
+        '</span></div>';
+    }
+    function total(label, value) {
+      return '<div class="yr"><span class="t">' + label + '</span>' +
+        '<span class="n">' + value + '</span></div>';
+    }
+
+    document.getElementById('why').innerHTML =
+      '<div class="twoway">' +
+        '<div class="way ctr">' +
+          '<div class="k">By container</div>' +
+          '<div class="rows">' +
+            row('Pallet Weight (lb)', n0(lPerPal), '') +
+            row('Pallets aboard',
+                '<input class="rate-in pal-in" id="pal-in" type="text" inputmode="numeric" value="' +
+                PAL + '">', 'of ' + V.spaces) +
+            row('Total Weight (lb)', n0(wt), '') +
+            row('Container', money(V.containerRate), '') +
+            row('Trucking to port', money(V.drayage), '') +
+            row('Total', money(ctrNoLoad), '') +
+            row('<strong>Cost /lb</strong>', '<span class="lb">' + rate(ctrPerLb) + '</span>', '') +
+          '</div>' +
+          total('Full year', money(ctrNoLoad * sailings)) +
+        '</div>' +
+        '<div class="way air">' +
+          '<div class="k">By air &mdash; Aloha Air Cargo</div>' +
+          '<div class="rows">' +
+            row('Pallet Weight (lb)', n0(lPerPal), '') +
+            row('Pallets flown', PAL, '') +
+            row('Total Weight (lb)', n0(wt), '') +
+            row('Air freight &nbsp;$<input class="rate-in" id="air-in" type="text" ' +
+                'inputmode="decimal" value="' + V.airRate + '"> <span class="u">/lb</span>',
+                money(airFreight), '') +
+            row('Trucking to airport <span class="u">' + airRuns.toFixed(1) + ' run' +
+                (airRuns === 1 ? '' : 's') + '</span>', money(airTruck), '') +
+            row('Total', money(airTotal), '') +
+            row('<strong>Cost /lb</strong>',
+                '<span class="lb">' + rate(wt > 0 ? airTotal / wt : 0) + '</span>', '') +
+          '</div>' +
+          total('Full year', money(airTotal * sailings)) +
+          total('Savings', money((ctrNoLoad - airTotal) * sailings)) +
+        '</div>' +
+      '</div>' +
+      '<div class="verdict container" style="margin-top:16px"><strong>Open question.</strong> ' +
+      'We do not know whether HFA would change their pricing for pickup on Oahu.</div>';
+
+    // Both fields keep whatever was typed and only reprice once it parses, so a
+    // half-finished "." or an empty box does not reset under the cursor.
+    function liveField(id, apply) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', function (e) {
+        var raw = e.target.value, n = parseFloat(raw);
+        if (!isFinite(n) || n < 0) return;
+        apply(n);
+        saveSettings(V);
+        render();
+        var again = document.getElementById(id);
+        again.value = raw;
+        again.focus();
+        again.setSelectionRange(raw.length, raw.length);
+      });
+    }
+    liveField('pal-in', function (n) { PAL = V.palSailing = Math.round(n); });
+    liveField('air-in', function (n) { V.airRate = n; });
+
+    // ---- the lettuce container, sailing by sailing --------------------------
+    // The same rows the Annual page shows for this container, on the page that
+    // argues about it: how many lettuce pallets it carried, what each weighed,
+    // and how much cucumber had to ride along to make up the space.
+    var byDay = {};
+    (D.rows || []).forEach(function (r) {
+      if (r.container !== 'lettuce') return;
+      var x = byDay[r.dt] || (byDay[r.dt] = { Lettuce: null, Cuke: null });
+      x[r.crop] = r;
+    });
+    var fill = {};
+    (D.fill || []).forEach(function (f) { if (f.container === 'lettuce') fill[f.dt] = f; });
+
+    // Billable weight per pallet for one crop-in-container row. Named apart from
+    // palLbs above, which weighs a single pallet: two functions of the same name
+    // in one scope and the hoisted one silently wins.
+    function rowPalletLbs(c) {
+      if (!c || !c.pallets) return null;
+      return (c.product_lbs + (c.cases_std || 0) * V.caseBox +
+              (c.cases_retail || 0) * V.caseBoxRetail + c.pallets * V.palletTare) / c.pallets;
+    }
+    var dts = Object.keys(byDay).sort();
+    var tot = { lp: 0, llb: 0, cp: 0, clb: 0, sp: 0, all: 0 };
+    var rows = dts.map(function (dt) {
+      var x = byDay[dt], f = fill[dt];
+      var L = x.Lettuce, C = x.Cuke;
+      var lpl = rowPalletLbs(L), cpl = rowPalletLbs(C);
+      if (L) { tot.lp += L.pallets; tot.llb += lpl * L.pallets; }
+      if (C) { tot.cp += C.pallets; tot.clb += cpl * C.pallets; }
+      if (f) tot.sp += f.spaces;
+      // Everything the lettuce container carried that sailing, both crops.
+      var allLb = (L ? lpl * L.pallets : 0) + (C ? cpl * C.pallets : 0);
+      tot.all += allLb;
+      var dim = 'style="color:var(--ink-3)"';
+      return '<tr class="dayrow" data-day="' + dt + '"><td>' + mdy(dt) +
+        ' <span style="color:var(--ink-3);font-size:11.5px">' +
+        DOW[new Date(dt + 'T12:00:00').getDay()] + '</span></td>' +
+        '<td class="num grp">' + (L ? L.pallets : '<span ' + dim + '>&mdash;</span>') + '</td>' +
+        '<td class="num">' + (L ? n0(lpl) : '<span ' + dim + '>&mdash;</span>') + '</td>' +
+        '<td class="num">' + (L ? n0(lpl * L.pallets)
+                                : '<span ' + dim + '>&mdash;</span>') + '</td>' +
+        '<td class="num grp">' + (C ? C.pallets : '<span ' + dim + '>&mdash;</span>') + '</td>' +
+        '<td class="num">' + (C ? n0(cpl) : '<span ' + dim + '>&mdash;</span>') + '</td>' +
+        '<td class="num grp">' + (f ? Math.round(100 * f.spaces / V.spaces) + '%'
+                                    : '<span ' + dim + '>&mdash;</span>') + '</td>' +
+        '<td class="num">' + (allLb ? n0(allLb) : '<span ' + dim + '>&mdash;</span>') + '</td>' +
+        // Same dot as on Cucumbers: a sailing whose container has something
+        // written against one of its spaces says so before you open it.
+        '<td class="num grp">' + (Object.keys(SPACE_NOTES).some(function (k) {
+          return k.indexOf(dt + '|lettuce|') === 0;
+        }) ? '<span class="notedot">&#9679;</span>' : '') + '</td></tr>' +
+        (function () {
+          // The same container drawn the same way as on Cucumbers.
+          if (!openDay[dt]) return '';
+          var detail = spaceDetail(V, M, dt + '|lettuce', SPACE_NOTES);
+          return detail ? '<tr class="wtdetail"><td colspan="9">' + detail + '</td></tr>' : '';
+        })();
+    }).join('');
+    document.getElementById('sailings').innerHTML =
+      '<thead><tr><th>Ship day</th><th class="num grp">Lettuce<br>pallets</th><th class="num">lb a<br>pallet</th>' +
+      '<th class="num">Lettuce<br>weight</th>' +
+      '<th class="num grp">Cucumber<br>pallets</th><th class="num">lb a<br>pallet</th>' +
+      '<th class="num grp">Spaces<br>used</th><th class="num">Container<br>weight</th>' +
+      '<th class="num grp">Notes</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody>' +
+      '<tfoot><tr><td>' + dts.length + ' sailings</td>' +
+      '<td class="num grp">' + n0(tot.lp / dts.length) + '</td>' +
+      '<td class="num">' + n0(tot.llb / tot.lp) + '</td>' +
+      '<td class="num">' + n0(tot.llb / dts.length) + '</td>' +
+      '<td class="num grp">' + n0(tot.cp / dts.length) + '</td>' +
+      '<td class="num">' + (tot.cp ? n0(tot.clb / tot.cp) : '&mdash;') + '</td>' +
+      '<td class="num grp">' + Math.round(100 * tot.sp / (dts.length * V.spaces)) + '%</td>' +
+      '<td class="num">' + n0(tot.all / dts.length) + '</td>' +
+      '<td class="num grp"></td></tr></tfoot>';
+
+    Array.prototype.forEach.call(document.querySelectorAll('#sailings tr.dayrow'), function (tr) {
+      tr.addEventListener('click', function () {
+        var dt = tr.getAttribute('data-day');
+        if (openDay[dt]) { delete openDay[dt]; } else { openDay[dt] = 1; }
+        render();
+      });
+    });
+    Object.keys(openDay).forEach(function (dt) {
+      mountSpaceDetail(V, M, dt + '|lettuce', view3d);
+    });
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

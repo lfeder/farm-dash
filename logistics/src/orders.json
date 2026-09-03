@@ -1,0 +1,1094 @@
+{
+ "generated_from": "farm-freight-model data.json (sales_po x sales_po_line x sales_fob)",
+ "window": {
+  "first": "2026-07-17",
+  "last": "2026-08-28"
+ },
+ "on_island_customer": "140 Kona",
+ "sales": [
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-12",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 420,
+   "cases": 40
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-12",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 578,
+   "cases": 119
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-12",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 1834,
+   "cases": 230
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-12",
+   "half": "early",
+   "bucket": "other",
+   "lbs": 5,
+   "cases": 2
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-12",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 420,
+   "cases": 40
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-12",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 489,
+   "cases": 111
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-12",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 3411,
+   "cases": 374
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-12",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 17,
+   "cases": 4
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-19",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 630,
+   "cases": 60
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-19",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 506,
+   "cases": 115
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-19",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 3323,
+   "cases": 382
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-19",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 630,
+   "cases": 60
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-19",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 582,
+   "cases": 114
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-19",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 2975,
+   "cases": 351
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-19",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 20,
+   "cases": 5
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-26",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 630,
+   "cases": 60
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-26",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 618,
+   "cases": 122
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-26",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 3405,
+   "cases": 415
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-26",
+   "half": "early",
+   "bucket": "other",
+   "lbs": 7,
+   "cases": 3
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-26",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 420,
+   "cases": 40
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-26",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 677,
+   "cases": 128
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-26",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 2945,
+   "cases": 331
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-07-26",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 20,
+   "cases": 5
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-02",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 630,
+   "cases": 60
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-02",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 521,
+   "cases": 104
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-02",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 3259,
+   "cases": 350
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-02",
+   "half": "early",
+   "bucket": "other",
+   "lbs": 7,
+   "cases": 3
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-02",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 420,
+   "cases": 40
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-02",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 603,
+   "cases": 127
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-02",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 2717,
+   "cases": 303
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-02",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 22,
+   "cases": 6
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-09",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 630,
+   "cases": 60
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-09",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 739,
+   "cases": 146
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-09",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 2933,
+   "cases": 322
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-09",
+   "half": "early",
+   "bucket": "other",
+   "lbs": 7,
+   "cases": 3
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-09",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 420,
+   "cases": 40
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-09",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 1165,
+   "cases": 291
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-09",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 3114,
+   "cases": 344
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-09",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 33,
+   "cases": 11
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-16",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 630,
+   "cases": 60
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-16",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 659,
+   "cases": 139
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-16",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 1438,
+   "cases": 164
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-16",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 210,
+   "cases": 20
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-16",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 534,
+   "cases": 110
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-16",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 2498,
+   "cases": 287
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-16",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 26,
+   "cases": 8
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-23",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 630,
+   "cases": 60
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-23",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 647,
+   "cases": 149
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-23",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 2183,
+   "cases": 261
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-23",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 420,
+   "cases": 40
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-23",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 597,
+   "cases": 124
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-23",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 2778,
+   "cases": 316
+  },
+  {
+   "crop": "lettuce",
+   "wk": "2026-08-23",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 31,
+   "cases": 10
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-12",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 4032,
+   "cases": 252
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-12",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 13566,
+   "cases": 1030
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-12",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 22076,
+   "cases": 1473
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-12",
+   "half": "early",
+   "bucket": "other",
+   "lbs": 112,
+   "cases": 8
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-12",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 3456,
+   "cases": 216
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-12",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 6854,
+   "cases": 501
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-12",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 17056,
+   "cases": 1154
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-12",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 240,
+   "cases": 18
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-19",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 4512,
+   "cases": 282
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-19",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 7775,
+   "cases": 531
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-19",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 27684,
+   "cases": 1843
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-19",
+   "half": "early",
+   "bucket": "other",
+   "lbs": 112,
+   "cases": 8
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-19",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 3072,
+   "cases": 192
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-19",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 6240,
+   "cases": 437
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-19",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 20576,
+   "cases": 1388
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-19",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 240,
+   "cases": 18
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-26",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 3936,
+   "cases": 246
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-26",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 6347,
+   "cases": 434
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-26",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 26140,
+   "cases": 1748
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-26",
+   "half": "early",
+   "bucket": "other",
+   "lbs": 112,
+   "cases": 8
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-26",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 4128,
+   "cases": 258
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-26",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 6338,
+   "cases": 442
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-26",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 22980,
+   "cases": 1529
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-07-26",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 200,
+   "cases": 15
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-02",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 4128,
+   "cases": 258
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-02",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 7054,
+   "cases": 483
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-02",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 22804,
+   "cases": 1511
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-02",
+   "half": "early",
+   "bucket": "other",
+   "lbs": 112,
+   "cases": 8
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-02",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 3840,
+   "cases": 240
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-02",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 6664,
+   "cases": 469
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-02",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 23636,
+   "cases": 1569
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-02",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 248,
+   "cases": 20
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-09",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 3360,
+   "cases": 210
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-09",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 7187,
+   "cases": 495
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-09",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 26000,
+   "cases": 1726
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-09",
+   "half": "early",
+   "bucket": "other",
+   "lbs": 112,
+   "cases": 8
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-09",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 3456,
+   "cases": 216
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-09",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 5763,
+   "cases": 422
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-09",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 22712,
+   "cases": 1536
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-09",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 308,
+   "cases": 23
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-16",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 5664,
+   "cases": 354
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-16",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 6974,
+   "cases": 473
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-16",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 23416,
+   "cases": 1556
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-16",
+   "half": "early",
+   "bucket": "other",
+   "lbs": 112,
+   "cases": 8
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-16",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 4704,
+   "cases": 294
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-16",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 5904,
+   "cases": 429
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-16",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 18740,
+   "cases": 1263
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-16",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 308,
+   "cases": 23
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-23",
+   "half": "early",
+   "bucket": "kona",
+   "lbs": 4032,
+   "cases": 252
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-23",
+   "half": "early",
+   "bucket": "pickup",
+   "lbs": 7011,
+   "cases": 487
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-23",
+   "half": "early",
+   "bucket": "off",
+   "lbs": 23480,
+   "cases": 1588
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-23",
+   "half": "early",
+   "bucket": "other",
+   "lbs": 112,
+   "cases": 8
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-23",
+   "half": "late",
+   "bucket": "kona",
+   "lbs": 4320,
+   "cases": 270
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-23",
+   "half": "late",
+   "bucket": "pickup",
+   "lbs": 5865,
+   "cases": 422
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-23",
+   "half": "late",
+   "bucket": "off",
+   "lbs": 24932,
+   "cases": 1689
+  },
+  {
+   "crop": "cuke",
+   "wk": "2026-08-23",
+   "half": "late",
+   "bucket": "other",
+   "lbs": 284,
+   "cases": 21
+  }
+ ],
+ "packs": [
+  {
+   "wk": "2026-07-12",
+   "half": "early",
+   "on": {
+    "LW": 56,
+    "LF": 23,
+    "TRAY": 82
+   },
+   "off": {
+    "LW": 122,
+    "LF": 40,
+    "TRAY": 68
+   }
+  },
+  {
+   "wk": "2026-07-12",
+   "half": "late",
+   "on": {
+    "LW": 54,
+    "LF": 17,
+    "TRAY": 84
+   },
+   "off": {
+    "LW": 302,
+    "LF": 10,
+    "TRAY": 62
+   }
+  },
+  {
+   "wk": "2026-07-19",
+   "half": "early",
+   "on": {
+    "LW": 73,
+    "LF": 18,
+    "TRAY": 84
+   },
+   "off": {
+    "LW": 262,
+    "LF": 39,
+    "TRAY": 81
+   }
+  },
+  {
+   "wk": "2026-07-19",
+   "half": "late",
+   "on": {
+    "LW": 76,
+    "LF": 26,
+    "TRAY": 77
+   },
+   "off": {
+    "LW": 262,
+    "LF": 3,
+    "TRAY": 86
+   }
+  },
+  {
+   "wk": "2026-07-26",
+   "half": "early",
+   "on": {
+    "LW": 81,
+    "LF": 22,
+    "TRAY": 82
+   },
+   "off": {
+    "LW": 262,
+    "LF": 40,
+    "TRAY": 113
+   }
+  },
+  {
+   "wk": "2026-07-26",
+   "half": "late",
+   "on": {
+    "LW": 60,
+    "LF": 30,
+    "TRAY": 83
+   },
+   "off": {
+    "LW": 262,
+    "LF": 5,
+    "TRAY": 64
+   }
+  },
+  {
+   "wk": "2026-08-02",
+   "half": "early",
+   "on": {
+    "LW": 76,
+    "LF": 20,
+    "TRAY": 71
+   },
+   "off": {
+    "LW": 262,
+    "LF": 40,
+    "TRAY": 48
+   }
+  },
+  {
+   "wk": "2026-08-02",
+   "half": "late",
+   "on": {
+    "LW": 55,
+    "LF": 26,
+    "TRAY": 92
+   },
+   "off": {
+    "LW": 242,
+    "LF": 5,
+    "TRAY": 56
+   }
+  },
+  {
+   "wk": "2026-08-09",
+   "half": "early",
+   "on": {
+    "LW": 74,
+    "LF": 38,
+    "TRAY": 97
+   },
+   "off": {
+    "LW": 263,
+    "LF": 5,
+    "TRAY": 54
+   }
+  },
+  {
+   "wk": "2026-08-09",
+   "half": "late",
+   "on": {
+    "LW": 53,
+    "LF": 53,
+    "TRAY": 236
+   },
+   "off": {
+    "LW": 262,
+    "LF": 23,
+    "TRAY": 59
+   }
+  },
+  {
+   "wk": "2026-08-16",
+   "half": "early",
+   "on": {
+    "LW": 70,
+    "LF": 34,
+    "TRAY": 95
+   },
+   "off": {
+    "LW": 123,
+    "LF": 7,
+    "TRAY": 34
+   }
+  },
+  {
+   "wk": "2026-08-16",
+   "half": "late",
+   "on": {
+    "LW": 35,
+    "LF": 22,
+    "TRAY": 81
+   },
+   "off": {
+    "LW": 202,
+    "LF": 24,
+    "TRAY": 61
+   }
+  },
+  {
+   "wk": "2026-08-23",
+   "half": "early",
+   "on": {
+    "LW": 78,
+    "LF": 21,
+    "TRAY": 110
+   },
+   "off": {
+    "LW": 184,
+    "LF": 10,
+    "TRAY": 67
+   }
+  },
+  {
+   "wk": "2026-08-23",
+   "half": "late",
+   "on": {
+    "LW": 57,
+    "LF": 24,
+    "TRAY": 93
+   },
+   "off": {
+    "LW": 243,
+    "LF": 8,
+    "TRAY": 65
+   }
+  }
+ ],
+ "pack_groups": [
+  [
+   "LW",
+   "LW"
+  ],
+  [
+   "LF",
+   "LF"
+  ],
+  [
+   "TRAY",
+   "LR/AR/WR"
+  ]
+ ]
+}

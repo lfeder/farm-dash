@@ -1,0 +1,14 @@
+Crop,Lettuce,Lettuce,Lettuce,Lettuce,Lettuce,Cukes,Cukes,Cukes,Cukes,Cukes
+FOB,140,Pickup,Oahu,Oahu,140,140,Pickup,Oahu,Maui,Kauai
+Mode,Truck,,Air,Barge,Truck,Truck,,Barge,Barge,Barge
+Hold,6h,6h,6h,6h,48h,,,,,
+Pack/Store 1,Sun 10:00-14:00,Sun 14:00-18:00,Sun 14:00-18:00,Sun 14:00-18:00,Sun 10:00-14:00,,,,,
+Pack/Store 2,,,Mon 10:00-16:00,Mon 10:00-18:00,,,,,,
+BOL,Sun 18:00-18:30,Sun 18:00-18:30,Mon 16:00-16:30,Mon 18:00-18:30,Wed 18:00-18:30,Sun 18:00-18:30,Mon 10:00-12:00,Mon 10:00-14:00,Mon 10:00-14:00,Mon 10:00-14:00
+Load Container,,,,Mon 18:30-19:00,,,,Mon 18:30-19:00,,
+Load Truck,Mon 07:00-07:30,,Mon 16:30-17:00,,Thu 07:00-07:30,Mon 07:00-07:30,,Tue 06:30-07:00,Tue 06:30-07:00,Tue 06:30-07:00
+Trucking,,,Mon 17:00-18:00,Tue 07:00-08:00,,,,Tue 07:00-08:00,Tue 07:00-08:00,Tue 07:00-08:00
+Inter-Island Oahu,,,Tue 03:00-05:00,Tue 18:00-Wed 12:00,,,,Tue 18:00-Wed 12:00,Tue 18:00-Wed 12:00,Tue 18:00-Wed 12:00
+Inter-Island Outer,,,,,,,,,Wed 16:00-Thu 06:00,Thu 16:00-Fri 06:00
+Retrieve,,,Tue 06:00-07:00,Thu 08:00-10:00,,,,Thu 08:00-10:00,Fri 08:00-10:00,Fri 08:00-10:00
+Customer,Mon 07:30-08:30,Mon 13:00-13:30,Wed 05:00-10:00,Fri 06:00-10:00,Thu 07:30-08:30,Mon 07:30-08:30,Mon 13:00-13:30,Fri 06:00-10:00,Sat 06:00-10:00,Sat 06:00-10:00

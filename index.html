@@ -73,10 +73,10 @@ const DASHBOARDS = [
   { id: 'weather',   label: 'Weather',   src: 'weather/index.html' },
   { id: 'fsafe',    label: 'Food Safety', src: 'fsafe/index.html' },
   { id: 'pack',     label: 'Pack Plan',  src: 'pack/index.html' },
-  // Built elsewhere and copied in: each is a single self-contained file that
-  // `python3 build.py` writes in its own repo (farm/freight-model and
-  // farm/logistics-map). Copy the built index.html over the one here to publish —
-  // there is nothing to build on this side.
+  // Built rather than hand-written: each is one self-contained file that
+  // `python3 build.py` writes from the sources beside it, in freight/src and
+  // logistics/src. The build writes the published file directly, so there is
+  // no copy step and no way for the page to lag the source that made it.
   { id: 'freight',  label: 'Freight',   src: 'freight/index.html' },
   { id: 'logistics', label: 'Logistics', src: 'logistics/index.html' },
 ];

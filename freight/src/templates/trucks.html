@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Box Truck Running Cost</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Box Truck Utilisation</h1>
+    </div>
+    <nav class="seg">/*__NAV__*/</nav>
+  </header>
+
+  <section class="panel">
+    <div class="panel-hd"><button class="reset" id="reset" style="margin-left:auto">Reset to defaults</button></div>
+    <div class="scroll" style="padding:4px 18px 18px"><table id="scen"></table></div>
+  </section>
+
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  "use strict";
+  var D = window.FREIGHT_DATA, ROWS = D.rows;
+
+  var V = loadSettings(D);
+
+  // Two trips, not three: the Monday and Thursday Costco Kona run goes to the
+  // same place as the airport and takes the same time.
+
+  // One line: label, unit, field -- three rates do not need three panels.
+  function build(hostId, fields, cls) {
+    var host = document.getElementById(hostId);
+    host.innerHTML = '';
+    fields.forEach(function (f) {
+      var w = document.createElement('div'); w.className = cls || 'rf';
+      w.innerHTML = '<label for="in-' + f.k + '">' + f.label +
+        ' <span class="u">(' + f.unit + ')</span></label>' +
+        '<input id="in-' + f.k + '" type="number" min="0" step="' + f.step + '" value="' + V[f.k] + '">';
+      host.appendChild(w);
+      w.querySelector('input').addEventListener('input', function (e) {
+        var n = parseFloat(e.target.value);
+        V[f.k] = isFinite(n) && n >= 0 ? n : 0;
+        saveSettings(V);
+        render();
+      });
+    });
+  }
+  document.getElementById('reset').addEventListener('click', function () {
+    Object.keys(DEFAULTS).forEach(function (k) { V[k] = DEFAULTS[k]; });
+    saveSettings(V);
+    render();
+  });
+
+  function num(n) { return Math.round(n).toLocaleString('en-US'); }
+  // The table reads per week; the shapes are annual, so divide at the edge.
+  function wk1(n) { return (n / 52).toFixed(1); }
+  function wk0(n) { return Math.round(n / 52).toLocaleString('en-US'); }
+  function truckRunsHere(n) { return n <= 0 ? 0 : n / V.capLarge; }
+
+  // ---- what each way of shipping needs -----------------------------------
+  var SCENARIOS = [
+    { id:'current', name:'Current model' },
+    { id:'packed',  name:'Air lettuce, packed optimized' }
+  ];
+
+  var LOOSE = {};
+  (D.loose_only || []).forEach(function (c) { LOOSE[c] = 1; });
+
+  function byDay() {
+    var m = {};
+    ROWS.forEach(function (r) {
+      var d = m[r.dt] || (m[r.dt] = { box: 0, lett: 0, cuke: 0, looseOnly: 0 });
+      if (r.container === 'box') d.box += r.pallets;
+      if (r.crop === 'Lettuce') d.lett += r.pallets; else d.cuke += r.pallets;
+    });
+    // Maui, Kauai and Farm Link ride a truck at any fill
+    (D.detail || []).forEach(function (r) {
+      if (r.crop === 'Lettuce' || !LOOSE[r.customer]) return;
+      var d = m[r.dt]; if (d) d.looseOnly++;
+    });
+    return m;
+  }
+
+  function cukePerContainer() {
+    var p = 0, sp = 0;
+    ROWS.forEach(function (r) {
+      if (r.container === 'box' || r.crop !== 'Cuke') return;
+      p += r.pallets; sp += r.spaces;
+    });
+    return Math.floor(18 * (sp > 0 ? p / sp : 1));
+  }
+
+  // How many cucumber pallets one container takes on a given day if it is packed
+  // rather than loaded as it turned up: pair the shortest with the tallest that
+  // will take it, and count the pallets in the first 18 spaces. Everything else
+  // -- including whatever the lettuce container used to carry -- goes on trucks.
+  function packedAboard(dt) {
+    var own = (D.detail || []).filter(function (r) {
+      return r.dt === dt && r.crop !== 'Lettuce' && !LOOSE[r.customer];
+    }).map(function (r) { return r.cases; }).sort(function (a, b) { return a - b; });
+    var lo = 0, hi = own.length - 1, spaces = [];
+    while (lo < hi) {
+      if (own[lo] + own[hi] <= V.stackCases) { spaces.push(2); lo++; hi--; }
+      else { spaces.push(1); hi--; }
+    }
+    if (lo === hi) spaces.push(1);
+    var aboard = 0;
+    spaces.slice(0, V.spaces).forEach(function (n) { aboard += n; });
+    return aboard;
+  }
+
+  function shape(id) {
+    var m = byDay(), cap = cukePerContainer(), barge = 0, air = 0, pallets = 0;
+    Object.keys(m).forEach(function (k) {
+      var d = m[k];
+      if (id === 'current') {
+        barge += truckRunsHere(d.box); pallets += d.box;
+      } else if (id === 'air1') {
+        air += truckRunsHere(V.palSailing);
+        var over = Math.max(0, d.cuke - cap);
+        barge += truckRunsHere(over); pallets += over + V.palSailing;
+      } else {
+        // every cucumber pallet that day, less what a packed container holds,
+        // plus the ones no container can serve
+        air += truckRunsHere(V.palSailing);
+        var loose = d.looseOnly || 0;
+        var spill = Math.max(0, (d.cuke - loose) - packedAboard(k)) + loose;
+        barge += truckRunsHere(spill); pallets += spill + V.palSailing;
+      }
+    });
+    var B = Math.round(barge * V.annualize);
+    var A = Math.round(air * V.annualize);
+    var L = Math.round(V.localRunsPerWeek * 52);   // Kona rides the airport trip
+    var bH = runHours(V, 'barge'), aH = runHours(V, 'air');
+    return {
+      bargeRuns: B, airRuns: A, konaRuns: L,
+      pallets: Math.round(pallets * V.annualize),
+      runs: B + A + L,
+      hours: B * bH + (A + L) * aH,
+      miles: B * V.bargeMiles + (A + L) * V.airMiles
+    };
+  }
+
+  function render() {
+
+    var trucks = Math.max(1, V.nLarge);
+
+    var S = SCENARIOS.map(function (sc) { return { sc: sc, r: shape(sc.id) }; });
+    var lightest = S.reduce(function (a, x, i) { return x.r.hours < S[a].r.hours ? i : a; }, 0);
+
+    var row = function (label, get, cls, note) {
+      return '<tr' + (cls ? ' class="' + cls + '"' : '') + '>' +
+        '<td>' + label + (note ? ' <span style="color:var(--ink-3);font-weight:400">' + note + '</span>' : '') + '</td>' +
+        S.map(function (x, i) {
+          return '<td class="num' + (i === 0 ? ' grp' : '') + '">' + get(x.r) + '</td>';
+        }).join('') + '</tr>';
+    };
+
+    // One table, three columns. The top band defines each trip -- the same
+    // whichever way we ship -- and the bottom band is what each way asks of
+    // them. Two header bands rather than two tables, since the columns line up.
+    // The unit belongs on the label, so the columns hold nothing but figures.
+    var tripRow = function (label, unit, bargeK, airK, step) {
+      var cell = function (k) {
+        return '<td class="num"><input class="rate-in" id="in-' + k + '" type="number" min="0" step="' +
+          step + '" value="' + V[k] + '"></td>';
+      };
+      return '<tr><td>' + label + ' <span class="u">' + unit + '</span></td>' +
+        cell(bargeK) + cell(airK) + '</tr>';
+    };
+
+    document.getElementById('scen').innerHTML =
+      '<thead><tr><th>The trip</th><th class="num grp">Barge port</th>' +
+      '<th class="num">Airport &amp; Kona</th></tr></thead><tbody>' +
+      tripRow('Distance', 'miles RT', 'bargeMiles', 'airMiles', 2) +
+      tripRow('Drive time', 'minutes RT', 'bargeDriveRT', 'airDriveRT', 10) +
+      tripRow('Wait or load', 'minutes', 'bargeWait', 'airLoad', 5) +
+      '</tbody>' +
+      '<thead><tr><th>Per week</th>' +
+        S.map(function (x, i) {
+          return '<th class="num' + (i === 0 ? ' grp' : '') + (i === lightest ? ' win' : '') + '">' +
+            x.sc.name + '</th>';
+        }).join('') + '</tr></thead><tbody>' +
+      row('Runs to Costco Kona', function (r) { return wk1(r.konaRuns); }, '', 'same trip') +
+      row('Runs to the barge port', function (r) { return wk1(r.bargeRuns); }) +
+      row('Runs to the airport', function (r) { return wk1(r.airRuns); }) +
+      row('Runs, all', function (r) { return wk1(r.runs); }, 'sub') +
+      '</tbody><tfoot>' +
+      row('Miles per truck', function (r) { return wk0(r.miles / trucks); }) +
+      row('Hours per driver a week', function (r) { return wk1(r.hours / trucks); }) +
+      row('Miles per truck a year', function (r) { return num(r.miles / trucks); }, 'annual') +
+      '</tfoot>';
+
+    // the trip fields live in the table now, so wire them where they are
+    [['bargeMiles'], ['airMiles'], ['bargeDriveRT'], ['airDriveRT'],
+     ['bargeWait'], ['airLoad']].forEach(function (f) {
+      var el = document.getElementById('in-' + f[0]);
+      if (!el) return;
+      el.addEventListener('input', function (e) {
+        var n = parseFloat(e.target.value);
+        V[f[0]] = isFinite(n) && n >= 0 ? n : 0;
+        saveSettings(V);
+        render();
+        var again = document.getElementById('in-' + f[0]);
+        if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+      });
+    });
+
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

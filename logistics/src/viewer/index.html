@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logistics Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>/*__CSS__*/</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- One row: the name, what you are looking at, and which build it is. The
+       title had a line of its own and the tabs a line of their own, which cost
+       two rows of the window to four words and three buttons. -->
+  <header>
+    <h1>Logistics</h1>
+    <nav class="seg tabs" id="tabs"></nav>
+    <!-- GitHub Pages serves this with a ten minute max-age and the dashboard is
+         iframed inside aloha.ag, so a stale copy is easy to mistake for a
+         change that did not take. -->
+    <p class="built">built /*__BUILT__*/</p>
+  </header>
+
+  <!-- Flow -->
+  <section class="page" id="page-flow">
+    <div class="panel">
+      <div class="panel-hd">
+        <span class="seg" id="pick-when"></span>
+        <span class="picks" id="pick-jrns"></span>
+        <span class="note" id="src"></span>
+      </div>
+      <div class="body">
+        <div class="axis" id="axis"></div>
+        <div id="grid"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-hd"><h2>Tasks</h2><span class="note" id="tnote"></span></div>
+      <div id="warn"></div>
+      <div class="tasks" id="tasks"></div>
+    </div>
+  </section>
+
+  <!-- Orders -->
+  <section class="page" id="page-orders" hidden>
+    <div class="panel">
+      <div class="panel-hd">
+        <h2>Pack line</h2>
+      </div>
+      <div class="body"><div id="orders"></div></div>
+    </div>
+  </section>
+
+  <!-- Hours -->
+  <section class="page" id="page-hours" hidden>
+    <div class="panel">
+      <div class="panel-hd">
+        <h2>Opening hours</h2>
+      </div>
+      <div class="body"><div id="hours"></div></div>
+    </div>
+  </section>
+</div>
+
+<script>
+window.LEGS  = /*__LEGS__*/;
+window.SHEET = /*__SHEET__*/;
+window.DATA = /*__DATA__*/;
+window.REF = /*__REF__*/;
+</script>
+<script>
+/*__JS__*/
+</script>
+</body>
+</html>

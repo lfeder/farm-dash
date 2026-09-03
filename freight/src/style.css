@@ -1,0 +1,453 @@
+:root{
+  color-scheme: only light;
+  --ground:#eef1f3; --card:#ffffff; --card-2:#f6f8f9;
+  --ink:#141b1f; --ink-2:#4a5860; --ink-3:#78878f;
+  --line:#d8dfe3; --line-2:#e8edef;
+  --accent:#d4541f; --accent-soft:#fbeee7;
+  --good:#1d7a52; --bad:#b3341c; --warn:#8a6410; --warn-soft:#fdf4e0;
+  --lett:#2f6fb5; --cuke:#3f8f4f;
+  --band:#e8f2ec; --band-2:#cfe3d8;
+  --shadow:0 1px 2px rgba(20,27,31,.06), 0 8px 24px -12px rgba(20,27,31,.18);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0d1316; --card:#151d21; --card-2:#1b252a;
+    --ink:#e8eef1; --ink-2:#a3b1b8; --ink-3:#71838b;
+    --line:#2a373d; --line-2:#212c31;
+    --accent:#f4763c; --accent-soft:#2c1a11;
+    --good:#4bbf8a; --bad:#f0785c; --warn:#d9a83c; --warn-soft:#2a2210;
+    --lett:#5b9bd8; --cuke:#5fb872;
+    --band:#16261f; --band-2:#254535;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --lett:#5b9bd8; --cuke:#5fb872;
+  --band:#16261f; --band-2:#254535;
+  --ground:#0d1316; --card:#151d21; --card-2:#1b252a;
+  --ink:#e8eef1; --ink-2:#a3b1b8; --ink-3:#71838b;
+  --line:#2a373d; --line-2:#212c31;
+  --accent:#f4763c; --accent-soft:#2c1a11;
+  --good:#4bbf8a; --bad:#f0785c; --warn:#d9a83c; --warn-soft:#2a2210;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1240px; margin:0 auto; padding:32px 24px 80px; display:flex; flex-direction:column; gap:28px}
+.num{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace; font-variant-numeric:tabular-nums}
+
+/* ---------- header ---------- */
+header{display:flex; flex-wrap:wrap; align-items:flex-end; gap:16px 28px; border-bottom:2px solid var(--ink); padding-bottom:16px}
+header .seg{margin-left:auto}
+h1{margin:0; font-size:30px; font-weight:700; letter-spacing:-.02em; text-wrap:balance}
+.sub{color:var(--ink-2); font-size:14px; margin:2px 0 0}
+.meta{margin-left:auto; display:flex; gap:24px}
+.meta div{text-align:right}
+.meta .k{font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3)}
+.meta .v{font-size:19px; font-weight:600}
+
+/* ---------- inputs ---------- */
+.panel{background:var(--card); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow)}
+.panel-hd{display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid var(--line-2)}
+.panel-hd h2{margin:0; font-size:12px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-2); font-weight:600}
+.reset{margin-left:auto; background:none; border:1px solid var(--line); color:var(--ink-2); font:inherit; font-size:12px;
+  padding:4px 12px; border-radius:6px; cursor:pointer}
+.reset:hover{border-color:var(--accent); color:var(--accent)}
+.inputs{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:1px; background:var(--line-2)}
+.f{background:var(--card); padding:14px 18px; display:flex; flex-direction:column; gap:6px}
+.f label{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); font-weight:600}
+.f .row{display:flex; align-items:baseline; gap:4px}
+.f .pre{color:var(--ink-3); font-size:15px}
+.f input{
+  width:100%; min-width:0; background:transparent; border:none; border-bottom:1.5px solid var(--line);
+  color:var(--ink); font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:19px; font-weight:600; padding:1px 0 3px;
+}
+.f input:focus{outline:none; border-bottom-color:var(--accent)}
+.f .unit{font-size:11px; color:var(--ink-3); white-space:nowrap}
+
+/* ---------- scenarios ---------- */
+.scen{display:grid; grid-template-columns:repeat(auto-fit,minmax(258px,1fr)); gap:16px}
+.card{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px; box-shadow:var(--shadow);
+  display:flex; flex-direction:column; gap:12px; position:relative; overflow:hidden}
+.card.base{border-color:var(--ink-2)}
+.card.best{border-color:var(--accent)}
+.card.best::before{content:""; position:absolute; inset:0 0 auto 0; height:3px; background:var(--accent)}
+.tag{font-size:10px; letter-spacing:.1em; text-transform:uppercase; font-weight:700; color:var(--accent)}
+.card.base .tag{color:var(--ink-2)}
+.card h3{margin:0; font-size:16px; font-weight:600; line-height:1.3; text-wrap:balance}
+.card .desc{margin:0; font-size:12.5px; color:var(--ink-2); line-height:1.45; flex:1}
+.total{font-size:31px; font-weight:600; letter-spacing:-.02em}
+.delta{font-size:13px; font-weight:600}
+.delta.save{color:var(--good)} .delta.cost{color:var(--bad)} .delta.flat{color:var(--ink-3)}
+.brk{border-top:1px solid var(--line-2); padding-top:10px; display:flex; flex-direction:column; gap:3px; font-size:12px; color:var(--ink-2)}
+.brk div{display:flex; justify-content:space-between; gap:10px}
+.brk .n{color:var(--ink)}
+
+/* ---------- tables ---------- */
+.scroll{overflow-x:auto}
+table{border-collapse:collapse; width:100%; font-size:13px}
+th,td{padding:7px 11px; text-align:right; white-space:nowrap}
+th{font-size:10px; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-3); font-weight:600;
+  border-bottom:1px solid var(--line); vertical-align:bottom}
+td{border-bottom:1px solid var(--line-2)}
+th:first-child,td:first-child{text-align:left}
+tbody tr:nth-child(even) td{background:var(--card-2)}
+tfoot td{font-weight:600; border-top:2px solid var(--ink); border-bottom:none; background:var(--card)!important}
+.grp{border-left:1px solid var(--line)}
+.win{color:var(--accent); font-weight:600}
+caption{caption-side:top; text-align:left; padding:0 0 10px; font-size:12px; color:var(--ink-2)}
+
+/* ---------- notes ---------- */
+.notes{background:var(--card); border:1px solid var(--line); border-left:3px solid var(--warn); border-radius:8px; padding:16px 20px}
+.notes h2{margin:0 0 10px; font-size:12px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-2)}
+.notes ul{margin:0; padding-left:18px; display:flex; flex-direction:column; gap:7px; font-size:13.5px; color:var(--ink-2)}
+.notes strong{color:var(--ink)}
+
+/* ---------- breakeven ---------- */
+.be{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:18px; align-items:start}
+.be .box{display:flex; flex-direction:column; gap:5px}
+.be .k{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); font-weight:600}
+.be .big{font-size:26px; font-weight:600; letter-spacing:-.02em}
+.be .sm{font-size:12px; color:var(--ink-2); line-height:1.45}
+.verdict{margin-top:16px; padding:12px 15px; border-radius:8px; font-size:13.5px; line-height:1.5}
+.verdict.pallet{background:var(--accent-soft); border:1px solid var(--accent); color:var(--ink)}
+.verdict.container{background:var(--warn-soft); border:1px solid var(--warn); color:var(--ink)}
+
+/* ---------- cross-page link ---------- */
+.xlink{color:var(--accent); text-decoration:none; border-bottom:1px solid transparent; font-weight:500}
+.xlink:hover{border-bottom-color:var(--accent)}
+td.over{color:var(--bad); font-weight:600; cursor:help}
+tbody tr.dim td{color:var(--ink-3)}
+
+/* ---------- pallet-count loaders ---------- */
+.load{display:flex; flex-wrap:wrap; gap:26px; padding-bottom:18px; margin-bottom:18px; border-bottom:1px solid var(--line-2)}
+.ld{display:flex; flex-direction:column; gap:4px}
+.ld label{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); font-weight:600}
+.ld input{width:92px; background:transparent; border:none; border-bottom:1.5px solid var(--line); color:var(--ink);
+  font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; font-size:23px; font-weight:600; padding:1px 0 3px}
+.ld input:focus{outline:none; border-bottom-color:var(--accent)}
+.ld .unit{font-size:11px; color:var(--ink-3)}
+
+/* ---------- two-option comparison ---------- */
+.cmp-wrap{display:flex; flex-direction:column; gap:18px}
+
+.cmp-bar{height:15px; border-radius:4px; background:var(--line-2); overflow:hidden}
+.cmp-bar i{display:block; height:100%; background:var(--ink-3); border-radius:4px; transition:width .18s ease}
+
+tr.grouphd th{padding-bottom:2px; border-bottom:none; color:var(--ink-2); font-size:9.5px; letter-spacing:.12em; text-align:center}
+tr.grouphd th:first-child{border:none}
+
+/* ---------- view toggle ---------- */
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--card)}
+.seg a{padding:6px 15px; font-size:12.5px; font-weight:500; color:var(--ink-2); text-decoration:none;
+  border-right:1px solid var(--line); white-space:nowrap}
+.seg a:last-child{border-right:none}
+.seg a:hover{background:var(--card-2); color:var(--ink)}
+.seg a.on{background:var(--accent); color:#fff}
+.seg a.on:hover{background:var(--accent); color:#fff}
+a.daylink{font-weight:600}
+
+/* ---------- route diagrams ---------- */
+.route{display:flex; flex-direction:column; gap:9px}
+.route-hd{display:flex; align-items:baseline; gap:12px}
+.route-name{font-size:14.5px; font-weight:600}
+.route-cost{margin-left:auto; font-size:23px; font-weight:600; letter-spacing:-.02em}
+.route.win .route-name,.route.win .route-cost{color:var(--accent)}
+.route-legs{display:flex; flex-direction:column; gap:9px; padding:13px 15px; border:1px solid var(--line);
+  border-radius:8px; background:var(--card-2)}
+.chain{display:flex; align-items:center; gap:11px; flex-wrap:wrap}
+.veh{display:flex; flex-direction:column; align-items:center; gap:2px; color:var(--ink-2); flex:0 0 auto}
+.route.win .veh{color:var(--ink)}
+.veh span{font-size:10px; letter-spacing:.03em; color:var(--ink-3); white-space:nowrap}
+.slots{display:flex; flex-direction:column; align-items:flex-start; gap:3px; flex:0 0 auto}
+.slots span{font-size:10px; color:var(--ink-3); white-space:nowrap; text-align:left}
+.arr{color:var(--ink-3); flex:0 0 auto}
+
+/* ---------- per-shipment: fit the whole comparison on one screen ---------- */
+
+/* ---------- collapsible assumptions ---------- */
+details.notes summary{list-style:none; cursor:pointer; font-size:12px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--ink-2); font-weight:600; display:flex; align-items:center; gap:7px}
+details.notes summary::-webkit-details-marker{display:none}
+details.notes summary::before{content:"\25B8"; font-size:10px; color:var(--ink-3); transition:transform .12s ease}
+details.notes[open] summary::before{transform:rotate(90deg); color:var(--accent)}
+details.notes[open] summary{margin-bottom:10px}
+details.notes ul{margin:0; padding-left:18px; display:flex; flex-direction:column; gap:7px;
+  font-size:13.5px; color:var(--ink-2)}
+
+.segsm{display:inline-flex; margin-left:auto; border:1px solid var(--line); border-radius:7px; overflow:hidden}
+.segsm a{padding:4px 11px; font-size:11.5px; color:var(--ink-2); cursor:pointer; border-right:1px solid var(--line)}
+.segsm a:last-child{border-right:none}
+.segsm a:hover{background:var(--card-2); color:var(--ink)}
+.segsm a.on{background:var(--accent); color:#fff}
+
+/* ---------- per-shipment: the two options sit side by side ---------- */
+
+/* ---------- utilisation bars ---------- */
+
+/* ---------- per-leg costs ---------- */
+.chain{display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:7px 0;
+  border-bottom:1px dashed var(--line-2)}
+.chain:last-of-type{border-bottom:none}
+.chain-left{display:flex; flex-direction:column; gap:3px; flex:1 1 auto; min-width:0}
+.chain-parts{display:flex; align-items:center; gap:11px; flex-wrap:wrap}
+.chain-cost{margin-left:auto; flex:0 0 auto; align-self:center}
+.chain-cost .num{font-size:17px; font-weight:600; color:var(--accent)}
+.chain-detail{font-size:11px; color:var(--ink-3)}
+
+/* ---------- weight drill-down ---------- */
+td.wt{cursor:pointer}
+td.wt:hover{background:var(--accent-soft)}
+tr.wtdetail>td{background:var(--card-2)!important; padding:0; white-space:normal}
+.wtwrap{padding:12px 16px; overflow-x:auto}
+.wttbl{font-size:12px}
+.wttbl caption{font-size:11.5px; color:var(--ink-2); padding-bottom:8px}
+.wttbl th{font-size:9.5px}
+.wttbl td{padding:4px 9px}
+
+/* ---------- 3D container ---------- */
+.stage{height:330px; perspective:1100px; perspective-origin:50% 42%; cursor:grab;
+  background:var(--card-2); border:1px solid var(--line); border-radius:9px; overflow:hidden;
+  display:flex; align-items:center; justify-content:center; user-select:none}
+.stage.grabbing{cursor:grabbing}
+.rig{transform-style:preserve-3d; width:0; height:0; position:relative}
+.pw{position:absolute; transform-style:preserve-3d; left:0; top:0}
+/* Hide each face's reverse: without this you see through the near wall into the
+   inside of the box and a solid pallet reads as an open shell. */
+.pw .pf{position:absolute; left:0; top:0; transform-origin:50% 50%;
+  backface-visibility:hidden; -webkit-backface-visibility:hidden}
+/* The number on a moving pallet's lid. Lies flat on the top face, so it turns
+   with the drawing and stays readable at the default angle. */
+.palnum{position:absolute; left:0; top:0; display:flex; align-items:center;
+  justify-content:center; font-weight:700; color:#fff; line-height:1;
+  text-shadow:0 1px 2px rgba(0,0,0,.55); pointer-events:none;
+  /* Same reason the cube faces hide theirs: turned away, a number would
+     otherwise read through the pallet backwards. */
+  backface-visibility:hidden; -webkit-backface-visibility:hidden}
+.legend{display:flex; align-items:center; gap:18px; margin-top:12px; font-size:11.5px; color:var(--ink-2)}
+.legend i{display:inline-block; width:11px; height:11px; border-radius:2px; margin-right:6px; vertical-align:-1px}
+
+/* ---------- trip input groups ---------- */
+.triprow{display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:1px; background:var(--line-2)}
+.trip{background:var(--card); padding:15px 18px}
+.trip h3{margin:0 0 2px; font-size:13px; font-weight:600}
+.tripnote{margin:0 0 10px; font-size:11.5px; color:var(--ink-3)}
+.tripin{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:10px}
+.f.tf{padding:0}
+tbody.pertruck td{background:var(--card-2)}
+tbody.pertruck tr:first-child td{border-top:1px solid var(--line)}
+tr.sub td{font-weight:600}
+.wt3d{margin-top:14px}
+.wt3d .stage{height:260px}
+td.bx{cursor:pointer}
+td.bx:hover{background:var(--accent-soft)}
+.shortmark{color:var(--warn); font-weight:600}
+
+/* ---------- findings ---------- */
+.opp{display:grid; grid-template-columns:30px minmax(0,1fr) auto; gap:2px 16px;
+  padding:18px; border-bottom:1px solid var(--line-2); align-items:start}
+.opp:last-child{border-bottom:none}
+.opp .badge{grid-row:1/span 3; width:30px; height:30px; border-radius:8px; display:grid; place-items:center;
+  font-size:13px; font-weight:700; background:var(--accent-soft); color:var(--accent)}
+.opp.cold .badge{background:var(--card-2); color:var(--ink-3)}
+.opp h3{grid-column:2; margin:0; font-size:16px; font-weight:600; letter-spacing:-.01em; text-wrap:balance}
+.opp .val{grid-column:3; grid-row:1; text-align:right; font-size:22px; font-weight:600; letter-spacing:-.02em;
+  color:var(--good); white-space:nowrap}
+.opp.cold .val{color:var(--ink-3); font-size:16px}
+.opp .val small{display:block; font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); font-weight:600}
+.opp p{grid-column:2/span 2; margin:6px 0 0; font-size:13.5px; color:var(--ink-2); line-height:1.55; max-width:78ch}
+.opp .ev{grid-column:2/span 2; margin-top:10px; display:flex; flex-wrap:wrap; gap:8px}
+.opp .ev span{font-size:11.5px; padding:3px 9px; border-radius:99px; background:var(--card-2);
+  border:1px solid var(--line-2); color:var(--ink-2)}
+.opp .ev b{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; color:var(--ink); font-weight:600}
+.caveat{grid-column:2/span 2; margin-top:12px; padding:10px 13px; border-radius:8px; font-size:12.5px; line-height:1.5;
+  background:var(--warn-soft); border:1px solid var(--line-2); color:var(--ink-2)}
+.caveat strong{color:var(--ink)}
+
+.issue{padding:16px 18px; border-bottom:1px solid var(--line-2)}
+.issue:last-child{border-bottom:none}
+.issue-hd{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+.issue-hd h3{margin:0; font-size:14.5px; font-weight:600}
+.issue p{margin:6px 0 0; font-size:13px; color:var(--ink-2); line-height:1.55; max-width:82ch}
+.chip{font-size:10px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; padding:2px 8px;
+  border-radius:99px; white-space:nowrap}
+.chip.model{background:var(--accent-soft); color:var(--accent)}
+.chip.fix{background:var(--warn-soft); color:var(--warn)}
+.chip.cosmetic{background:var(--card-2); color:var(--ink-3); border:1px solid var(--line-2)}
+.issue table{margin-top:10px; font-size:12.5px; width:auto; min-width:min(100%,460px)}
+
+.asks{list-style:none; margin:0; padding:0; counter-reset:ask}
+.asks li{counter-increment:ask; position:relative; padding:14px 18px 14px 50px; border-bottom:1px solid var(--line-2);
+  font-size:13.5px; color:var(--ink-2); line-height:1.55}
+.asks li:last-child{border-bottom:none}
+.asks li::before{content:counter(ask); position:absolute; left:18px; top:14px; width:20px; height:20px;
+  border-radius:6px; background:var(--card-2); border:1px solid var(--line-2); display:grid; place-items:center;
+  font-size:11px; font-weight:700; color:var(--ink-2);
+  font-family:"IBM Plex Mono",monospace}
+.asks li strong{color:var(--ink)}
+.asks li .worth{color:var(--good); font-weight:600}
+
+/* ---------- the cut line ---------- */
+tr.cut td{border-bottom:2px solid var(--accent)!important}
+tr.below td{color:var(--ink-3)}
+tr.below td strong{color:var(--ink-2)}
+.cutmark{font-size:10px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; color:var(--accent)}
+.kindpill{font-size:10.5px; padding:2px 7px; border-radius:99px; background:var(--card-2);
+  border:1px solid var(--line-2); color:var(--ink-2); white-space:nowrap}
+.verd{font-size:11px; letter-spacing:.05em; text-transform:uppercase; font-weight:700}
+.verd.keep{color:var(--good)} .verd.edge{color:var(--warn)} .verd.drop{color:var(--bad)}
+
+/* ---------- customer view ---------- */
+
+.headline{font-size:16.5px; line-height:1.42; text-wrap:balance; margin:0;
+  padding:13px 18px; border-radius:10px; background:var(--accent-soft);
+  border:1px solid var(--line); color:var(--ink)}
+.headline strong{color:var(--accent)}
+
+.legend{display:flex; flex-wrap:wrap; gap:16px; align-items:center; padding-top:12px; font-size:12px; color:var(--ink-2)}
+.legend i{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px}
+
+/* ---------- inline arithmetic ---------- */
+.mathline{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:13px; color:var(--ink-2); margin:2px 0 -2px; white-space:nowrap;
+  overflow-x:auto; letter-spacing:-.01em}
+.rate-in{width:4.4em; background:transparent; border:none; border-bottom:1.5px solid var(--accent);
+  color:var(--accent); font-family:inherit; font-variant-numeric:tabular-nums;
+  font-size:13px; font-weight:600; text-align:right; padding:0}
+.rate-in:focus{outline:none; background:var(--accent-soft)}
+
+/* ---------- the gap ---------- */
+td.gap{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:26px; font-weight:600; letter-spacing:-.02em; color:var(--accent); padding:6px 11px}
+td.gap.none{color:var(--good); font-size:15px; font-weight:500}
+tfoot td.gap{font-size:30px}
+
+/* ---------- table beside the container ---------- */
+.split{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:1px; background:var(--line-2)}
+.split > div{background:var(--card); padding:14px 16px; min-width:0; display:flex; flex-direction:column}
+@media (max-width:900px){ .split{grid-template-columns:minmax(0,1fr)} }
+.split .stage{height:auto; min-height:250px; flex:1; perspective-origin:50% 48%}
+.split table{font-size:12px; line-height:1.3}
+.split td.gap{font-size:17px; padding:1px 10px}
+.split tfoot td.gap{font-size:20px}
+.split th,.split td{padding:2px 10px}
+.split caption{padding-bottom:6px; font-size:11.5px}
+
+/* ---------- lettuce: the weight, then the two ways ---------- */
+.topbox{padding:18px 20px; border:1px solid var(--line); border-radius:10px; background:var(--card-2);
+  display:flex; align-items:baseline; gap:18px; flex-wrap:wrap}
+.topbox .k{font-size:11px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-3); font-weight:700}
+.topbox .v{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:38px; font-weight:600; letter-spacing:-.02em; line-height:1}
+.twoway{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; margin-top:16px}
+.way{border:1px solid var(--line); border-radius:10px; padding:18px 20px; background:var(--card)}
+.way.air{border-color:var(--good)}
+.way .k{font-size:11px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-3); font-weight:700}
+.way .r{display:flex; align-items:baseline; justify-content:space-between; gap:14px;
+  padding:5px 0; font-size:13.5px; color:var(--ink-2)}
+.way .r + .r{border-top:1px solid var(--line-2)}
+.way .r .n{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:16px; font-weight:600; color:var(--ink); white-space:nowrap}
+.way .r .u{color:var(--ink-3); font-weight:400; font-size:12.5px}
+.way .rows{margin:12px 0 4px}
+.way .lb{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:28px; font-weight:600; letter-spacing:-.03em; line-height:1.1}
+.way.ctr .lb{color:var(--bad)} .way.air .lb{color:var(--good)}
+.way .r:last-child{border-top-width:2px; border-top-color:var(--ink); padding-top:9px}
+.way .lbl{font-size:12.5px; color:var(--ink-2); margin-top:4px}
+.way .yr{margin-top:12px; padding-top:11px; border-top:1px solid var(--line-2);
+  display:flex; align-items:baseline; justify-content:space-between; gap:12px}
+.way .yr .n{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:21px; font-weight:600}
+.way .yr + .yr{border-top:none; padding-top:2px}
+.way .yr + .yr .n{color:var(--good)}
+.way .yr .t{font-size:12px; color:var(--ink-3)}
+.way input.rate-in{font-size:16px; font-weight:600; width:3.6em; text-align:right}
+.way input.pal-in{width:2.6em}
+
+/* Number fields are typed into, not stepped; the spinners only get in the way. */
+input[type=number]{-moz-appearance:textfield}
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none; margin:0}
+
+/* Two figures with a slash between: the slash sits on one axis down the column
+   rather than drifting with the width of the number to its left. */
+.pair{display:inline-grid; grid-template-columns:5.5ch auto 5.5ch; gap:0 5px; align-items:baseline}
+.pair b{font-weight:inherit; text-align:right}
+.pair i{font-style:normal; color:var(--ink-3)}
+.pair s{text-decoration:none; text-align:left; color:var(--ink-3)}
+tr.dayrow{cursor:pointer}
+tr.dayrow:hover td{background:var(--card-2)}
+.notedot{color:var(--warn); font-size:11px}
+#scen input.rate-in{width:4.2em; font-size:14px; text-align:right}
+#scen .u{color:var(--ink-3); font-size:11.5px}
+#scen thead:not(:first-child) th{border-top:2px solid var(--ink); padding-top:14px}
+#scen tfoot tr.annual td{border-top:none; padding-top:2px; color:var(--ink-2)}
+#scen tfoot tr.annual td.num{font-size:17px; color:var(--accent)}
+.rateline{display:flex; flex-wrap:wrap; align-items:baseline; gap:10px 34px; padding:14px 18px}
+.rateline .rf{display:flex; align-items:baseline; gap:9px}
+.rateline label{font-size:13.5px; color:var(--ink-2); white-space:nowrap}
+.rateline label .u{color:var(--ink-3); font-size:12px}
+.rateline input{width:4.4em; background:transparent; border:none; border-bottom:1.5px solid var(--line);
+  color:var(--ink); font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:17px; font-weight:600; text-align:right; padding:0 0 2px}
+.rateline input:focus{outline:none; border-bottom-color:var(--accent)}
+
+/* ---------- box truck 3D ---------- */
+/* One bay per run: a truck takes capLarge pallets, so a sailing that spills
+   more than that needs a second deck rather than a taller one. */
+.truck3d{display:flex; flex-wrap:wrap; gap:18px; padding:14px 18px 4px}
+.truckbay{flex:0 0 auto}
+.truck3d .wt3d{margin-top:0}
+.truck3d .stage{width:230px; height:210px; perspective:820px}
+
+/* One sailing, one picture: the container drawn on the far left and the runs it
+   could not take stacked immediately to its right, all three in the same band of
+   vertical space rather than one under another. */
+.drill{padding:14px 18px}
+/* As loaded on the left, as it could have gone out on the right, each with its
+   own drawings above its own table so the two read as one comparison. */
+.drillcols{display:flex; gap:26px; align-items:flex-start}
+.drillside{flex:1 1 0; min-width:0}
+.drillhd{font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-2); font-weight:600; margin-bottom:10px;
+  display:flex; align-items:baseline; gap:10px}
+.drillhd span{letter-spacing:0; text-transform:none; font-weight:400;
+  font-size:11.5px; color:var(--ink-3)}
+.drill3d{display:flex; align-items:flex-start; gap:18px}
+.drill3d > .wt3d{margin-top:0; flex:0 0 auto; width:300px}
+.drill3d > .wt3d > .stage{height:300px}
+.drill3d .legend{flex-wrap:wrap; gap:10px 14px}
+.drill3d .truck3d{flex:0 0 auto; flex-direction:column; flex-wrap:nowrap;
+  padding:0; gap:10px}
+/* The deck sits low in a truck bay, so the anchor is lifted: less empty sky
+   above the pallets, more room under the slab. */
+.drill3d .truck3d .stage{width:210px; height:170px}
+.drill3d .truck3d .rig{margin-bottom:26px}
+.drilltbl{margin-top:18px; overflow-x:auto; max-width:470px}
+/* Narrow enough for two of these to sit side by side once there is an after
+   arrangement to put beside the before. Every column but the customer is a short
+   number, so they are pinned tight and the name takes what is left. */
+.loadtbl{width:100%; font-size:11.5px; table-layout:fixed}
+.loadtbl th,.loadtbl td{padding:3px 6px}
+.loadtbl col.c-sp{width:30px}
+.loadtbl col.c-prod{width:52px}
+.loadtbl col.c-cases{width:46px}
+.loadtbl col.c-bill{width:118px}
+.loadtbl col.c-used{width:48px}
+.loadtbl .breakrow td{text-align:left; font-size:10.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--ink-3); padding-top:12px;
+  border-top:2px solid var(--line)}
+/* The note runs under the space it is about, across the table. */
+.loadtbl .noterow td{font-size:11px; line-height:1.4; color:var(--ink-3);
+  text-align:left; border-top:none; padding-top:0; padding-bottom:7px; white-space:normal}
+/* A run is a whole truck trip, and the break between two of them is the thing
+   that costs money, so it reads as a gap rather than a heavier line. */
+.loadtbl tr.runbreak td{border-top:3px solid var(--ink-3); padding-top:12px}
+.loadtbl tr.runbreak + tr td{padding-top:3px}
