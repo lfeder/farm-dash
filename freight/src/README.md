@@ -105,4 +105,5 @@ writes the published page directly to `dash/freight/index.html` — the file the
 hub iframes — so there is no copy step. Run `extract.py` first when the shipping
 history needs refreshing; it needs prod credentials, `build.py` does not.
 
-History before 2026-09-03 is in the archived `lfeder/farm-freight-model`.
+History before 2026-09-03 is in `lfeder/farm-freight-model`, which still
+exists on GitHub and is no longer built from.

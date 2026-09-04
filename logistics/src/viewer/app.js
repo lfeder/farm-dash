@@ -1644,6 +1644,40 @@
   // a screen, not a preference.
   var EDITING = null;
 
+  // The steps of one journey, drawn inside the journeys table under the row
+  // that opened it.
+  function legsBlock(j) {
+    var mine = DB.legs.filter(function (g) { return g.pack_journey_id === j.id; })
+      .sort(function (a, b) { return (a.step_order || 0) - (b.step_order || 0); });
+    var steps = (((window.REF || {}).steps || {}).order) || [];
+    var taken = {};
+    mine.forEach(function (g) { taken[g.step] = 1; });
+    var spare = steps.filter(function (st) { return !taken[st.step]; });
+
+    return '<div class="legs"><h5>Legs of ' +
+      esc([j.crop, j.fob, j.transport, j.hold].filter(Boolean).join(' \u00b7 ')) + '</h5>' +
+      (mine.length
+        ? '<table class="etbl"><thead><tr><th>Step</th><th>Starts</th><th></th>' +
+          '<th>Ends</th><th></th><th></th></tr></thead><tbody>' +
+          mine.map(function (g) {
+            var a = 'data-g="' + esc(g.id) + '"';
+            return '<tr><th>' + esc(g.step) + '</th>' +
+              '<td>' + sel(a + ' data-f="start_dow"', DAY_OPTS, g.start_dow) + '</td>' +
+              '<td>' + tm(a + ' data-f="start_time"', g.start_time) + '</td>' +
+              '<td>' + sel(a + ' data-f="end_dow"', DAY_OPTS, g.end_dow) + '</td>' +
+              '<td>' + tm(a + ' data-f="end_time"', g.end_time) + '</td>' +
+              '<td><button class="ebtn warn" data-drop="' + esc(g.id) + '">Remove</button></td>' +
+              '</tr>';
+          }).join('') + '</tbody></table>'
+        : '<p class="ehint">This journey has no steps yet.</p>') +
+      (spare.length
+        ? '<p class="ehint">Add a step: ' +
+          sel('id="add-step"', spare.map(function (st) { return [st.step, st.step]; }), '') +
+          ' <button class="ebtn" id="add-leg">Add</button></p>'
+        : '<p class="ehint">Every step in the steps table is already on this journey.</p>') +
+      '</div>';
+  }
+
   function editView() {
     if (!DB) {
       return '<div class="esec"><p class="ehint">The schedule could not be read, ' +
@@ -1666,43 +1700,18 @@
           '<td>' + txt('data-j="' + esc(j.id) + '" data-f="start_days"', j.start_days, 'num') + '</td>' +
           '<td><input type="checkbox" data-on="' + esc(j.id) + '"' + (on ? ' checked' : '') + '></td>' +
           '<td><button class="ebtn" data-legs="' + esc(j.id) + '">' +
-            (EDITING === j.id ? 'Hide legs' : 'Legs') + '</button></td></tr>';
+            (EDITING === j.id ? 'Hide legs' : 'Legs') + '</button></td></tr>' +
+          // Opened under the row it belongs to. It used to be appended below
+          // the whole table, which put a journey's legs ten rows from the
+          // button that asked for them and read as nothing having happened.
+          (EDITING === j.id
+            ? '<tr class="legrow"><td colspan="7">' + legsBlock(j) + '</td></tr>'
+            : '');
       }).join('') + '</tbody></table>' +
       '<p class="ehint">Unticking <b>Runs</b> takes a journey off the chart and ' +
       'out of the snapshot without deleting it or its legs — it can come back ' +
       'without being retyped. <b>Cut days</b> are offsets from the first cut: ' +
       '<code>0, 3</code> is the cut day and again three days later.</p></div>';
-
-    // ── legs of the open journey ──
-    if (EDITING) {
-      var j = DB.journeys.filter(function (x) { return x.id === EDITING; })[0];
-      var mine = DB.legs.filter(function (g) { return g.pack_journey_id === EDITING; })
-        .sort(function (a, b) { return (a.step_order || 0) - (b.step_order || 0); });
-      var steps = (((window.REF || {}).steps || {}).order) || [];
-      var taken = {};
-      mine.forEach(function (g) { taken[g.step] = 1; });
-      var spare = steps.filter(function (st) { return !taken[st.step]; });
-      out += '<div class="esec"><h4>Legs of ' + esc(j ? [j.crop, j.fob, j.transport, j.hold]
-          .filter(Boolean).join(' · ') : EDITING) + '</h4>' +
-        '<table class="etbl"><thead><tr><th>Step</th><th>Starts</th><th></th>' +
-        '<th>Ends</th><th></th><th></th></tr></thead><tbody>' +
-        mine.map(function (g) {
-          var a = 'data-g="' + esc(g.id) + '"';
-          return '<tr><th>' + esc(g.step) + '</th>' +
-            '<td>' + sel(a + ' data-f="start_dow"', DAY_OPTS, g.start_dow) + '</td>' +
-            '<td>' + tm(a + ' data-f="start_time"', g.start_time) + '</td>' +
-            '<td>' + sel(a + ' data-f="end_dow"', DAY_OPTS, g.end_dow) + '</td>' +
-            '<td>' + tm(a + ' data-f="end_time"', g.end_time) + '</td>' +
-            '<td><button class="ebtn warn" data-drop="' + esc(g.id) + '">Remove</button></td>' +
-            '</tr>';
-        }).join('') + '</tbody></table>' +
-        (spare.length
-          ? '<p class="ehint">Add a step: ' +
-            sel('id="add-step"', spare.map(function (st) { return [st.step, st.step]; }), '') +
-            ' <button class="ebtn" id="add-leg">Add</button></p>'
-          : '<p class="ehint">Every step in the steps table is already on this journey.</p>') +
-        '</div>';
-    }
 
     // ── gates ──
     out += '<div class="esec"><h4>Gates — somebody else’s door</h4>' +

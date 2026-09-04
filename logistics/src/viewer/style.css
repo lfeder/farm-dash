@@ -385,3 +385,14 @@ code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--ca
 .ehint{color:var(--ink-3); font-size:12px; margin:8px 0 0}
 #edit-state.ok{color:var(--good)}
 #edit-state.bad{color:var(--bad)}
+
+/* The open journey's legs, inside the journeys table under the row that asked
+   for them. Inset and banded so it reads as belonging to that row rather than
+   as another top-level table. */
+.etbl tr.legrow > td{padding:0; background:var(--card-2)}
+.legs{padding:12px 14px 12px 26px; border-left:3px solid var(--accent)}
+.legs h5{margin:0 0 8px; font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink-2); font-weight:600}
+.legs .etbl{background:var(--card); border:1px solid var(--line); border-radius:7px}
+.legs .etbl tbody tr:last-child th,.legs .etbl tbody tr:last-child td{border-bottom:0}
+.legs .ehint{margin-top:9px}
