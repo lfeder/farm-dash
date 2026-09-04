@@ -1,358 +1,358 @@
 {
-  "_": "Hand-edited. Everything here changes rarely: what a journey is, who is open when, and which boat goes where. The legs themselves live in legs.csv.",
-  "legs_sheet": "https://docs.google.com/spreadsheets/d/1JesEFq8X3tVDYi4_SbLs3u1lnG8Ch7NbiR7CvGlZS7Q/export?format=csv&gid=578288022",
-  "_start_days": "Which cutting days a journey runs on, as offsets from the first. '0, 3' is the cut day and again three days later: the barge sails twice a week and everything is built around it. Every journey in the sheet said the same thing, so it lives here and the sheet no longer carries a Start Day row. A journey that ever breaks the pattern can still say so -- a Start Day in the sheet wins over this.",
-  "start_days": "0, 3",
-  "_packed_from": "How far ahead of the journey a crop may already have been packed, as the earliest weekday it could have come off the line, keyed by the cut the journey runs on. Cucumbers hold, so a case leaving on the Mon/Tue journeys may have been packed as long ago as the Thursday before, and one leaving on Thu/Fri as long ago as the Tuesday. It widens the day count on the chips only -- the chart draws the legs the sheet gives it, and the sheet does not know which day any particular case was packed. A crop with no entry here is counted from its first step, as everything was before.",
-  "packed_from": {
-    "Cukes": {
-      "Sun": "Thu",
-      "Wed": "Tue"
-    }
-  },
-  "sites": {
-    "_": "Places we own. They do not gate: we are there when we are there, so they carry no days and no window, and a leg that runs between two of them can never be 'outside hours'. Every place named in steps must appear either here or in hours.",
-    "places": [
-      {
-        "place": "PH",
-        "note": "Hawaii Farming packhouse. The whole journey starts here."
-      },
-      {
-        "place": "Storage",
-        "note": "Always open — it is our own cooler."
-      },
-      {
-        "place": "Lettuce loading dock",
-        "note": ""
-      },
-      {
-        "place": "Lab",
-        "note": "The incubation runs whether or not anyone is watching it."
-      },
-      {
-        "place": "Container",
-        "note": "Our yard. We are here when the packhouse is."
-      },
-      {
-        "place": "Customer truck",
-        "note": "They collect while we are here."
-      }
-    ]
-  },
-  "hours": [
-    {
-      "place": "140",
-      "days": "Mon-Sat",
-      "open": "04:00",
-      "close": "11:00",
-      "note": "Receiving. The only gate on-island."
-    },
-    {
-      "place": "KOA",
-      "days": "Sun-Fri",
-      "open": "06:00",
-      "close": "17:00",
-      "note": "Aloha Air Cargo counter. Six days — dark Saturday."
-    },
-    {
-      "place": "YB-KWH",
-      "days": "Mon-Fri",
-      "open": "07:00",
-      "close": "11:00",
-      "note": "Young Brothers. Cargo acceptance ahead of the sailing."
-    },
-    {
-      "place": "HNL",
-      "days": "Sun-Fri",
-      "open": "06:00",
-      "close": "17:00",
-      "note": "Aloha Air Cargo Honolulu. Six days — dark Saturday, same counter hours as KOA. The barge's Honolulu end is YB-HNL, not this."
-    },
-    {
-      "place": "YB-HNL",
-      "days": "Mon-Fri",
-      "open": "07:00",
-      "close": "11:00",
-      "note": "Young Brothers Honolulu."
-    },
-    {
-      "place": "HFA",
-      "days": "Mon-Fri",
-      "open": "06:00",
-      "close": "18:00",
-      "note": "Collects, then runs the route."
-    },
-    {
-      "place": "YB-Kahului",
-      "days": "Mon-Sat",
-      "open": "07:00",
-      "close": "15:00",
-      "note": "Young Brothers. Available the next business day after arrival."
-    },
-    {
-      "place": "HFA Kahului",
-      "days": "Mon-Fri",
-      "open": "06:00",
-      "close": "18:00",
-      "note": "Collects, then runs the route."
-    },
-    {
-      "place": "YB-Nawiliwili",
-      "days": "Mon-Fri",
-      "open": "07:00",
-      "close": "11:00",
-      "note": "Young Brothers Kauai."
-    },
-    {
-      "place": "HFA Kauai",
-      "days": "Mon-Fri",
-      "open": "06:00",
-      "close": "18:00",
-      "note": "Collects, then runs the route."
-    },
-    {
-      "place": "Customer receiving",
-      "days": "Mon-Sat",
-      "open": "05:00",
-      "close": "12:00",
-      "note": "The back door at the other end."
-    }
-  ],
-  "sailings": [
-    {
-      "route": "YB-KWH to YB-HNL",
-      "departs": "Tue 18:00",
-      "arrives": "Wed 06:00",
-      "connects": "",
-      "note": ""
-    },
-    {
-      "route": "YB-KWH to YB-HNL",
-      "departs": "Fri 18:00",
-      "arrives": "Sat 06:00",
-      "connects": "",
-      "note": ""
-    },
-    {
-      "route": "YB-HNL to YB-Kahului",
-      "departs": "Wed 16:00",
-      "arrives": "Thu 06:00",
-      "connects": "the Tuesday sailing",
-      "note": "Maui is level with Oahu off this one."
-    },
-    {
-      "route": "YB-HNL to YB-Kahului",
-      "departs": "Mon 16:00",
-      "arrives": "Tue 06:00",
-      "connects": "the Friday sailing",
-      "note": "Maui falls a day behind Oahu off this one."
-    },
-    {
-      "route": "YB-HNL to YB-Nawiliwili",
-      "departs": "Mon",
-      "arrives": "Tue",
-      "connects": "the Friday sailing",
-      "note": "Kauai. Accepted in Honolulu Mon, Wed & Thu until 11am; available at Nawiliwili the next business day after arrival."
-    },
-    {
-      "route": "YB-HNL to YB-Nawiliwili",
-      "departs": "Thu",
-      "arrives": "Fri",
-      "connects": "the Tuesday sailing",
-      "note": "Kauai. A Wednesday Honolulu arrival is not available until Thursday, so it makes this boat with hours to spare and lands Friday — level with Oahu."
-    }
-  ],
-  "hold": {
-    "_": "Test and hold. Each stage is a lane and its hours is how long that stage takes, so the chain draws as a staircase whose steps are the waits; the last stage is where it ends and takes no time. The clock starts when packing ends. A journey picks a recipe by name with its Hold column -- the names are what they are, 6h and 48h, so the sheet and the toggle say the same thing. Branch 2 rows in the sheet are ignored either way.",
-    "branch": "2",
-    "starts_after": [
-      "Pack/Store 2",
-      "Pack/Store 1",
-      "Packing",
-      "BOL"
-    ],
-    "recipes": {
-      "6h": [
-        {
-          "place": "Incubate",
-          "hours": 6
-        },
-        {
-          "place": "Reader",
-          "hours": 1.5
-        },
-        {
-          "place": "Azzule Submit",
-          "hours": 3
-        },
-        {
-          "place": "Cleared for Delivery"
-        }
-      ],
-      "48h": [
-        {
-          "place": "Incubate",
-          "hours": 48
-        },
-        {
-          "place": "Reader",
-          "hours": 1.5
-        },
-        {
-          "place": "Azzule Submit",
-          "hours": 3
-        },
-        {
-          "place": "Cleared for Delivery"
-        }
-      ]
-    }
-  },
-  "steps": {
-    "_": "The order of the steps is the order of the lanes. A step names the places it runs between; where that depends on the journey, transport or fob overrides it -- fob first, then transport, then the plain pair. An override that has no entry for this journey falls through to the next, so a step can be told apart by island where it needs to be and by vehicle everywhere else. Every place named here needs a row in hours (a gate) or in sites (ours). A step may list what it was called before under was, so renaming one does not have to happen in two places at once. A step marked sticks:next keeps the gap it was written with to the step after it, so that when a later step is pushed it comes along rather than being left to sit. The order here is the fallback; where the sheet names a step, the sheet's row order wins, so the chart's rows are the sheet's rows. A step may name a `row`: two steps that share one draw on the same line of the chart, keeping their own names, their own cells in the sheet and their own bars. Pack/Store 1 and 2 do -- they are the same packing done twice, and two rows made a one-day journey look like it skipped something.",
-    "order": [
-      {
-        "step": "Pack/Store 1",
-        "places": [
-          "PH",
-          "Storage"
-        ],
-        "row": "Pack/Store"
-      },
-      {
-        "step": "Pack/Store 2",
-        "places": [
-          "PH",
-          "Storage"
-        ],
-        "row": "Pack/Store"
-      },
-      {
-        "step": "BOL",
-        "places": [
-          "Storage",
-          "Storage"
-        ]
-      },
-      {
-        "step": "Load Container",
-        "places": [
-          "Storage",
-          "Container"
-        ]
-      },
-      {
-        "step": "Load Truck",
-        "sticks": "next",
-        "was": [
-          "Load"
-        ],
-        "places": [
-          "Storage",
-          "Storage"
-        ]
-      },
-      {
-        "step": "Trucking",
-        "was": [
-          "Drayage"
-        ],
-        "transport": {
-          "Air": [
-            "Storage",
-            "KOA"
-          ],
-          "Barge": [
-            "Storage",
-            "YB-KWH"
-          ]
-        }
-      },
-      {
-        "step": "Inter-Island Oahu",
-        "was": [
-          "Inter-Island",
-          "Transport"
-        ],
-        "transport": {
-          "Air": [
-            "KOA",
-            "HNL"
-          ],
-          "Barge": [
-            "YB-KWH",
-            "YB-HNL"
-          ]
-        }
-      },
-      {
-        "step": "Inter-Island Outer",
-        "fob": {
-          "Maui": [
-            "YB-HNL",
-            "YB-Kahului"
-          ],
-          "Kauai": [
-            "YB-HNL",
-            "YB-Nawiliwili"
-          ]
-        }
-      },
-      {
-        "step": "HFA retrieve",
-        "was": [
-          "Retrieve"
-        ],
-        "transport": {
-          "Air": [
-            "HNL",
-            "HFA"
-          ],
-          "Barge": [
-            "YB-HNL",
-            "HFA"
-          ]
-        },
-        "fob": {
-          "Maui": [
-            "YB-Kahului",
-            "HFA Kahului"
-          ],
-          "Kauai": [
-            "YB-Nawiliwili",
-            "HFA Kauai"
-          ]
-        }
-      },
-      {
-        "step": "Customer",
-        "fob": {
-          "140": [
-            "Storage",
-            "140"
-          ],
-          "Pickup": [
-            "Storage",
-            "Customer truck"
-          ],
-          "Oahu": [
-            "HFA",
-            "Customer receiving"
-          ],
-          "Maui": [
-            "HFA Kahului",
-            "Customer receiving"
-          ],
-          "Kauai": [
-            "HFA Kauai",
-            "Customer receiving"
-          ],
-          "Off-island": [
-            "HFA",
-            "Customer receiving"
-          ]
-        }
-      }
-    ]
+ "_": "Two halves. HAND-EDITED: `steps` (the lane order and its place-pair overrides), `hold` (the test-and-hold recipes), `sites` (the places we own), `start_days` and `packed_from`. GENERATED by build.py from Postgres, alongside legs.csv, and not worth editing here because the next build overwrites them: `hours` (pack_freight_gate) and `sailings` (pack_sailing). The schedule itself lives in pack_journey / pack_journey_leg and is edited in the page's Edit tab.",
+ "_was_a_google_sheet": "Until 2026-09-03 the schedule was a Google Sheet (1JesEFq8X3tVDYi4_SbLs3u1lnG8Ch7NbiR7CvGlZS7Q, gid 578288022) that this page read on every load. It is no longer read by anything. Nothing edited there will appear on the dash.",
+ "_start_days": "Which cutting days a journey runs on, as offsets from the first. '0, 3' is the cut day and again three days later: the barge sails twice a week and everything is built around it. Every journey in the sheet said the same thing, so it lives here and the sheet no longer carries a Start Day row. A journey that ever breaks the pattern can still say so -- a Start Day in the sheet wins over this.",
+ "start_days": "0, 3",
+ "_packed_from": "How far ahead of the journey a crop may already have been packed, as the earliest weekday it could have come off the line, keyed by the cut the journey runs on. Cucumbers hold, so a case leaving on the Mon/Tue journeys may have been packed as long ago as the Thursday before, and one leaving on Thu/Fri as long ago as the Tuesday. It widens the day count on the chips only -- the chart draws the legs the sheet gives it, and the sheet does not know which day any particular case was packed. A crop with no entry here is counted from its first step, as everything was before.",
+ "packed_from": {
+  "Cukes": {
+   "Sun": "Thu",
+   "Wed": "Tue"
   }
+ },
+ "sites": {
+  "_": "Places we own. They do not gate: we are there when we are there, so they carry no days and no window, and a leg that runs between two of them can never be 'outside hours'. Every place named in steps must appear either here or in hours.",
+  "places": [
+   {
+    "place": "PH",
+    "note": "Hawaii Farming packhouse. The whole journey starts here."
+   },
+   {
+    "place": "Storage",
+    "note": "Always open \u2014 it is our own cooler."
+   },
+   {
+    "place": "Lettuce loading dock",
+    "note": ""
+   },
+   {
+    "place": "Lab",
+    "note": "The incubation runs whether or not anyone is watching it."
+   },
+   {
+    "place": "Container",
+    "note": "Our yard. We are here when the packhouse is."
+   },
+   {
+    "place": "Customer truck",
+    "note": "They collect while we are here."
+   }
+  ]
+ },
+ "hours": [
+  {
+   "place": "140",
+   "days": "Mon-Sat",
+   "open": "04:00",
+   "close": "11:00",
+   "note": "Receiving. The only gate on-island."
+  },
+  {
+   "place": "KOA",
+   "days": "Sun-Fri",
+   "open": "06:00",
+   "close": "17:00",
+   "note": "Aloha Air Cargo counter. Six days \u2014 dark Saturday."
+  },
+  {
+   "place": "YB-KWH",
+   "days": "Mon-Fri",
+   "open": "07:00",
+   "close": "11:00",
+   "note": "Young Brothers. Cargo acceptance ahead of the sailing."
+  },
+  {
+   "place": "HNL",
+   "days": "Sun-Fri",
+   "open": "06:00",
+   "close": "17:00",
+   "note": "Aloha Air Cargo Honolulu. Six days \u2014 dark Saturday, same counter hours as KOA. The barge's Honolulu end is YB-HNL, not this."
+  },
+  {
+   "place": "YB-HNL",
+   "days": "Mon-Fri",
+   "open": "07:00",
+   "close": "11:00",
+   "note": "Young Brothers Honolulu."
+  },
+  {
+   "place": "HFA",
+   "days": "Mon-Fri",
+   "open": "06:00",
+   "close": "18:00",
+   "note": "Collects, then runs the route."
+  },
+  {
+   "place": "YB-Kahului",
+   "days": "Mon-Sat",
+   "open": "07:00",
+   "close": "15:00",
+   "note": "Young Brothers. Available the next business day after arrival."
+  },
+  {
+   "place": "HFA Kahului",
+   "days": "Mon-Fri",
+   "open": "06:00",
+   "close": "18:00",
+   "note": "Collects, then runs the route."
+  },
+  {
+   "place": "YB-Nawiliwili",
+   "days": "Mon-Fri",
+   "open": "07:00",
+   "close": "11:00",
+   "note": "Young Brothers Kauai."
+  },
+  {
+   "place": "HFA Kauai",
+   "days": "Mon-Fri",
+   "open": "06:00",
+   "close": "18:00",
+   "note": "Collects, then runs the route."
+  },
+  {
+   "place": "Customer receiving",
+   "days": "Mon-Sat",
+   "open": "05:00",
+   "close": "12:00",
+   "note": "The back door at the other end."
+  }
+ ],
+ "sailings": [
+  {
+   "route": "YB-KWH to YB-HNL",
+   "departs": "Tue 18:00",
+   "arrives": "Wed 06:00",
+   "connects": "",
+   "note": ""
+  },
+  {
+   "route": "YB-KWH to YB-HNL",
+   "departs": "Fri 18:00",
+   "arrives": "Sat 06:00",
+   "connects": "",
+   "note": ""
+  },
+  {
+   "route": "YB-HNL to YB-Kahului",
+   "departs": "Wed 16:00",
+   "arrives": "Thu 06:00",
+   "connects": "the Tuesday sailing",
+   "note": "Maui is level with Oahu off this one."
+  },
+  {
+   "route": "YB-HNL to YB-Kahului",
+   "departs": "Mon 16:00",
+   "arrives": "Tue 06:00",
+   "connects": "the Friday sailing",
+   "note": "Maui falls a day behind Oahu off this one."
+  },
+  {
+   "route": "YB-HNL to YB-Nawiliwili",
+   "departs": "Mon",
+   "arrives": "Tue",
+   "connects": "the Friday sailing",
+   "note": "Kauai. Accepted in Honolulu Mon, Wed & Thu until 11am; available at Nawiliwili the next business day after arrival."
+  },
+  {
+   "route": "YB-HNL to YB-Nawiliwili",
+   "departs": "Thu",
+   "arrives": "Fri",
+   "connects": "the Tuesday sailing",
+   "note": "Kauai. A Wednesday Honolulu arrival is not available until Thursday, so it makes this boat with hours to spare and lands Friday \u2014 level with Oahu."
+  }
+ ],
+ "hold": {
+  "_": "Test and hold. Each stage is a lane and its hours is how long that stage takes, so the chain draws as a staircase whose steps are the waits; the last stage is where it ends and takes no time. The clock starts when packing ends. A journey picks a recipe by name with its Hold column -- the names are what they are, 6h and 48h, so the sheet and the toggle say the same thing. Branch 2 rows in the sheet are ignored either way.",
+  "branch": "2",
+  "starts_after": [
+   "Pack/Store 2",
+   "Pack/Store 1",
+   "Packing",
+   "BOL"
+  ],
+  "recipes": {
+   "6h": [
+    {
+     "place": "Incubate",
+     "hours": 6
+    },
+    {
+     "place": "Reader",
+     "hours": 1.5
+    },
+    {
+     "place": "Azzule Submit",
+     "hours": 3
+    },
+    {
+     "place": "Cleared for Delivery"
+    }
+   ],
+   "48h": [
+    {
+     "place": "Incubate",
+     "hours": 48
+    },
+    {
+     "place": "Reader",
+     "hours": 1.5
+    },
+    {
+     "place": "Azzule Submit",
+     "hours": 3
+    },
+    {
+     "place": "Cleared for Delivery"
+    }
+   ]
+  }
+ },
+ "steps": {
+  "_": "The order of the steps is the order of the lanes. A step names the places it runs between; where that depends on the journey, transport or fob overrides it -- fob first, then transport, then the plain pair. An override that has no entry for this journey falls through to the next, so a step can be told apart by island where it needs to be and by vehicle everywhere else. Every place named here needs a row in hours (a gate) or in sites (ours). A step may list what it was called before under was, so renaming one does not have to happen in two places at once. A step marked sticks:next keeps the gap it was written with to the step after it, so that when a later step is pushed it comes along rather than being left to sit. The order here is the fallback; where the sheet names a step, the sheet's row order wins, so the chart's rows are the sheet's rows. A step may name a `row`: two steps that share one draw on the same line of the chart, keeping their own names, their own cells in the sheet and their own bars. Pack/Store 1 and 2 do -- they are the same packing done twice, and two rows made a one-day journey look like it skipped something.",
+  "order": [
+   {
+    "step": "Pack/Store 1",
+    "places": [
+     "PH",
+     "Storage"
+    ],
+    "row": "Pack/Store"
+   },
+   {
+    "step": "Pack/Store 2",
+    "places": [
+     "PH",
+     "Storage"
+    ],
+    "row": "Pack/Store"
+   },
+   {
+    "step": "BOL",
+    "places": [
+     "Storage",
+     "Storage"
+    ]
+   },
+   {
+    "step": "Load Container",
+    "places": [
+     "Storage",
+     "Container"
+    ]
+   },
+   {
+    "step": "Load Truck",
+    "sticks": "next",
+    "was": [
+     "Load"
+    ],
+    "places": [
+     "Storage",
+     "Storage"
+    ]
+   },
+   {
+    "step": "Trucking",
+    "was": [
+     "Drayage"
+    ],
+    "transport": {
+     "Air": [
+      "Storage",
+      "KOA"
+     ],
+     "Barge": [
+      "Storage",
+      "YB-KWH"
+     ]
+    }
+   },
+   {
+    "step": "Inter-Island Oahu",
+    "was": [
+     "Inter-Island",
+     "Transport"
+    ],
+    "transport": {
+     "Air": [
+      "KOA",
+      "HNL"
+     ],
+     "Barge": [
+      "YB-KWH",
+      "YB-HNL"
+     ]
+    }
+   },
+   {
+    "step": "Inter-Island Outer",
+    "fob": {
+     "Maui": [
+      "YB-HNL",
+      "YB-Kahului"
+     ],
+     "Kauai": [
+      "YB-HNL",
+      "YB-Nawiliwili"
+     ]
+    }
+   },
+   {
+    "step": "HFA retrieve",
+    "was": [
+     "Retrieve"
+    ],
+    "transport": {
+     "Air": [
+      "HNL",
+      "HFA"
+     ],
+     "Barge": [
+      "YB-HNL",
+      "HFA"
+     ]
+    },
+    "fob": {
+     "Maui": [
+      "YB-Kahului",
+      "HFA Kahului"
+     ],
+     "Kauai": [
+      "YB-Nawiliwili",
+      "HFA Kauai"
+     ]
+    }
+   },
+   {
+    "step": "Customer",
+    "fob": {
+     "140": [
+      "Storage",
+      "140"
+     ],
+     "Pickup": [
+      "Storage",
+      "Customer truck"
+     ],
+     "Oahu": [
+      "HFA",
+      "Customer receiving"
+     ],
+     "Maui": [
+      "HFA Kahului",
+      "Customer receiving"
+     ],
+     "Kauai": [
+      "HFA Kauai",
+      "Customer receiving"
+     ],
+     "Off-island": [
+      "HFA",
+      "Customer receiving"
+     ]
+    }
+   }
+  ]
+ }
 }

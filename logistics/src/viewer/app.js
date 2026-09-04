@@ -167,6 +167,22 @@
   // step goes when the sheet does not mention it.
   var SHEET_ORDER = [];
 
+  // The steps table, keyed by every name a step answers to. A step that has
+  // been renamed still answers to what it used to be called, so a source can
+  // catch up in its own time instead of losing a row.
+  function stepIndex() {
+    var steps = (((window.REF || {}).steps || {}).order) || [];
+    if (!steps.length) throw new Error('reference.json names no steps');
+    var byStep = {};
+    steps.forEach(function (st) {
+      byStep[String(st.step).toLowerCase()] = st;
+      [].concat(st.was || []).forEach(function (old) {
+        byStep[String(old).toLowerCase()] = st;
+      });
+    });
+    return byStep;
+  }
+
   function gridRows(text) {
     var rows = csvRows(text), lab = -1, col = 0, i, j;
     // Find the row that names the crop, and the column its labels sit in.
@@ -179,17 +195,7 @@
     var wide = 0;
     rows.forEach(function (r) { if (r.length > wide) wide = r.length; });
 
-    var steps = (((window.REF || {}).steps || {}).order) || [];
-    if (!steps.length) throw new Error('reference.json names no steps');
-    var byStep = {};
-    steps.forEach(function (st) {
-      byStep[String(st.step).toLowerCase()] = st;
-      // A step that has been renamed answers to what it used to be called, so
-      // the sheet can catch up in its own time instead of losing a row.
-      [].concat(st.was || []).forEach(function (old) {
-        byStep[String(old).toLowerCase()] = st;
-      });
-    });
+    var byStep = stepIndex();
 
     // One journey per column, read top to bottom. A column that cannot be
     // built is left out and named, rather than taking the other nine with it:
@@ -216,9 +222,8 @@
   }
 
   function column(rows, lab, col, j, byStep) {
-    var out = [];
     var head = {}, legs = [], started = false;
-      rows.slice(lab).forEach(function (r) {
+    rows.slice(lab).forEach(function (r) {
         var name = (r[col] || '').trim(), cell = (r[j] || '').trim();
         if (!name) return;
         var key = name.toLowerCase();
@@ -233,6 +238,20 @@
         // and the canonical one is the one the chart should say.
         if (cell) legs.push({ st: byStep[key], cell: cell, name: String(byStep[key].step) });
       });
+    return expand(head, legs);
+  }
+
+  // Turning one journey's identity and its list of legs into the rows the
+  // chart is drawn from: resolving where each step runs between, then running
+  // the whole thing again on each of its cutting days.
+  //
+  // Split out of the sheet reader so that the schedule can come from Postgres
+  // without a second copy of this. A leg arrives as the text a person would
+  // write in a cell -- 'Sun 10:00-14:00' -- whichever source it came from, so
+  // there is one parser, one set of error messages, and no way for the two
+  // paths to disagree about what a journey means.
+  function expand(head, legs) {
+      var out = [];
       if (!head.crop && !head.fob) return out;
       if (!legs.length) return out;
       var who = [head.crop, head.fob, head.transport].filter(Boolean).join('-');
@@ -518,6 +537,9 @@
   }
 
   var F = [], DATA = window.DATA || {};
+  // The rows exactly as Postgres returned them, kept so the editor can show
+  // and write back what is actually stored rather than what was drawn from it.
+  var DB = null;
   // sel stays null until something fills it, so a first visit can be told
   // apart from a visit where every toggle was cleared.
   var S = { sel: null, tab: 'flow' };
@@ -1108,7 +1130,7 @@
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
-  var TABS = [['flow', 'Map'], ['orders', 'Orders'], ['hours', 'Hours']];
+  var TABS = [['flow', 'Map'], ['orders', 'Orders'], ['hours', 'Hours'], ['edit', 'Edit']];
   function paint() {
     seg('tabs', TABS, S.tab, function (v) { S.tab = v; save(); paint(); });
     TABS.forEach(function (t) {
@@ -1117,6 +1139,7 @@
     if (S.tab === 'flow') paintFlow();
     if (S.tab === 'orders') paintOrders();
     if (S.tab === 'hours') document.getElementById('hours').innerHTML = hoursView();
+    if (S.tab === 'edit') paintEdit();
   }
 
   function paintFlow() {
@@ -1244,30 +1267,6 @@
   // survive being written out and read back. A NUL does not.
   function jrnKey(f) {
     return [f.crop || '', f.fob || '', f.transport || '', f.hold || ''].join('|');
-  }
-
-  // Journeys that are in the sheet but that we do not want offered. Named by
-  // the columns that tell them apart -- the lettuce 140 that waits forty-eight
-  // hours, and the lettuce that flies to Oahu -- so a journey stays hidden
-  // through an edit to a column it is not named by.
-  //
-  // Hidden here rather than cut from legs.csv: the page reads the sheet itself
-  // on every load and the snapshot is only the fallback, so deleting a column
-  // would hide them until the next refresh and no longer.
-  var HIDDEN = [
-    { crop: 'lettuce', fob: '140', hold: '48h' },
-    { crop: 'lettuce', fob: 'oahu', transport: 'air' }
-  ];
-  function isHidden(f) {
-    for (var i = 0; i < HIDDEN.length; i++) {
-      var want = HIDDEN[i], all = true, k;
-      for (k in want) {
-        if (!Object.prototype.hasOwnProperty.call(want, k)) continue;
-        if (String(f[k] || '').trim().toLowerCase() !== want[k]) { all = false; break; }
-      }
-      if (all) return true;
-    }
-    return false;
   }
 
   // A journey is named by its customer, plus whatever actually varies between
@@ -1492,8 +1491,321 @@
       return '<span class="warn-in">' + esc(h) + '</span>';
     }).join(' ');
     if (SRC.live || !SRC.why) return hurt;
-    return 'Sheet unreadable (' + esc(SRC.why) + ') — showing the snapshot in ' +
-      '<code>legs.csv</code>. ' + hurt;
+    return 'Schedule unreadable (' + esc(SRC.why) + ') — showing the snapshot ' +
+      'built into this page. Edits will not save until it is back. ' + hurt;
+  }
+
+  // ── Reading the schedule out of Postgres ──────────────────────────────────
+  // PostgREST straight over fetch, no client library: this page is one file
+  // that opens by double-clicking, and it stays that way.
+  function supaGet(table, query) {
+    var cfg = window.SUPA || {};
+    if (!cfg.url || !cfg.key) return Promise.reject(new Error('no Supabase config'));
+    return window.fetch(cfg.url + '/rest/v1/' + table + '?' + query, {
+      headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key },
+      cache: 'no-store'
+    }).then(function (r) {
+      if (!r.ok) throw new Error(table + ': HTTP ' + r.status);
+      return r.json();
+    });
+  }
+
+  var LIVE = 'select=*&is_deleted=eq.false&order=display_order.asc';
+
+  function loadDb() {
+    return Promise.all([
+      supaGet('pack_journey', LIVE),
+      supaGet('pack_journey_leg', 'select=*&is_deleted=eq.false&order=step_order.asc'),
+      supaGet('pack_freight_gate', LIVE),
+      supaGet('pack_sailing', LIVE)
+    ]);
+  }
+
+  // The gates and the boats come back as the rows a person edits -- 'Mon-Fri',
+  // '07:00' -- and the chart wants a seven-day mask and a number of hours. The
+  // build script used to do this in Python against reference.json; it is the
+  // same arithmetic, moved to where the data now arrives.
+  function daysMask(spec) {
+    var mask = [0, 0, 0, 0, 0, 0, 0];
+    String(spec || '').split(/[;,]/).forEach(function (part) {
+      part = part.trim();
+      if (!part) return;
+      if (part.indexOf('-') > 0) {
+        var ab = part.split('-');
+        var a = DAY_WORDS[ab[0].trim().toLowerCase()];
+        var b = DAY_WORDS[ab[1].trim().toLowerCase()];
+        if (a === undefined || b === undefined) return;
+        for (var k = a; ; k = (k + 1) % 7) { mask[k] = 1; if (k === b) break; }
+      } else {
+        var d = DAY_WORDS[part.toLowerCase()];
+        if (d !== undefined) mask[d] = 1;
+      }
+    });
+    return mask;
+  }
+
+  function hours24(t) {
+    var m = /^(\d{1,2}):(\d{2})/.exec(String(t || ''));
+    return m ? +m[1] + +m[2] / 60 : 0;
+  }
+
+  // Journeys and legs into the rows the chart is drawn from. A leg is handed
+  // back to `expand` as the sentence a person would have typed in the sheet,
+  // so both sources land in the same parser.
+  function dbRows(journeys, legs, byStep) {
+    var mine = {}, out = [], hurt = [];
+    legs.forEach(function (g) {
+      (mine[g.pack_journey_id] = mine[g.pack_journey_id] || []).push(g);
+    });
+    journeys.forEach(function (j) {
+      if (!j.is_active) return;
+      var head = { crop: j.crop, fob: j.fob, transport: j.transport || '',
+                   hold: j.hold || '', start_day: j.start_days };
+      var mades = (mine[j.id] || []).slice().sort(function (a, b) {
+        return (a.step_order || 0) - (b.step_order || 0);
+      }).map(function (g) {
+        var st = byStep[String(g.step).toLowerCase()];
+        if (!st) throw new Error(j.id + ": reference.json names no step '" + g.step + "'");
+        return { st: st, name: String(st.step),
+                 cell: DOW[g.start_dow] + ' ' + String(g.start_time).slice(0, 5) + '-' +
+                       (g.end_dow === g.start_dow ? '' : DOW[g.end_dow] + ' ') +
+                       String(g.end_time).slice(0, 5) };
+      });
+      // One bad journey should cost you that journey, not the page.
+      try { out = out.concat(expand(head, mades)); }
+      catch (err) { hurt.push(String((err && err.message) || err)); }
+    });
+    if (!out.length) throw new Error(hurt.length ? hurt[0] : 'no active journeys');
+    out.hurt = hurt;
+    return out;
+  }
+
+  // ── Editing it ────────────────────────────────────────────────────────────
+  // The schedule is edited in the page it is drawn in. A field saves when you
+  // leave it rather than behind a Save button: there is no draft state to lose
+  // and nothing to forget to press. Every write is followed by a reload, so
+  // what the chart shows is always what the database said, never what this
+  // page hoped it said.
+  function supaWrite(method, table, query, body) {
+    var cfg = window.SUPA || {};
+    if (!cfg.url || !cfg.key) return Promise.reject(new Error('no Supabase config'));
+    return window.fetch(cfg.url + '/rest/v1/' + table + (query ? '?' + query : ''), {
+      method: method,
+      headers: { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key,
+                 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) {
+        throw new Error(t ? t.slice(0, 160) : 'HTTP ' + r.status);
+      });
+    });
+  }
+
+  function say(msg, bad) {
+    var el = document.getElementById('edit-state');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'lbl ' + (bad ? 'bad' : msg ? 'ok' : '');
+  }
+
+  // One write, then re-read. Slower than patching what is on screen, and worth
+  // it: a value the database massaged or rejected shows up as itself.
+  function write(p) {
+    say('saving…');
+    return p.then(function () { return reload(); })
+      .then(function () { say('saved'); setTimeout(function () { say(''); }, 1400); })
+      ['catch'](function (e) { say(String((e && e.message) || e), true); });
+  }
+
+  function patch(table, id, body) {
+    return write(supaWrite('PATCH', table, 'id=eq.' + encodeURIComponent(id), body));
+  }
+
+  var DAY_OPTS = DOW.map(function (d, i) { return [i, d]; });
+
+  function sel(attrs, opts, val) {
+    return '<select ' + attrs + '>' + opts.map(function (o) {
+      return '<option value="' + esc(o[0]) + '"' +
+        (String(o[0]) === String(val) ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
+    }).join('') + '</select>';
+  }
+
+  function txt(attrs, val, cls) {
+    return '<input type="text" class="' + (cls || '') + '" ' + attrs +
+      ' value="' + esc(val == null ? '' : val) + '">';
+  }
+
+  function tm(attrs, val) {
+    return '<input type="time" ' + attrs + ' value="' +
+      esc(String(val || '').slice(0, 5)) + '">';
+  }
+
+  // Which journey's legs are open below the list. Not stored: it is a place in
+  // a screen, not a preference.
+  var EDITING = null;
+
+  function editView() {
+    if (!DB) {
+      return '<div class="esec"><p class="ehint">The schedule could not be read, ' +
+        'so there is nothing safe to edit. The chart above is the snapshot this ' +
+        'page was built with.</p></div>';
+    }
+    var out = '';
+
+    // ── journeys ──
+    out += '<div class="esec"><h4>Journeys</h4>' +
+      '<table class="etbl"><thead><tr><th>Crop</th><th>FOB</th><th>Mode</th>' +
+      '<th>Hold</th><th>Cut days</th><th>Runs</th><th></th></tr></thead><tbody>' +
+      DB.journeys.map(function (j) {
+        var on = !!j.is_active;
+        return '<tr class="' + (on ? '' : 'off ') + (EDITING === j.id ? 'pick' : '') + '">' +
+          '<td>' + txt('data-j="' + esc(j.id) + '" data-f="crop"', j.crop) + '</td>' +
+          '<td>' + txt('data-j="' + esc(j.id) + '" data-f="fob"', j.fob) + '</td>' +
+          '<td>' + txt('data-j="' + esc(j.id) + '" data-f="transport"', j.transport) + '</td>' +
+          '<td>' + txt('data-j="' + esc(j.id) + '" data-f="hold"', j.hold) + '</td>' +
+          '<td>' + txt('data-j="' + esc(j.id) + '" data-f="start_days"', j.start_days, 'num') + '</td>' +
+          '<td><input type="checkbox" data-on="' + esc(j.id) + '"' + (on ? ' checked' : '') + '></td>' +
+          '<td><button class="ebtn" data-legs="' + esc(j.id) + '">' +
+            (EDITING === j.id ? 'Hide legs' : 'Legs') + '</button></td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<p class="ehint">Unticking <b>Runs</b> takes a journey off the chart and ' +
+      'out of the snapshot without deleting it or its legs — it can come back ' +
+      'without being retyped. <b>Cut days</b> are offsets from the first cut: ' +
+      '<code>0, 3</code> is the cut day and again three days later.</p></div>';
+
+    // ── legs of the open journey ──
+    if (EDITING) {
+      var j = DB.journeys.filter(function (x) { return x.id === EDITING; })[0];
+      var mine = DB.legs.filter(function (g) { return g.pack_journey_id === EDITING; })
+        .sort(function (a, b) { return (a.step_order || 0) - (b.step_order || 0); });
+      var steps = (((window.REF || {}).steps || {}).order) || [];
+      var taken = {};
+      mine.forEach(function (g) { taken[g.step] = 1; });
+      var spare = steps.filter(function (st) { return !taken[st.step]; });
+      out += '<div class="esec"><h4>Legs of ' + esc(j ? [j.crop, j.fob, j.transport, j.hold]
+          .filter(Boolean).join(' · ') : EDITING) + '</h4>' +
+        '<table class="etbl"><thead><tr><th>Step</th><th>Starts</th><th></th>' +
+        '<th>Ends</th><th></th><th></th></tr></thead><tbody>' +
+        mine.map(function (g) {
+          var a = 'data-g="' + esc(g.id) + '"';
+          return '<tr><th>' + esc(g.step) + '</th>' +
+            '<td>' + sel(a + ' data-f="start_dow"', DAY_OPTS, g.start_dow) + '</td>' +
+            '<td>' + tm(a + ' data-f="start_time"', g.start_time) + '</td>' +
+            '<td>' + sel(a + ' data-f="end_dow"', DAY_OPTS, g.end_dow) + '</td>' +
+            '<td>' + tm(a + ' data-f="end_time"', g.end_time) + '</td>' +
+            '<td><button class="ebtn warn" data-drop="' + esc(g.id) + '">Remove</button></td>' +
+            '</tr>';
+        }).join('') + '</tbody></table>' +
+        (spare.length
+          ? '<p class="ehint">Add a step: ' +
+            sel('id="add-step"', spare.map(function (st) { return [st.step, st.step]; }), '') +
+            ' <button class="ebtn" id="add-leg">Add</button></p>'
+          : '<p class="ehint">Every step in the steps table is already on this journey.</p>') +
+        '</div>';
+    }
+
+    // ── gates ──
+    out += '<div class="esec"><h4>Gates — somebody else’s door</h4>' +
+      '<table class="etbl"><thead><tr><th>Place</th><th>Days</th><th>Opens</th>' +
+      '<th>Closes</th><th>Note</th></tr></thead><tbody>' +
+      DB.gates.map(function (g) {
+        var a = 'data-gate="' + esc(g.id) + '"';
+        return '<tr><th>' + esc(g.id) + '</th>' +
+          '<td>' + txt(a + ' data-f="days"', g.days) + '</td>' +
+          '<td>' + tm(a + ' data-f="open_time"', g.open_time) + '</td>' +
+          '<td>' + tm(a + ' data-f="close_time"', g.close_time) + '</td>' +
+          '<td>' + txt(a + ' data-f="notes"', g.notes) + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<p class="ehint">Days are written the way you would say them: ' +
+      '<code>Mon-Fri</code>, <code>Sun-Sat</code>, or <code>Mon; Wed; Fri</code>. ' +
+      'Only other people’s doors belong here — a place with no row is a place ' +
+      'that can never be late.</p></div>';
+
+    // ── sailings ──
+    out += '<div class="esec"><h4>Sailings</h4>' +
+      '<table class="etbl"><thead><tr><th>Route</th><th>Departs</th><th>Arrives</th>' +
+      '<th>Connects</th><th>Note</th></tr></thead><tbody>' +
+      DB.sailings.map(function (x) {
+        var a = 'data-sail="' + esc(x.id) + '"';
+        return '<tr><th>' + esc(x.route) + '</th>' +
+          '<td>' + txt(a + ' data-f="departs"', x.departs) + '</td>' +
+          '<td>' + txt(a + ' data-f="arrives"', x.arrives) + '</td>' +
+          '<td>' + txt(a + ' data-f="connects"', x.connects) + '</td>' +
+          '<td>' + txt(a + ' data-f="notes"', x.notes) + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<p class="ehint">Times are the carrier’s own words — ' +
+      '<code>Tue 18:00</code>, or just <code>Mon</code> where that is all they ' +
+      'commit to. They are read by people, not by the chart.</p></div>';
+
+    return out;
+  }
+
+  function paintEdit() {
+    var host = document.getElementById('edit');
+    if (!host) return;
+    host.innerHTML = editView();
+
+    // A text field saves when it loses focus; a select or a checkbox the moment
+    // it changes, because those have no half-typed state to protect.
+    function onLeave(nodes, table, key) {
+      [].slice.call(nodes).forEach(function (el) {
+        var was = el.value;
+        function go() {
+          if (el.value === was) return;
+          was = el.value;
+          var body = {};
+          body[el.getAttribute('data-f')] = el.value === '' ? null : el.value;
+          patch(table, el.getAttribute(key), body);
+        }
+        if (el.tagName === 'SELECT') el.onchange = go; else el.onblur = go;
+      });
+    }
+    onLeave(host.querySelectorAll('[data-j]'), 'pack_journey', 'data-j');
+    onLeave(host.querySelectorAll('[data-g]'), 'pack_journey_leg', 'data-g');
+    onLeave(host.querySelectorAll('[data-gate]'), 'pack_freight_gate', 'data-gate');
+    onLeave(host.querySelectorAll('[data-sail]'), 'pack_sailing', 'data-sail');
+
+    [].slice.call(host.querySelectorAll('[data-on]')).forEach(function (el) {
+      el.onchange = function () {
+        patch('pack_journey', el.getAttribute('data-on'), { is_active: el.checked });
+      };
+    });
+    [].slice.call(host.querySelectorAll('[data-legs]')).forEach(function (el) {
+      el.onclick = function () {
+        var id = el.getAttribute('data-legs');
+        EDITING = EDITING === id ? null : id;
+        paintEdit();
+      };
+    });
+    // Two clicks to remove, and no browser dialog: a modal here would freeze
+    // the page for anyone driving it from a script.
+    [].slice.call(host.querySelectorAll('[data-drop]')).forEach(function (el) {
+      el.onclick = function () {
+        if (el.getAttribute('data-armed')) {
+          write(supaWrite('DELETE', 'pack_journey_leg',
+            'id=eq.' + encodeURIComponent(el.getAttribute('data-drop'))));
+          return;
+        }
+        el.setAttribute('data-armed', '1');
+        el.textContent = 'Really?';
+      };
+    });
+    var add = document.getElementById('add-leg');
+    if (add) {
+      add.onclick = function () {
+        var step = document.getElementById('add-step').value;
+        var steps = (((window.REF || {}).steps || {}).order) || [];
+        var order = 0;
+        steps.forEach(function (st, n) { if (st.step === step) order = n; });
+        // A new leg starts on the cut day at 08:00 for an hour. It is a
+        // placeholder that says "unfilled" more clearly than a blank row would,
+        // and every field is editable in the row it lands in.
+        write(supaWrite('POST', 'pack_journey_leg', '', {
+          pack_journey_id: EDITING, step: step, step_order: order,
+          start_dow: 0, start_time: '08:00', end_dow: 0, end_time: '09:00'
+        }));
+      };
+    }
   }
 
   // ── Boot ──────────────────────────────────────────────────────────────────
@@ -1511,7 +1823,7 @@
         r.forEach(function (c) { if (c.trim().toLowerCase() === 'start dt') rowish = true; });
       });
       var legs = rowish ? legRows(text) : gridRows(text);
-      built = buildFlows(legs).filter(function (f) { return !isHidden(f); });
+      built = buildFlows(legs);
       built.hurt = legs.hurt || [];
     } catch (err) {
       why = String((err && err.message) || err);
@@ -1521,6 +1833,12 @@
       built = [];
       live = false;
     }
+    useFlows(built, live, why);
+  }
+
+  // Everything that happens once a set of journeys exists, whichever reader
+  // produced them.
+  function useFlows(built, live, why) {
     F = built;
     SRC = { live: live, at: new Date(), why: why || '', hurt: built.hurt || [] };
     // A stored answer that the sheet no longer offers is dropped rather than
@@ -1543,17 +1861,47 @@
     paint();
   }
 
+  // Draw the snapshot that is built into this page at once, so the chart is
+  // never blank, then read Postgres and redraw. A journey the reader has
+  // already picked stays picked across the swap.
+  //
+  // The snapshot is a fallback, not a second opinion: it is what the schedule
+  // was when the page was last built, and the line above the chart says so
+  // whenever it is what you are looking at.
   useText(window.LEGS || '', false, '');
-  var SHEET = window.SHEET || '';
-  if (SHEET && window.fetch) {
-    window.fetch(SHEET, { cache: 'no-store' }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.text();
-    }).then(function (t) {
-      useText(t, true, '');
+
+  function useDb(journeys, legs, gates, sailings) {
+    var R = window.REF = window.REF || {};
+    // The gates and the boats replace what the build baked in. Done before the
+    // journeys are built, because a leg's lateness is judged against a gate.
+    R.hours = gates.map(function (g) {
+      return { place: g.id, days: daysMask(g.days), open: hours24(g.open_time),
+               close: hours24(g.close_time), note: g.notes || '' };
+    });
+    R.sailings = sailings.map(function (x) {
+      return { route: x.route, departs: x.departs || '', arrives: x.arrives || '',
+               connects: x.connects || '', note: x.notes || '' };
+    });
+    OPEN = null;
+    DB = { journeys: journeys, legs: legs, gates: gates, sailings: sailings };
+    var rows = dbRows(journeys, legs, stepIndex());
+    var built = buildFlows(rows);
+    built.hurt = rows.hurt || [];
+    useFlows(built, true, '');
+  }
+
+  function reload() {
+    return loadDb().then(function (r) {
+      useDb(r[0], r[1], r[2], r[3]);
     })['catch'](function (e) {
+      SRC.live = false;
       SRC.why = String((e && e.message) || e);
-      if (S.tab === 'flow') document.getElementById('src').innerHTML = srcLine();
+      if (S.tab === 'flow' && document.getElementById('src')) {
+        document.getElementById('src').innerHTML = srcLine();
+      }
+      throw e;
     });
   }
+
+  if (window.fetch) { reload()['catch'](function () {}); }
 })();

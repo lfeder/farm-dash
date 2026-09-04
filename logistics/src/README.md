@@ -1,30 +1,47 @@
 # Logistics Map
 
-A time–distance chart, defined in a Google Sheet.
+A time–distance chart of how product gets from the packhouse to the customer.
 
 ```
-python3 build.py      # sheet + reference.json + orders.json -> index.html
-open index.html
+python3 build.py      # Postgres + reference.json + orders.json -> ../index.html
+open ../index.html
 ```
 
-**A schedule edit needs no build.** The page reads the sheet on every load, so
-editing the sheet and refreshing the browser is the whole loop. The build is
-for changing the page itself, and for refreshing `legs.csv` — the snapshot the
-page falls back to when the sheet cannot be read.
+**A schedule edit needs no build.** The page reads Postgres on every load and
+the **Edit** tab writes back to it, so changing a time is: open the tab, change
+the field, done. The build is for changing the page itself, and for refreshing
+the snapshot the page falls back to when the database cannot be reached.
+
+> Until 2026-09-03 the schedule was a Google Sheet. It is no longer read by
+> anything — edits there will not appear on the dash.
 
 ## Where things live
 
-Three files, split by how often they change.
-
-| File | What it is |
+| File / table | What it is |
 |---|---|
-| the Google Sheet | **The schedule.** One row per leg. The only thing you edit to change when something happens. Its URL is `legs_sheet` in `reference.json`. |
-| `legs.csv` | The snapshot of that sheet, rewritten by every build. Committed, so the diff shows what changed and the page still draws with no network. |
-| `reference.json` | Quasi-static, hand-edited: what a journey is, who is open when, which boat goes where. Months between edits. |
+| `pack_journey`, `pack_journey_leg` | **The schedule**, in Postgres (prod). One row per journey and one per step. Edited in the page's Edit tab. |
+| `pack_freight_gate`, `pack_sailing` | Somebody else's door and when it opens; which boat goes where. Also edited in the Edit tab. |
+| `legs.csv` | A snapshot of the two journey tables, rewritten by every build. Committed, so the diff shows what changed and the page still draws with no network. **Active journeys only** — a journey switched off stays off. |
+| `reference.json` | Two halves. Hand-edited: `steps` (lane order and place-pair overrides), `hold` (test-and-hold recipes), `sites`, `start_days`, `packed_from`. Generated, like `legs.csv`: `hours` and `sailings`. |
 | `orders.json` | Pulled, not typed. Cases and pounds on order by destination, and the pack line's case counts. Copied out of the freight model's `data.json` — refresh it there. |
-| `build.py` | Pulls the sheet, then writes `index.html`. |
+| `build.py` | Pulls the four tables, writes the snapshot, then writes `../index.html`. |
+| `migrate_to_supabase.py` | One-shot loader that seeded those tables from `legs.csv` and `reference.json`. Idempotent — re-running re-seeds from the files. |
 | `viewer/` | The page: shell, stylesheet, app. |
-| `index.html` | Built. Do not edit — `build.py` overwrites it. |
+| `../index.html` | Built. Do not edit — `build.py` overwrites it. |
+
+## Switching a journey off
+
+`pack_journey.is_active` takes a journey off the chart and out of the snapshot
+without deleting it or its legs, so it can come back without being retyped.
+Untick **Runs** in the Edit tab. This replaced a `HIDDEN` list compiled into the
+viewer, which needed a deploy to change.
+
+## Who can edit it
+
+Anyone who can open the dashboard. The page holds only the anon key, and these
+four tables carry anon policies for every verb — a deliberate decision on
+2026-09-03, the same tradeoff already taken for the finance and PO tables.
+Adding Supabase auth to the dashboards is the fix whenever it is wanted.
 
 ## The chart
 
@@ -89,7 +106,7 @@ journeys leave the same morning, so stacking their names at the start piles
 them into a column; walking each one forward to its next step instead spreads
 them across the page, and a name still sits on the thread it names.
 
-## The sheet
+## The snapshot's shape
 
 The sheet comes in either of two shapes and the viewer reads both. The one it
 is moving to is **the grid**: steps down the side in the order the chart draws

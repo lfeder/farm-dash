@@ -356,3 +356,32 @@ code{font-family:"IBM Plex Mono",monospace; font-size:.92em; background:var(--ca
 .picks .lbl:first-child{margin-left:0}
 
 .warn-in{color:var(--bad)}
+
+/* ── The editor ──────────────────────────────────────────────────────────────
+   The schedule is edited in the page it is drawn in, so the tables here are
+   the same tables as the Hours tab with their cells swapped for inputs. A
+   field saves when you leave it, not behind a Save button: there is no draft
+   state to lose and nothing to forget to press. */
+.etbl{width:100%; border-collapse:collapse; font-size:13px}
+.etbl th,.etbl td{padding:5px 8px; border-bottom:1px solid var(--line-2); text-align:left}
+.etbl thead th{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink-3); font-weight:600; border-bottom:1px solid var(--line)}
+.etbl tr.off{opacity:.5}
+.etbl tr.pick{background:var(--band)}
+.etbl input[type=text],.etbl input[type=time],.etbl select{
+  font:inherit; font-family:"IBM Plex Mono",monospace; font-size:12px;
+  padding:3px 5px; border:1px solid var(--line); border-radius:5px;
+  background:var(--card); color:var(--ink); width:100%; max-width:150px}
+.etbl input:focus,.etbl select:focus{outline:2px solid var(--accent); outline-offset:-1px}
+.etbl .num{max-width:78px}
+.esec{padding:14px 18px}
+.esec h4{margin:0 0 9px; font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-2); font-weight:600}
+.esec + .esec{border-top:1px solid var(--line-2)}
+.ebtn{font:inherit; font-size:12px; padding:4px 10px; border:1px solid var(--line);
+  border-radius:6px; background:var(--card); color:var(--ink-2); cursor:pointer}
+.ebtn:hover{border-color:var(--accent); color:var(--accent)}
+.ebtn.warn{color:var(--bad); border-color:var(--bad)}
+.ehint{color:var(--ink-3); font-size:12px; margin:8px 0 0}
+#edit-state.ok{color:var(--good)}
+#edit-state.bad{color:var(--bad)}
