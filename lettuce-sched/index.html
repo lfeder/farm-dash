@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lettuce Schedule</title>
-<script src="../lib/data-source.js?v=20260830a"></script>
+<script src="../lib/data-source.js?v=20260907a"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; color: #333; }
@@ -176,7 +176,7 @@
       <button data-tab="sched" class="active">Schedule</button><button data-tab="issues">Issues<span id="issuesBadge"></span></button><button data-tab="builder">Builder</button><button data-tab="patterns">Patterns</button>
     </span>
   </div>
-  <span id="versionStamp" style="display:none">09-02 11:40</span>
+  <span id="versionStamp" style="display:none">09-07 19:16</span>
 </div>
 
 <div id="content" class="wide">
@@ -853,7 +853,7 @@ function wireFolds() {
 // The builder generates future sheet rows for one lane: it infers where the lane is
 // in its rows-per-event sequence (the phase), then continues the sequence from a
 // chosen start date. Output is preview + copy-as-TSV only — nothing writes anywhere.
-const SB = { url: 'https://zdvpqygiqavwpxljpvqw.supabase.co', key: 'sb_publishable_HaoyPZbNIUxKPnwCh3iI3Q_1NIiWGgv' };
+const SB = { url: 'https://zdvpqygiqavwpxljpvqw.supabase.co', key: 'sb_publishable_97LHnSPohFOR0SrsOltuEw_rvZwGGD5' };
 const SLOT_DOW = [0, 1, 3, 4];                       // Sun Mon Wed Thu (UTC getUTCDay)
 const SLOT_KEY = ['days_sun', 'days_mon', 'days_wed', 'days_thu'];
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

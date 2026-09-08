@@ -56,7 +56,7 @@ REF = json.load(open(os.path.join(HERE, "reference.json")))
 #
 # Reads over the anon key, which is public: this needs no credentials.
 SUPA = {"url": "https://zdvpqygiqavwpxljpvqw.supabase.co",
-        "key": "sb_publishable_HaoyPZbNIUxKPnwCh3iI3Q_1NIiWGgv"}
+        "key": "sb_publishable_97LHnSPohFOR0SrsOltuEw_rvZwGGD5"}
 
 
 def supa(table, query):
