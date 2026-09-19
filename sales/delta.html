@@ -252,17 +252,17 @@ function table(base, curr, firstCol, which) {
     `<th class="${cls || ''} sortable" onclick="sortBy('${which}','${col}')">${text}` +
     (st.col === col ? `<span class="caret">${st.dir < 0 ? '\u25be' : '\u25b4'}</span>` : '') + '</th>';
   return `<table><thead><tr>
-      ${th('name', firstCol)}${th('cases','Cases','num')}${th('dollars','Revenue','num')}
-      ${th('dcases','\u0394 Cases','num')}${th('ddollars','\u0394 Revenue','num')}</tr></thead>
+      ${th('name', firstCol)}${th('cases','Cases','num')}${th('dcases','\u0394 Cases','num')}
+      ${th('dollars','Revenue','num')}${th('ddollars','\u0394 Revenue','num')}</tr></thead>
     <tbody>${rows.map(r => `<tr>
       <td>${r.k}</td>
       <td class="num">${num(r.cases)}</td>
-      <td class="num">${money(r.dollars)}</td>
       <td class="num">${dCases(r.dcases)}</td>
+      <td class="num">${money(r.dollars)}</td>
       <td class="num">${dMoney(r.ddollars)}</td></tr>`).join('')}</tbody>
     <tfoot><tr><td>Total</td>
-      <td class="num">${num(sum('cases'))}</td><td class="num">${money(sum('dollars'))}</td>
-      <td class="num">${dCases(sum('dcases'))}</td><td class="num">${dMoney(sum('ddollars'))}</td>
+      <td class="num">${num(sum('cases'))}</td><td class="num">${dCases(sum('dcases'))}</td>
+      <td class="num">${money(sum('dollars'))}</td><td class="num">${dMoney(sum('ddollars'))}</td>
     </tr></tfoot></table>`;
 }
 
