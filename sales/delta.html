@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sales Movement</title>
+<title>Sales Delta</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="../lib/data-source.js?v=20260918b"></script>
 <style>
@@ -54,11 +54,10 @@
 <body>
 
 <div id="header">
-  <h1>Sales Movement</h1>
+  <h1>Sales Delta</h1>
   <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
     <button id="btnWeek"  class="ctl"     onclick="setGrain('week')">Weekly</button>
     <button id="btnMonth" class="ctl off" onclick="setGrain('month')">Monthly</button>
-    <button id="btnMetric" class="ctl" onclick="toggleMetric()">Dollars</button>
     <span class="info" id="versionStamp"></span>
   </div>
 </div>
@@ -68,7 +67,7 @@
 
   <div class="picker">
     <div class="pickhead">
-      <h3><span id="trendTitle">Revenue</span> by period <span class="dim" id="rangeLabel"></span></h3>
+      <h3>Revenue by period <span class="dim" id="rangeLabel"></span></h3>
       <span class="hint">Click a bar to set the start, click another to set the end. The line is budget.</span>
     </div>
     <div class="chartwrap"><canvas id="trend"></canvas></div>
@@ -92,17 +91,15 @@ let GRAIN = 'week';
 let INV = [], BW = [], BM = [], BP = [];
 let PERIODS = [], START = null, END = null, pendingStart = null;
 let CUSTDIM = 'group';                                  // group | name
-let METRIC  = 'dollars';                                // dollars | cases
-const SORT = { prod: { col:'change', dir:-1 }, cust: { col:'change', dir:-1 } };
+const SORT = { prod: { col:'ddollars', dir:-1 }, cust: { col:'ddollars', dir:-1 } };
 let trendChart = null;
 
 const BUDGET_CODES = ['kr','kw','kf','jr','jw','jf','ok','oj','lr','lw','lf','wr','ef','ar','wf','af'];
 const money = n => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString();
 const num   = n => Math.round(n).toLocaleString();
 const sign  = n => n >= 0 ? 'pos' : 'neg';
-const fmt   = n => METRIC === 'dollars' ? money(n) : num(n);
-const delta = n => `<span class="${sign(n)}">${n >= 0 ? '+' : ''}${fmt(n)}</span>`;
-const pct   = (d, b) => !b ? '' : `<span class="${sign(d)}">${d >= 0 ? '+' : ''}${(d / Math.abs(b) * 100).toFixed(0)}%</span>`;
+const dMoney = n => `<span class="${sign(n)}">${n >= 0 ? '+' : ''}${money(n)}</span>`;
+const dCases = n => `<span class="${sign(n)}">${n >= 0 ? '+' : ''}${num(n)}</span>`;
 
 function parseGvizTable(table) {
   const cols = table.cols.map(c => c.label);
@@ -165,13 +162,8 @@ function budgetFor(periodKey) {
   }
   return out;
 }
-const totalOf = (o, m) => Object.values(o).reduce((s, v) => s + v[m || METRIC], 0);
+const totalOf = (o, m) => Object.values(o).reduce((s, v) => s + v[m || 'dollars'], 0);
 
-function toggleMetric() {
-  METRIC = METRIC === 'dollars' ? 'cases' : 'dollars';
-  document.getElementById('btnMetric').textContent = METRIC === 'dollars' ? 'Dollars' : 'Cases';
-  drawTrend(); render();
-}
 function toggleCustDim() {
   CUSTDIM = CUSTDIM === 'group' ? 'name' : 'group';
   document.getElementById('btnCustDim').textContent = CUSTDIM === 'group' ? 'Customer group' : 'Customer';
@@ -206,7 +198,7 @@ function onPick(idx) {
 function drawTrend() {
   const rev = PERIODS.map(p => totalOf(agg(p, 'product')));
   const bud = PERIODS.map(p => totalOf(budgetFor(p)));
-  const axis = v => METRIC === 'dollars' ? '$' + (v/1000).toFixed(0) + 'k' : num(v);
+  const axis = v => '$' + (v/1000).toFixed(0) + 'k';
   const si = PERIODS.indexOf(START), ei = PERIODS.indexOf(END);
   const colors = PERIODS.map((p, i) =>
     i === si || i === ei ? '#4ecca3' : (i > si && i < ei ? 'rgba(78,204,163,0.35)' : '#2d4263'));
@@ -231,7 +223,7 @@ function drawTrend() {
         legend: { display: false },
         tooltip: { callbacks: {
           title: c => label(PERIODS[c[0].dataIndex]),
-          label: c => (c.datasetIndex === 0 ? 'Actual ' : 'Budget ') + fmt(c.raw),
+          label: c => (c.datasetIndex === 0 ? 'Actual ' : 'Budget ') + money(c.raw),
         } },
       },
       scales: {
@@ -248,37 +240,30 @@ function table(base, curr, firstCol, which) {
   const keys = [...new Set([...Object.keys(base), ...Object.keys(curr)])];
   const rows = keys.map(k => {
     const b = base[k] || { cases:0, dollars:0 }, c = curr[k] || { cases:0, dollars:0 };
-    const bv = b[METRIC], cv = c[METRIC], d = cv - bv;
-    return { k, b, c, d, bv, cv, pc: bv ? d / Math.abs(bv) : (d ? Infinity * Math.sign(d) : 0) };
+    return { k, cases: c.cases, dollars: c.dollars, dcases: c.cases - b.cases, ddollars: c.dollars - b.dollars };
   });
   const st = SORT[which];
-  const val = r => ({ name:r.k, cases:r.c.cases, revenue:r.c.dollars, change:r.d, pct:r.pc }[st.col]);
-  const unit = METRIC === 'dollars' ? '$' : 'cases';
-  rows.sort((x, y) => {
-    const a = val(x), b = val(y);
-    if (st.col === 'name') return st.dir * String(a).localeCompare(String(b));
-    if (st.col === 'change') return st.dir * (Math.abs(a) - Math.abs(b));   // biggest movers, either way
-    return st.dir * ((a || 0) - (b || 0));
-  });
-  const tb = rows.reduce((s, r) => s + r.bv, 0), tc = rows.reduce((s, r) => s + r.cv, 0);
-  const cb = rows.reduce((s, r) => s + r.b.cases, 0),   cc = rows.reduce((s, r) => s + r.c.cases, 0);
+  rows.sort((x, y) => st.col === 'name'
+    ? st.dir * String(x.k).localeCompare(String(y.k))
+    : st.dir * ((x[st.col] || 0) - (y[st.col] || 0)));
   if (!rows.length) return '<div class="empty">Nothing in either period.</div>';
+  const sum = f => rows.reduce((s, r) => s + r[f], 0);
   const th = (col, text, cls) =>
     `<th class="${cls || ''} sortable" onclick="sortBy('${which}','${col}')">${text}` +
     (st.col === col ? `<span class="caret">${st.dir < 0 ? '\u25be' : '\u25b4'}</span>` : '') + '</th>';
   return `<table><thead><tr>
-      ${th('name', firstCol)}${th('cases','Cases','num')}${th('revenue','Revenue','num')}
-      ${th('change','Change ' + unit,'num')}${th('pct','%','num')}</tr></thead>
+      ${th('name', firstCol)}${th('cases','Cases','num')}${th('dollars','Revenue','num')}
+      ${th('dcases','\u0394 Cases','num')}${th('ddollars','\u0394 Revenue','num')}</tr></thead>
     <tbody>${rows.map(r => `<tr>
       <td>${r.k}</td>
-      <td class="num">${num(r.c.cases)}<span class="dim"> / ${num(r.b.cases)}</span></td>
-      <td class="num">${money(r.c.dollars)}<span class="dim"> / ${money(r.b.dollars)}</span></td>
-      <td class="num">${delta(r.d)}</td>
-      <td class="num">${pct(r.d, r.bv)}</td></tr>`).join('')}</tbody>
+      <td class="num">${num(r.cases)}</td>
+      <td class="num">${money(r.dollars)}</td>
+      <td class="num">${dCases(r.dcases)}</td>
+      <td class="num">${dMoney(r.ddollars)}</td></tr>`).join('')}</tbody>
     <tfoot><tr><td>Total</td>
-      <td class="num">${num(cc)}<span class="dim"> / ${num(cb)}</span></td>
-      <td class="num">${money(rows.reduce((s,r)=>s+r.c.dollars,0))}<span class="dim"> / ${money(rows.reduce((s,r)=>s+r.b.dollars,0))}</span></td>
-      <td class="num">${delta(tc - tb)}</td><td class="num">${pct(tc - tb, tb)}</td></tr></tfoot></table>`;
+      <td class="num">${num(sum('cases'))}</td><td class="num">${money(sum('dollars'))}</td>
+      <td class="num">${dCases(sum('dcases'))}</td><td class="num">${dMoney(sum('ddollars'))}</td>
+    </tr></tfoot></table>`;
 }
 
 function render() {
@@ -290,21 +275,20 @@ function render() {
   const curProd = agg(END, 'product'), baseProd = same ? {} : agg(START, 'product');
   const tc = totalOf(curProd), tb = totalOf(baseProd);
   const budgetTot = totalOf(budgetFor(END));
-  const cases = totalOf(curProd, 'cases'), dollars = totalOf(curProd, 'dollars');
-  document.getElementById('trendTitle').textContent = METRIC === 'dollars' ? 'Revenue' : 'Cases';
+  const cases = totalOf(curProd, 'cases'), baseCases = totalOf(baseProd, 'cases');
+  const budgetCases = totalOf(budgetFor(END), 'cases');
 
   document.getElementById('kpis').innerHTML = `
-    <div class="kpi"><div class="k">${METRIC === 'dollars' ? 'Revenue' : 'Cases'}</div><div class="v">${fmt(tc)}</div>
-      <div class="s">${label(END)}</div></div>
-    <div class="kpi"><div class="k">${same ? 'Compare' : 'Change'}</div>
-      <div class="v ${same ? '' : sign(tc - tb)}">${same ? '—' : (tc - tb >= 0 ? '+' : '') + fmt(tc - tb)}</div>
-      <div class="s">${same ? 'click a second bar' : fmt(tb) + ' in ' + label(START)}</div></div>
+    <div class="kpi"><div class="k">Revenue</div><div class="v">${money(tc)}</div>
+      <div class="s">${label(END)}${cases ? ' \u00b7 $' + (tc / cases).toFixed(2) + ' per case' : ''}</div></div>
+    <div class="kpi"><div class="k">${same ? 'Change' : '\u0394 Revenue'}</div>
+      <div class="v ${same ? '' : sign(tc - tb)}">${same ? '\u2014' : (tc - tb >= 0 ? '+' : '') + money(tc - tb)}</div>
+      <div class="s">${same ? 'click a second bar' : 'from ' + label(START)}</div></div>
+    <div class="kpi"><div class="k">Cases</div><div class="v">${num(cases)}</div>
+      <div class="s ${same ? '' : sign(cases - baseCases)}">${same ? '' : (cases - baseCases >= 0 ? '+' : '') + num(cases - baseCases) + ' vs ' + label(START)}</div></div>
     <div class="kpi"><div class="k">vs budget</div>
-      <div class="v ${sign(tc - budgetTot)}">${budgetTot ? (tc - budgetTot >= 0 ? '+' : '') + fmt(tc - budgetTot) : '—'}</div>
-      <div class="s">${budgetTot ? fmt(budgetTot) + ' budgeted' : 'not budgeted'}</div></div>
-    <div class="kpi"><div class="k">${METRIC === 'dollars' ? 'Cases' : 'Revenue'}</div>
-      <div class="v">${METRIC === 'dollars' ? num(cases) : money(dollars)}</div>
-      <div class="s">${cases ? '$' + (dollars / cases).toFixed(2) + ' per case' : ''}</div></div>`;
+      <div class="v ${sign(tc - budgetTot)}">${budgetTot ? (tc - budgetTot >= 0 ? '+' : '') + money(tc - budgetTot) : '\u2014'}</div>
+      <div class="s">${budgetCases ? (cases - budgetCases >= 0 ? '+' : '') + num(cases - budgetCases) + ' cases' : 'not budgeted'}</div></div>`;
 
   document.getElementById('prodTable').innerHTML = table(baseProd, curProd, 'Product', 'prod');
   document.getElementById('custTable').innerHTML = table(
