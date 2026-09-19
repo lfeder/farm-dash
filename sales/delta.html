@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sales Delta</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="../lib/data-source.js?v=20260918b"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -20,23 +19,19 @@
   #loading { display:flex; align-items:center; justify-content:center; height:60vh; font-size:1.1rem; color:#4ecca3; }
   #body { flex:1; padding:14px 24px 32px; display:flex; flex-direction:column; gap:14px; }
 
-  .picker { background:#16213e; border-radius:8px; padding:10px 14px 4px; }
-  .pickhead { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:4px;
-              flex-wrap:wrap; }
-  .pickhead h3 { font-size:0.85rem; color:#4ecca3; font-weight:600; }
-  .pickhead .hint { font-size:0.72rem; color:#777; }
-  .chartwrap { height:120px; position:relative; }
 
-  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
-  .kpi { background:#16213e; border-radius:8px; padding:11px 14px; }
-  .kpi .k { font-size:0.68rem; color:#888; text-transform:uppercase; letter-spacing:0.08em; }
-  .kpi .v { font-size:1.4rem; font-weight:600; margin-top:2px; }
-  .kpi .s { font-size:0.73rem; color:#888; margin-top:2px; }
 
   .panel { background:#16213e; border-radius:8px; padding:12px 16px; }
   .panel h3 { font-size:0.88rem; color:#4ecca3; margin-bottom:8px; font-weight:600; }
-  .cols { display:grid; grid-template-columns:1fr; gap:14px; }
-  @media (min-width:1100px){ .cols { grid-template-columns:1fr 1fr; } }
+  .cols { display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
+  @media (min-width:1200px){ .cols { grid-template-columns:250px 1fr 1fr; } }
+  .sel .scroll { max-height:70vh; overflow-y:auto; }
+  .sel table { font-size:0.78rem; }
+  .sel td, .sel th { padding:3px 6px; }
+  .sel tbody tr { cursor:pointer; }
+  .sel td.pick:hover { background:#0f3460; color:#fff; }
+  .sel td.on { background:rgba(78,204,163,0.22); color:#fff; font-weight:600; }
+  .sel td.edge { background:#4ecca3; color:#16213e; font-weight:700; }
 
   table { width:100%; border-collapse:collapse; font-size:0.82rem; }
   th { text-align:left; padding:5px 8px; border-bottom:2px solid #0f3460; color:#4ecca3; font-weight:600; white-space:nowrap; }
@@ -65,17 +60,11 @@
 <div id="loading">Loading…</div>
 <div id="body" style="display:none">
 
-  <div class="picker">
-    <div class="pickhead">
-      <h3>Revenue by period <span class="dim" id="rangeLabel"></span></h3>
-      <span class="hint">Click a bar to set the start, click another to set the end. The line is budget.</span>
-    </div>
-    <div class="chartwrap"><canvas id="trend"></canvas></div>
-  </div>
-
-  <div class="kpis" id="kpis"></div>
-
   <div class="cols">
+    <div class="panel sel">
+      <h3>Revenue by <span id="grainWord">week</span> <span class="dim" id="rangeLabel"></span></h3>
+      <div id="periodTable"></div>
+    </div>
     <div class="panel"><h3>By product</h3><div id="prodTable"></div></div>
     <div class="panel">
       <h3 style="display:flex;align-items:center;gap:10px;justify-content:space-between;">By customer
@@ -92,7 +81,6 @@ let INV = [], BW = [], BM = [], BP = [];
 let PERIODS = [], START = null, END = null, pendingStart = null;
 let CUSTDIM = 'group';                                  // group | name
 const SORT = { prod: { col:'ddollars', dir:-1 }, cust: { col:'ddollars', dir:-1 } };
-let trendChart = null;
 
 const BUDGET_CODES = ['kr','kw','kf','jr','jw','jf','ok','oj','lr','lw','lf','wr','ef','ar','wf','af'];
 const money = n => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString();
@@ -127,7 +115,6 @@ const live  = r => r.ProductCode && r.ProductCode !== 'Sales';
 
 function buildPeriods() {
   PERIODS = [...new Set(INV.filter(live).map(key))].filter(Boolean).sort();
-  PERIODS = PERIODS.slice(-(GRAIN === 'week' ? 40 : 24));
   END = PERIODS[PERIODS.length - 1];
   START = PERIODS[PERIODS.length - 2] || END;
   pendingStart = null;
@@ -179,62 +166,48 @@ function setGrain(g) {
   GRAIN = g;
   document.getElementById('btnWeek').className  = 'ctl' + (g === 'week'  ? '' : ' off');
   document.getElementById('btnMonth').className = 'ctl' + (g === 'month' ? '' : ' off');
-  buildPeriods(); drawTrend(); render();
+  buildPeriods(); render();
 }
 
 /** Clicking bars picks the two periods being compared. */
-function onPick(idx) {
-  const p = PERIODS[idx];
-  if (!p) return;
+function onPick(p) {
+  if (!p || !PERIODS.includes(p)) return;
   if (pendingStart === null) { pendingStart = p; START = p; END = p; }
   else {
-    const a = PERIODS.indexOf(pendingStart), b = idx;
+    const a = PERIODS.indexOf(pendingStart), b = PERIODS.indexOf(p);
     START = PERIODS[Math.min(a, b)]; END = PERIODS[Math.max(a, b)];
     pendingStart = null;
   }
-  drawTrend(); render();
+  render();
 }
 
-function drawTrend() {
-  const rev = PERIODS.map(p => totalOf(agg(p, 'product')));
-  const bud = PERIODS.map(p => totalOf(budgetFor(p)));
-  const axis = v => '$' + (v/1000).toFixed(0) + 'k';
+/** Skinny selector: one row per week or month, this year beside last. */
+function periodTable() {
+  const years = [...new Set(PERIODS.map(p => +p.slice(0, 4)))].sort();
+  const cur = years[years.length - 1], prior = cur - 1;
+  const mk = (y, n) => `${y}-${GRAIN === 'week' ? 'W' : 'M'}${String(n).padStart(2, '0')}`;
+  const ns = [...new Set(PERIODS.filter(p => +p.slice(0,4) === cur || +p.slice(0,4) === prior)
+    .map(p => +p.slice(6)))].sort((a, b) => b - a);
+  const rev = {};
+  for (const r of INV) { if (!live(r)) continue; const k = key(r); rev[k] = (rev[k] || 0) + (+r.Dollars || 0); }
   const si = PERIODS.indexOf(START), ei = PERIODS.indexOf(END);
-  const colors = PERIODS.map((p, i) =>
-    i === si || i === ei ? '#4ecca3' : (i > si && i < ei ? 'rgba(78,204,163,0.35)' : '#2d4263'));
-
-  if (trendChart) trendChart.destroy();
-  trendChart = new Chart(document.getElementById('trend'), {
-    data: {
-      labels: PERIODS.map(label),
-      datasets: [
-        { type:'bar',  data: rev, backgroundColor: colors, borderWidth: 0, order: 2 },
-        { type:'line', data: bud, borderColor:'#f0a030', borderWidth:1.5, pointRadius:0,
-          borderDash:[4,3], tension:0.25, order: 1 },
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      onClick: (e, els, chart) => {
-        const hit = chart.getElementsAtEventForMode(e, 'index', { intersect: false }, true);
-        if (hit.length) onPick(hit[0].index);
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: {
-          title: c => label(PERIODS[c[0].dataIndex]),
-          label: c => (c.datasetIndex === 0 ? 'Actual ' : 'Budget ') + money(c.raw),
-        } },
-      },
-      scales: {
-        x: { ticks: { color:'#777', font:{ size:9 }, maxRotation:0, autoSkip:true, maxTicksLimit:14 },
-             grid: { display:false } },
-        y: { ticks: { color:'#777', font:{ size:9 }, callback: axis },
-             grid: { color:'rgba(15,52,96,0.5)' } },
-      },
-    },
-  });
+  const cls = p => {
+    const i = PERIODS.indexOf(p);
+    if (i < 0) return '';
+    if (p === START || p === END) return ' edge';
+    return (i > si && i < ei) ? ' on' : '';
+  };
+  const cell = (y, n) => {
+    const p = mk(y, n), v = rev[p];
+    if (v === undefined) return '<td class="num dim">—</td>';
+    return `<td class="num pick${cls(p)}" onclick="onPick('${p}')">${money(v)}</td>`;
+  };
+  return `<div class="scroll"><table><thead><tr>
+      <th>${GRAIN === 'week' ? 'Wk' : 'Mo'}</th><th class="num">${cur}</th><th class="num">${prior}</th>
+    </tr></thead><tbody>${ns.map(n => `<tr>
+      <td>${n}</td>${cell(cur, n)}${cell(prior, n)}</tr>`).join('')}</tbody></table></div>`;
 }
+
 
 function table(base, curr, firstCol, which) {
   const keys = [...new Set([...Object.keys(base), ...Object.keys(curr)])];
@@ -273,22 +246,11 @@ function render() {
     same ? `— ${label(END)}` : `— ${label(START)} → ${label(END)}`;
 
   const curProd = agg(END, 'product'), baseProd = same ? {} : agg(START, 'product');
-  const tc = totalOf(curProd), tb = totalOf(baseProd);
-  const budgetTot = totalOf(budgetFor(END));
-  const cases = totalOf(curProd, 'cases'), baseCases = totalOf(baseProd, 'cases');
-  const budgetCases = totalOf(budgetFor(END), 'cases');
-
-  document.getElementById('kpis').innerHTML = `
-    <div class="kpi"><div class="k">Revenue</div><div class="v">${money(tc)}</div>
-      <div class="s">${label(END)}${cases ? ' \u00b7 $' + (tc / cases).toFixed(2) + ' per case' : ''}</div></div>
-    <div class="kpi"><div class="k">${same ? 'Change' : '\u0394 Revenue'}</div>
-      <div class="v ${same ? '' : sign(tc - tb)}">${same ? '\u2014' : (tc - tb >= 0 ? '+' : '') + money(tc - tb)}</div>
-      <div class="s">${same ? 'click a second bar' : 'from ' + label(START)}</div></div>
-    <div class="kpi"><div class="k">Cases</div><div class="v">${num(cases)}</div>
-      <div class="s ${same ? '' : sign(cases - baseCases)}">${same ? '' : (cases - baseCases >= 0 ? '+' : '') + num(cases - baseCases) + ' vs ' + label(START)}</div></div>
-    <div class="kpi"><div class="k">vs budget</div>
-      <div class="v ${sign(tc - budgetTot)}">${budgetTot ? (tc - budgetTot >= 0 ? '+' : '') + money(tc - budgetTot) : '\u2014'}</div>
-      <div class="s">${budgetCases ? (cases - budgetCases >= 0 ? '+' : '') + num(cases - budgetCases) + ' cases' : 'not budgeted'}</div></div>`;
+  document.getElementById('grainWord').textContent = GRAIN === 'week' ? 'week' : 'month';
+  document.getElementById('periodTable').innerHTML = periodTable();
+  // weeks still to come sit above the live ones, so bring the selection into view
+  const box = document.querySelector('#periodTable .scroll'), edge = box && box.querySelector('td.edge');
+  if (box && edge) box.scrollTop = Math.max(0, edge.offsetTop - box.clientHeight / 2);
 
   document.getElementById('prodTable').innerHTML = table(baseProd, curProd, 'Product', 'prod');
   document.getElementById('custTable').innerHTML = table(
@@ -308,7 +270,7 @@ async function load() {
   buildPeriods();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('body').style.display = '';
-  drawTrend(); render();
+  render();
 }
 document.addEventListener('DOMContentLoaded', load);
 </script>
