@@ -5,45 +5,50 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sales Movement</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="../lib/data-source.js?v=20260918a"></script>
+<script src="../lib/data-source.js?v=20260918b"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#1a1a2e; color:#e0e0e0;
-         height:100vh; display:flex; flex-direction:column; }
-  #header { background:#16213e; padding:12px 24px; display:flex; align-items:center; justify-content:space-between;
+         min-height:100vh; display:flex; flex-direction:column; }
+  #header { background:#16213e; padding:10px 24px; display:flex; align-items:center; justify-content:space-between;
             border-bottom:1px solid #0f3460; flex-wrap:wrap; gap:10px; }
-  #header h1 { font-size:1.3rem; color:#4ecca3; }
-  #header .info { font-size:0.8rem; color:#888; }
+  #header h1 { font-size:1.25rem; color:#4ecca3; }
+  .info { font-size:0.78rem; color:#888; }
   .ctl { padding:4px 10px; font-size:0.75rem; background:#0f3460; color:#ccc; border:1px solid #4ecca3;
          border-radius:4px; cursor:pointer; }
   .ctl.off { border-color:#555; color:#999; }
-  select.ctl { cursor:pointer; }
-  #loading { display:flex; align-items:center; justify-content:center; height:100%; font-size:1.1rem; color:#4ecca3; }
-  #body { flex:1; overflow-y:auto; padding:16px 24px 32px; display:flex; flex-direction:column; gap:16px; }
+  #loading { display:flex; align-items:center; justify-content:center; height:60vh; font-size:1.1rem; color:#4ecca3; }
+  #body { flex:1; padding:14px 24px 32px; display:flex; flex-direction:column; gap:14px; }
+
+  .picker { background:#16213e; border-radius:8px; padding:10px 14px 4px; }
+  .pickhead { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:4px;
+              flex-wrap:wrap; }
+  .pickhead h3 { font-size:0.85rem; color:#4ecca3; font-weight:600; }
+  .pickhead .hint { font-size:0.72rem; color:#777; }
+  .chartwrap { height:120px; position:relative; }
 
   .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
-  .kpi { background:#16213e; border-radius:8px; padding:12px 14px; }
-  .kpi .k { font-size:0.7rem; color:#888; text-transform:uppercase; letter-spacing:0.08em; }
-  .kpi .v { font-size:1.5rem; font-weight:600; margin-top:3px; }
-  .kpi .s { font-size:0.75rem; color:#888; margin-top:2px; }
+  .kpi { background:#16213e; border-radius:8px; padding:11px 14px; }
+  .kpi .k { font-size:0.68rem; color:#888; text-transform:uppercase; letter-spacing:0.08em; }
+  .kpi .v { font-size:1.4rem; font-weight:600; margin-top:2px; }
+  .kpi .s { font-size:0.73rem; color:#888; margin-top:2px; }
 
-  .panel { background:#16213e; border-radius:8px; padding:14px 16px; }
-  .panel h3 { font-size:0.9rem; color:#4ecca3; margin-bottom:10px; font-weight:600; }
-  .panel h3 span { color:#777; font-weight:400; font-size:0.8rem; }
-  .cols { display:grid; grid-template-columns:1fr; gap:16px; }
+  .panel { background:#16213e; border-radius:8px; padding:12px 16px; }
+  .panel h3 { font-size:0.88rem; color:#4ecca3; margin-bottom:8px; font-weight:600; }
+  .cols { display:grid; grid-template-columns:1fr; gap:14px; }
   @media (min-width:1100px){ .cols { grid-template-columns:1fr 1fr; } }
 
   table { width:100%; border-collapse:collapse; font-size:0.82rem; }
-  th { text-align:left; padding:6px 8px; border-bottom:2px solid #0f3460; color:#4ecca3; font-weight:600;
-       white-space:nowrap; }
+  th { text-align:left; padding:5px 8px; border-bottom:2px solid #0f3460; color:#4ecca3; font-weight:600; white-space:nowrap; }
   th.num, td.num { text-align:right; }
-  td { padding:5px 8px; border-bottom:1px solid rgba(15,52,96,0.5); white-space:nowrap; }
+  td { padding:4px 8px; border-bottom:1px solid rgba(15,52,96,0.5); white-space:nowrap; }
   tbody tr:hover { background:#0f3460; }
   tfoot td { border-top:2px solid #0f3460; border-bottom:none; font-weight:600; }
   .pos { color:#4ecca3; } .neg { color:#e74c3c; } .dim { color:#777; }
-  .note { font-size:0.75rem; color:#777; margin-top:8px; line-height:1.5; }
-  .chartwrap { height:230px; position:relative; }
-  .empty { color:#666; font-size:0.9rem; padding:12px 0; }
+  .empty { color:#666; font-size:0.9rem; padding:10px 0; }
+  th.sortable { cursor:pointer; user-select:none; }
+  th.sortable:hover { color:#7fffd4; }
+  .caret { font-size:0.65rem; margin-left:3px; }
 </style>
 </head>
 <body>
@@ -53,8 +58,7 @@
   <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
     <button id="btnWeek"  class="ctl"     onclick="setGrain('week')">Weekly</button>
     <button id="btnMonth" class="ctl off" onclick="setGrain('month')">Monthly</button>
-    <select id="periodSel" class="ctl" onchange="render()"></select>
-    <button id="btnCmp" class="ctl" onclick="toggleCompare()">vs prior period</button>
+    <button id="btnMetric" class="ctl" onclick="toggleMetric()">Dollars</button>
     <span class="info" id="versionStamp"></span>
   </div>
 </div>
@@ -62,58 +66,56 @@
 <div id="loading">Loading…</div>
 <div id="body" style="display:none">
 
-  <div class="kpis" id="kpis"></div>
-
-  <div class="panel">
-    <h3>What moved the top line <span id="bridgeSub"></span></h3>
-    <div class="chartwrap"><canvas id="bridge"></canvas></div>
-    <div class="note">Volume is the change in cases valued at the old price. Price is the change in
-      average price applied to the cases actually sold. Together they account for the whole move; a
-      product with no sales in one of the two periods lands in New or Lost instead.</div>
+  <div class="picker">
+    <div class="pickhead">
+      <h3><span id="trendTitle">Revenue</span> by period <span class="dim" id="rangeLabel"></span></h3>
+      <span class="hint">Click a bar to set the start, click another to set the end. The line is budget.</span>
+    </div>
+    <div class="chartwrap"><canvas id="trend"></canvas></div>
   </div>
 
+  <div class="kpis" id="kpis"></div>
+
   <div class="cols">
+    <div class="panel"><h3>By product</h3><div id="prodTable"></div></div>
     <div class="panel">
-      <h3>By product</h3>
-      <div id="prodTable"></div>
-    </div>
-    <div class="panel">
-      <h3>By customer <span id="custSub"></span></h3>
+      <h3 style="display:flex;align-items:center;gap:10px;justify-content:space-between;">By customer
+        <button id="btnCustDim" class="ctl" onclick="toggleCustDim()">Customer group</button></h3>
       <div id="custTable"></div>
     </div>
   </div>
 
-
 </div>
 
 <script>
-// ---------------------------------------------------------------- state
-let GRAIN = 'week';        // week | month
-let COMPARE = 'prior';     // prior | budget
+let GRAIN = 'week';
 let INV = [], BW = [], BM = [], BP = [];
-let bridgeChart = null;
+let PERIODS = [], START = null, END = null, pendingStart = null;
+let CUSTDIM = 'group';                                  // group | name
+let METRIC  = 'dollars';                                // dollars | cases
+const SORT = { prod: { col:'change', dir:-1 }, cust: { col:'change', dir:-1 } };
+let trendChart = null;
 
 const BUDGET_CODES = ['kr','kw','kf','jr','jw','jf','ok','oj','lr','lw','lf','wr','ef','ar','wf','af'];
 const money = n => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString();
 const num   = n => Math.round(n).toLocaleString();
 const sign  = n => n >= 0 ? 'pos' : 'neg';
-const delta = n => `<span class="${sign(n)}">${n >= 0 ? '+' : ''}${money(n)}</span>`;
+const fmt   = n => METRIC === 'dollars' ? money(n) : num(n);
+const delta = n => `<span class="${sign(n)}">${n >= 0 ? '+' : ''}${fmt(n)}</span>`;
+const pct   = (d, b) => !b ? '' : `<span class="${sign(d)}">${d >= 0 ? '+' : ''}${(d / Math.abs(b) * 100).toFixed(0)}%</span>`;
 
-// ---------------------------------------------------------------- parsing
 function parseGvizTable(table) {
   const cols = table.cols.map(c => c.label);
   const intCols = new Set(['Cases','Year','Month','ISOYear','ISOWeek','DOW','Grade']);
-  const numCols = new Set(['Dollars','Pounds','Amount','EffectiveAmount','amount','effective_amount']);
+  const numCols = new Set(['Dollars','Pounds']);
   return table.rows.map(r => {
     const obj = {};
     r.c.forEach((cell, i) => {
       const col = cols[i];
       if (!col) return;
       if (!cell || cell.v === null || cell.v === undefined) { obj[col] = ''; return; }
-      if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
-        const dm = cell.v.match(/Date\((\d+),(\d+),(\d+)\)/);
-        if (dm) { obj[col] = cell.f || cell.v; obj[col + '_y'] = +dm[1]; obj[col + '_m'] = +dm[2] + 1; }
-      } else if (intCols.has(col) && typeof cell.v === 'number') { obj[col] = Math.round(cell.v); }
+      if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) { obj[col] = cell.f || cell.v; }
+      else if (intCols.has(col) && typeof cell.v === 'number') { obj[col] = Math.round(cell.v); }
       else if (numCols.has(col) && typeof cell.v === 'number') { obj[col] = cell.v; }
       else { obj[col] = cell.v; }
     });
@@ -121,24 +123,26 @@ function parseGvizTable(table) {
   });
 }
 
-// ---------------------------------------------------------------- periods
-const key    = r => GRAIN === 'week' ? `${r.ISOYear}-W${String(r.ISOWeek).padStart(2,'0')}`
-                                     : `${r.Year}-M${String(r.Month).padStart(2,'0')}`;
-const label  = k => GRAIN === 'week' ? k.replace('-W',' week ') : k.replace('-M',' month ');
+const key   = r => GRAIN === 'week' ? `${r.ISOYear}-W${String(r.ISOWeek).padStart(2,'0')}`
+                                    : `${r.Year}-M${String(r.Month).padStart(2,'0')}`;
+const label = k => GRAIN === 'week' ? k.replace('-W',' wk ') : k.replace('-M',' m');
+const live  = r => r.ProductCode && r.ProductCode !== 'Sales';
 
-function periods() {
-  return [...new Set(INV.filter(r => r.ProductCode && r.ProductCode !== 'Sales').map(key))]
-    .filter(Boolean).sort().reverse();
+function buildPeriods() {
+  PERIODS = [...new Set(INV.filter(live).map(key))].filter(Boolean).sort();
+  PERIODS = PERIODS.slice(-(GRAIN === 'week' ? 40 : 24));
+  END = PERIODS[PERIODS.length - 1];
+  START = PERIODS[PERIODS.length - 2] || END;
+  pendingStart = null;
 }
-function priorOf(k) { const all = periods().slice().reverse(); const i = all.indexOf(k); return i > 0 ? all[i-1] : null; }
 
-// ---------------------------------------------------------------- aggregation
 function agg(periodKey, dim) {
   const out = {};
   for (const r of INV) {
-    if (!r.ProductCode || r.ProductCode === 'Sales') continue;
-    if (key(r) !== periodKey) continue;
-    const d = dim === 'product' ? r.ProductCode : (r.CustomerGroup || r.CustomerName || '(none)');
+    if (!live(r) || key(r) !== periodKey) continue;
+    const d = dim === 'product' ? r.ProductCode
+            : CUSTDIM === 'name' ? (r.CustomerName || '(none)')
+            : (r.CustomerGroup || r.CustomerName || '(none)');
     if (!out[d]) out[d] = { cases:0, dollars:0 };
     out[d].cases   += (+r.Cases   || 0);
     out[d].dollars += (+r.Dollars || 0);
@@ -146,178 +150,168 @@ function agg(periodKey, dim) {
   return out;
 }
 
-/** Budget for a period, by product code (uppercase), as {cases, dollars}. */
 function budgetFor(periodKey) {
   const [ys, rest] = periodKey.split('-');
   const y = +ys, n = +rest.slice(1);
-  const rows = GRAIN === 'week' ? BW : BM;
-  const row = rows.find(r => +r.year === y && (GRAIN === 'week' ? +r.isoweek === n : +r.month === n));
+  const row = (GRAIN === 'week' ? BW : BM)
+    .find(r => +r.year === y && (GRAIN === 'week' ? +r.isoweek === n : +r.month === n));
   const prices = BP.find(p => +p.year === y) || BP[BP.length - 1];
   const out = {};
   if (!row) return out;
   for (const c of BUDGET_CODES) {
     const cases = +row[c] || 0;
     if (!cases) continue;
-    const price = prices ? (+prices[c] || 0) : 0;
-    out[c.toUpperCase()] = { cases, dollars: cases * price };
+    out[c.toUpperCase()] = { cases, dollars: cases * (prices ? (+prices[c] || 0) : 0) };
   }
   return out;
 }
+const totalOf = (o, m) => Object.values(o).reduce((s, v) => s + v[m || METRIC], 0);
 
-/** Two-way price/volume split between a base and a current set. */
-function decompose(base, curr) {
-  const keys = [...new Set([...Object.keys(base), ...Object.keys(curr)])];
-  const rows = [], tot = { volume:0, price:0, gained:0, lost:0, base:0, curr:0 };
-  for (const k of keys) {
-    const b = base[k] || { cases:0, dollars:0 }, c = curr[k] || { cases:0, dollars:0 };
-    const d = c.dollars - b.dollars;
-    let volume = 0, price = 0, gained = 0, lost = 0;
-    if (b.cases > 0 && c.cases > 0) {
-      const pb = b.dollars / b.cases, pc = c.dollars / c.cases;
-      volume = (c.cases - b.cases) * pb;
-      price  = (pc - pb) * c.cases;
-    } else if (b.cases === 0 && c.cases > 0) { gained = d; }
-    else if (c.cases === 0 && b.cases > 0)   { lost   = d; }
-    else { volume = d; }
-    rows.push({ k, b, c, d, volume, price, gained, lost });
-    tot.volume += volume; tot.price += price; tot.gained += gained; tot.lost += lost;
-    tot.base += b.dollars; tot.curr += c.dollars;
-  }
-  rows.sort((x, y) => Math.abs(y.d) - Math.abs(x.d));
-  return { rows, tot };
+function toggleMetric() {
+  METRIC = METRIC === 'dollars' ? 'cases' : 'dollars';
+  document.getElementById('btnMetric').textContent = METRIC === 'dollars' ? 'Dollars' : 'Cases';
+  drawTrend(); render();
+}
+function toggleCustDim() {
+  CUSTDIM = CUSTDIM === 'group' ? 'name' : 'group';
+  document.getElementById('btnCustDim').textContent = CUSTDIM === 'group' ? 'Customer group' : 'Customer';
+  render();
+}
+function sortBy(which, col) {
+  const st = SORT[which];
+  if (st.col === col) st.dir = -st.dir; else { st.col = col; st.dir = col === 'name' ? 1 : -1; }
+  render();
 }
 
-// ---------------------------------------------------------------- render
 function setGrain(g) {
   GRAIN = g;
   document.getElementById('btnWeek').className  = 'ctl' + (g === 'week'  ? '' : ' off');
   document.getElementById('btnMonth').className = 'ctl' + (g === 'month' ? '' : ' off');
-  fillPeriods();
-  render();
-}
-function toggleCompare() {
-  COMPARE = COMPARE === 'prior' ? 'budget' : 'prior';
-  document.getElementById('btnCmp').textContent = COMPARE === 'prior' ? 'vs prior period' : 'vs budget';
-  render();
-}
-function fillPeriods() {
-  const sel = document.getElementById('periodSel'), ps = periods().slice(0, 40);
-  sel.innerHTML = ps.map(p => `<option value="${p}">${label(p)}</option>`).join('');
+  buildPeriods(); drawTrend(); render();
 }
 
-function render() {
-  const cur = document.getElementById('periodSel').value;
-  if (!cur) return;
-  const prior = priorOf(cur);
-  const curProd = agg(cur, 'product');
-  const baseProd = COMPARE === 'prior' ? (prior ? agg(prior, 'product') : {}) : budgetFor(cur);
-  const baseName = COMPARE === 'prior' ? (prior ? label(prior) : 'no prior period') : 'budget';
-
-  const { rows: pRows, tot } = decompose(baseProd, curProd);
-  const cases = Object.values(curProd).reduce((s, v) => s + v.cases, 0);
-
-  // KPIs
-  const budget = budgetFor(cur);
-  const budgetTot = Object.values(budget).reduce((s, v) => s + v.dollars, 0);
-  const priorTot = prior ? Object.values(agg(prior, 'product')).reduce((s, v) => s + v.dollars, 0) : 0;
-  document.getElementById('kpis').innerHTML = `
-    <div class="kpi"><div class="k">Revenue</div><div class="v">${money(tot.curr)}</div>
-      <div class="s">${label(cur)}</div></div>
-    <div class="kpi"><div class="k">vs prior</div><div class="v ${sign(tot.curr - priorTot)}">${priorTot ? (tot.curr - priorTot >= 0 ? '+' : '') + money(tot.curr - priorTot) : '—'}</div>
-      <div class="s">${priorTot ? money(priorTot) + ' then' : 'no prior period'}</div></div>
-    <div class="kpi"><div class="k">vs budget</div><div class="v ${sign(tot.curr - budgetTot)}">${budgetTot ? (tot.curr - budgetTot >= 0 ? '+' : '') + money(tot.curr - budgetTot) : '—'}</div>
-      <div class="s">${budgetTot ? money(budgetTot) + ' budgeted' : 'not budgeted'}</div></div>
-    <div class="kpi"><div class="k">Cases</div><div class="v">${num(cases)}</div>
-      <div class="s">${cases ? '$' + (tot.curr / cases).toFixed(2) + ' per case' : ''}</div></div>`;
-
-  document.getElementById('bridgeSub').textContent = `— ${baseName} → ${label(cur)}`;
-  document.getElementById('custSub').innerHTML = COMPARE === 'budget'
-    ? '— vs prior period; budget is not held by customer' : '';
-
-  drawBridge(tot, baseName, label(cur));
-
-  // by product
-  document.getElementById('prodTable').innerHTML = pRows.length ? `
-    <table><thead><tr>
-      <th>Product</th><th class="num">Cases</th><th class="num">Revenue</th>
-      <th class="num">Change</th><th class="num">Volume</th><th class="num">Price</th></tr></thead>
-    <tbody>${pRows.map(r => `<tr>
-      <td>${r.k}</td>
-      <td class="num">${num(r.c.cases)}<span class="dim"> / ${num(r.b.cases)}</span></td>
-      <td class="num">${money(r.c.dollars)}</td>
-      <td class="num">${delta(r.d)}</td>
-      <td class="num">${r.gained ? '<span class="dim">new</span>' : r.lost ? '<span class="dim">lost</span>' : delta(r.volume)}</td>
-      <td class="num">${r.gained || r.lost ? '' : delta(r.price)}</td></tr>`).join('')}</tbody>
-    <tfoot><tr><td>Total</td><td class="num">${num(cases)}</td><td class="num">${money(tot.curr)}</td>
-      <td class="num">${delta(tot.curr - tot.base)}</td><td class="num">${delta(tot.volume)}</td>
-      <td class="num">${delta(tot.price)}</td></tr></tfoot></table>` : '<div class="empty">No sales in this period.</div>';
-
-  // by customer — always against the prior period, never budget
-  const curCust = agg(cur, 'customer');
-  const baseCust = prior ? agg(prior, 'customer') : {};
-  const { rows: cRows, tot: cTot } = decompose(baseCust, curCust);
-  document.getElementById('custTable').innerHTML = cRows.length ? `
-    <table><thead><tr>
-      <th>Customer</th><th class="num">Revenue</th><th class="num">Change</th>
-      <th class="num">Volume</th><th class="num">Price</th></tr></thead>
-    <tbody>${cRows.map(r => `<tr>
-      <td>${r.k}</td><td class="num">${money(r.c.dollars)}</td><td class="num">${delta(r.d)}</td>
-      <td class="num">${r.gained ? '<span class="dim">new</span>' : r.lost ? '<span class="dim">lost</span>' : delta(r.volume)}</td>
-      <td class="num">${r.gained || r.lost ? '' : delta(r.price)}</td></tr>`).join('')}</tbody>
-    <tfoot><tr><td>Total</td><td class="num">${money(cTot.curr)}</td>
-      <td class="num">${delta(cTot.curr - cTot.base)}</td><td class="num">${delta(cTot.volume)}</td>
-      <td class="num">${delta(cTot.price)}</td></tr></tfoot></table>` : '<div class="empty">No sales in this period.</div>';
-
-}
-
-function drawBridge(tot, fromName, toName) {
-  const steps = [
-    { l: fromName,  v: tot.base,  type: 'abs' },
-    { l: 'Volume',  v: tot.volume },
-    { l: 'Price',   v: tot.price },
-    { l: 'New',     v: tot.gained },
-    { l: 'Lost',    v: tot.lost },
-    { l: toName,    v: tot.curr,  type: 'abs' },
-  ].filter(s => s.type === 'abs' || Math.abs(s.v) > 0.5);
-
-  let run = 0; const bars = [], colors = [], levels = [];
-  for (const s of steps) {
-    if (s.type === 'abs') { bars.push([0, s.v]); colors.push('#4a90d9'); run = s.v; levels.push(s.v); }
-    else { bars.push([run, run + s.v]); colors.push(s.v >= 0 ? '#4ecca3' : '#e74c3c');
-           levels.push(run, run + s.v); run += s.v; }
+/** Clicking bars picks the two periods being compared. */
+function onPick(idx) {
+  const p = PERIODS[idx];
+  if (!p) return;
+  if (pendingStart === null) { pendingStart = p; START = p; END = p; }
+  else {
+    const a = PERIODS.indexOf(pendingStart), b = idx;
+    START = PERIODS[Math.min(a, b)]; END = PERIODS[Math.max(a, b)];
+    pendingStart = null;
   }
-  // frame on the levels the bars actually reach, not on the zero floor the absolute bars sit on
-  const lo = Math.min(...levels), hi = Math.max(...levels);
-  const pad = Math.max((hi - lo) * 0.35, hi * 0.02, 1);
-  const yMin = Math.max(0, lo - pad), yMax = hi + pad;
+  drawTrend(); render();
+}
 
-  if (bridgeChart) bridgeChart.destroy();
-  bridgeChart = new Chart(document.getElementById('bridge'), {
-    type: 'bar',
-    data: { labels: steps.map(s => s.l), datasets: [{ data: bars, backgroundColor: colors, borderWidth: 0 }] },
+function drawTrend() {
+  const rev = PERIODS.map(p => totalOf(agg(p, 'product')));
+  const bud = PERIODS.map(p => totalOf(budgetFor(p)));
+  const axis = v => METRIC === 'dollars' ? '$' + (v/1000).toFixed(0) + 'k' : num(v);
+  const si = PERIODS.indexOf(START), ei = PERIODS.indexOf(END);
+  const colors = PERIODS.map((p, i) =>
+    i === si || i === ei ? '#4ecca3' : (i > si && i < ei ? 'rgba(78,204,163,0.35)' : '#2d4263'));
+
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById('trend'), {
+    data: {
+      labels: PERIODS.map(label),
+      datasets: [
+        { type:'bar',  data: rev, backgroundColor: colors, borderWidth: 0, order: 2 },
+        { type:'line', data: bud, borderColor:'#f0a030', borderWidth:1.5, pointRadius:0,
+          borderDash:[4,3], tension:0.25, order: 1 },
+      ],
+    },
     options: {
       responsive: true, maintainAspectRatio: false,
+      onClick: (e, els, chart) => {
+        const hit = chart.getElementsAtEventForMode(e, 'index', { intersect: false }, true);
+        if (hit.length) onPick(hit[0].index);
+      },
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: c => {
-          const s = steps[c.dataIndex];
-          return s.type === 'abs' ? money(s.v) : (s.v >= 0 ? '+' : '') + money(s.v);
-        } } },
+        tooltip: { callbacks: {
+          title: c => label(PERIODS[c[0].dataIndex]),
+          label: c => (c.datasetIndex === 0 ? 'Actual ' : 'Budget ') + fmt(c.raw),
+        } },
       },
       scales: {
-        x: { ticks: { color: '#aaa', font: { size: 11 } }, grid: { display: false } },
-        // a waterfall zeroed on the axis hides every step: the moves are small next to the level,
-        // so the axis is framed on the range the bars actually span
-        y: { min: yMin, max: yMax,
-             ticks: { color: '#888', font: { size: 10 }, callback: v => '$' + (v / 1000).toFixed(0) + 'k' },
-             grid: { color: 'rgba(15,52,96,0.6)' } },
+        x: { ticks: { color:'#777', font:{ size:9 }, maxRotation:0, autoSkip:true, maxTicksLimit:14 },
+             grid: { display:false } },
+        y: { ticks: { color:'#777', font:{ size:9 }, callback: axis },
+             grid: { color:'rgba(15,52,96,0.5)' } },
       },
     },
   });
 }
 
+function table(base, curr, firstCol, which) {
+  const keys = [...new Set([...Object.keys(base), ...Object.keys(curr)])];
+  const rows = keys.map(k => {
+    const b = base[k] || { cases:0, dollars:0 }, c = curr[k] || { cases:0, dollars:0 };
+    const bv = b[METRIC], cv = c[METRIC], d = cv - bv;
+    return { k, b, c, d, bv, cv, pc: bv ? d / Math.abs(bv) : (d ? Infinity * Math.sign(d) : 0) };
+  });
+  const st = SORT[which];
+  const val = r => ({ name:r.k, cases:r.c.cases, revenue:r.c.dollars, change:r.d, pct:r.pc }[st.col]);
+  const unit = METRIC === 'dollars' ? '$' : 'cases';
+  rows.sort((x, y) => {
+    const a = val(x), b = val(y);
+    if (st.col === 'name') return st.dir * String(a).localeCompare(String(b));
+    if (st.col === 'change') return st.dir * (Math.abs(a) - Math.abs(b));   // biggest movers, either way
+    return st.dir * ((a || 0) - (b || 0));
+  });
+  const tb = rows.reduce((s, r) => s + r.bv, 0), tc = rows.reduce((s, r) => s + r.cv, 0);
+  const cb = rows.reduce((s, r) => s + r.b.cases, 0),   cc = rows.reduce((s, r) => s + r.c.cases, 0);
+  if (!rows.length) return '<div class="empty">Nothing in either period.</div>';
+  const th = (col, text, cls) =>
+    `<th class="${cls || ''} sortable" onclick="sortBy('${which}','${col}')">${text}` +
+    (st.col === col ? `<span class="caret">${st.dir < 0 ? '\u25be' : '\u25b4'}</span>` : '') + '</th>';
+  return `<table><thead><tr>
+      ${th('name', firstCol)}${th('cases','Cases','num')}${th('revenue','Revenue','num')}
+      ${th('change','Change ' + unit,'num')}${th('pct','%','num')}</tr></thead>
+    <tbody>${rows.map(r => `<tr>
+      <td>${r.k}</td>
+      <td class="num">${num(r.c.cases)}<span class="dim"> / ${num(r.b.cases)}</span></td>
+      <td class="num">${money(r.c.dollars)}<span class="dim"> / ${money(r.b.dollars)}</span></td>
+      <td class="num">${delta(r.d)}</td>
+      <td class="num">${pct(r.d, r.bv)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>Total</td>
+      <td class="num">${num(cc)}<span class="dim"> / ${num(cb)}</span></td>
+      <td class="num">${money(rows.reduce((s,r)=>s+r.c.dollars,0))}<span class="dim"> / ${money(rows.reduce((s,r)=>s+r.b.dollars,0))}</span></td>
+      <td class="num">${delta(tc - tb)}</td><td class="num">${pct(tc - tb, tb)}</td></tr></tfoot></table>`;
+}
 
-// ---------------------------------------------------------------- boot
+function render() {
+  if (!START || !END) return;
+  const same = START === END;
+  document.getElementById('rangeLabel').textContent =
+    same ? `— ${label(END)}` : `— ${label(START)} → ${label(END)}`;
+
+  const curProd = agg(END, 'product'), baseProd = same ? {} : agg(START, 'product');
+  const tc = totalOf(curProd), tb = totalOf(baseProd);
+  const budgetTot = totalOf(budgetFor(END));
+  const cases = totalOf(curProd, 'cases'), dollars = totalOf(curProd, 'dollars');
+  document.getElementById('trendTitle').textContent = METRIC === 'dollars' ? 'Revenue' : 'Cases';
+
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi"><div class="k">${METRIC === 'dollars' ? 'Revenue' : 'Cases'}</div><div class="v">${fmt(tc)}</div>
+      <div class="s">${label(END)}</div></div>
+    <div class="kpi"><div class="k">${same ? 'Compare' : 'Change'}</div>
+      <div class="v ${same ? '' : sign(tc - tb)}">${same ? '—' : (tc - tb >= 0 ? '+' : '') + fmt(tc - tb)}</div>
+      <div class="s">${same ? 'click a second bar' : fmt(tb) + ' in ' + label(START)}</div></div>
+    <div class="kpi"><div class="k">vs budget</div>
+      <div class="v ${sign(tc - budgetTot)}">${budgetTot ? (tc - budgetTot >= 0 ? '+' : '') + fmt(tc - budgetTot) : '—'}</div>
+      <div class="s">${budgetTot ? fmt(budgetTot) + ' budgeted' : 'not budgeted'}</div></div>
+    <div class="kpi"><div class="k">${METRIC === 'dollars' ? 'Cases' : 'Revenue'}</div>
+      <div class="v">${METRIC === 'dollars' ? num(cases) : money(dollars)}</div>
+      <div class="s">${cases ? '$' + (dollars / cases).toFixed(2) + ' per case' : ''}</div></div>`;
+
+  document.getElementById('prodTable').innerHTML = table(baseProd, curProd, 'Product', 'prod');
+  document.getElementById('custTable').innerHTML = table(
+    same ? {} : agg(START, 'customer'), agg(END, 'customer'),
+    CUSTDIM === 'group' ? 'Customer group' : 'Customer', 'cust');
+}
+
 async function load() {
   const [inv, bw, bm, bp] = await Promise.all([
     DataSource.fetchTable('invoices',         { mode:'prod' }),
@@ -325,17 +319,12 @@ async function load() {
     DataSource.fetchTable('budget_month_raw', { mode:'prod' }),
     DataSource.fetchTable('budget_prices',    { mode:'prod' }),
   ]);
-  INV = parseGvizTable(inv);
-  BW  = parseGvizTable(bw);
-  BM  = parseGvizTable(bm);
-  BP  = parseGvizTable(bp);
-
-  document.getElementById('versionStamp').textContent =
-    `${INV.length.toLocaleString()} invoice lines`;
-  fillPeriods();
+  INV = parseGvizTable(inv); BW = parseGvizTable(bw); BM = parseGvizTable(bm); BP = parseGvizTable(bp);
+  document.getElementById('versionStamp').textContent = `${INV.length.toLocaleString()} invoice lines`;
+  buildPeriods();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('body').style.display = '';
-  render();
+  drawTrend(); render();
 }
 document.addEventListener('DOMContentLoaded', load);
 </script>
