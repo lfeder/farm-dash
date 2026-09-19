@@ -83,11 +83,6 @@
     </div>
   </div>
 
-  <div class="panel" id="costPanel">
-    <h3>Cost and margin <span>— farm level, monthly</span></h3>
-    <div id="costTable"></div>
-    <div class="note" id="costNote"></div>
-  </div>
 
 </div>
 
@@ -95,7 +90,7 @@
 // ---------------------------------------------------------------- state
 let GRAIN = 'week';        // week | month
 let COMPARE = 'prior';     // prior | budget
-let INV = [], BW = [], BM = [], BP = [], EXP = [];
+let INV = [], BW = [], BM = [], BP = [];
 let bridgeChart = null;
 
 const BUDGET_CODES = ['kr','kw','kf','jr','jw','jf','ok','oj','lr','lw','lf','wr','ef','ar','wf','af'];
@@ -273,7 +268,6 @@ function render() {
       <td class="num">${delta(cTot.curr - cTot.base)}</td><td class="num">${delta(cTot.volume)}</td>
       <td class="num">${delta(cTot.price)}</td></tr></tfoot></table>` : '<div class="empty">No sales in this period.</div>';
 
-  drawCost(cur, tot.curr);
 }
 
 function drawBridge(tot, fromName, toName) {
@@ -322,66 +316,22 @@ function drawBridge(tot, fromName, toName) {
   });
 }
 
-function drawCost(periodKey, revenue) {
-  const panel = document.getElementById('costPanel');
-  if (GRAIN !== 'month') { panel.style.display = 'none'; return; }
-  panel.style.display = '';
-  const [ys, rest] = periodKey.split('-');
-  const y = +ys, m = +rest.slice(1);
-  const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y;
-
-  const bucket = (yy, mm) => {
-    const o = {};
-    for (const e of EXP) {
-      if (+e.Year !== yy || +e.Month !== mm) continue;
-      const c = e.Macro || '(uncategorised)';
-      o[c] = (o[c] || 0) + (+e.EffectiveAmount || 0);
-    }
-    return o;
-  };
-  const now = bucket(y, m), was = bucket(py, pm);
-  const cats = [...new Set([...Object.keys(now), ...Object.keys(was)])].sort();
-  if (!cats.length) {
-    document.getElementById('costTable').innerHTML = '<div class="empty">No expenses loaded for this month.</div>';
-    document.getElementById('costNote').textContent = '';
-    return;
-  }
-  const tN = cats.reduce((s, c) => s + (now[c] || 0), 0), tW = cats.reduce((s, c) => s + (was[c] || 0), 0);
-  document.getElementById('costTable').innerHTML = `
-    <table><thead><tr><th>Category</th><th class="num">This month</th><th class="num">Prior</th>
-      <th class="num">Change</th></tr></thead>
-    <tbody>${cats.map(c => `<tr><td>${c}</td><td class="num">${money(now[c] || 0)}</td>
-      <td class="num dim">${money(was[c] || 0)}</td>
-      <td class="num">${delta((now[c] || 0) - (was[c] || 0))}</td></tr>`).join('')}</tbody>
-    <tfoot>
-      <tr><td>Total cost</td><td class="num">${money(tN)}</td><td class="num dim">${money(tW)}</td>
-        <td class="num">${delta(tN - tW)}</td></tr>
-      <tr><td>Revenue less cost</td><td class="num ${sign(revenue - tN)}">${money(revenue - tN)}</td>
-        <td class="num dim"></td><td class="num"></td></tr>
-    </tfoot></table>`;
-  document.getElementById('costNote').innerHTML =
-    'Cost carries no product or customer, so this is the whole farm and cannot be split the way the ' +
-    'tables above are. Only the Lettuce class is tagged &mdash; 91% of expense rows have no class at all &mdash; ' +
-    'so margin by product would be an allocation, not a measurement.';
-}
 
 // ---------------------------------------------------------------- boot
 async function load() {
-  const [inv, bw, bm, bp, exp] = await Promise.all([
+  const [inv, bw, bm, bp] = await Promise.all([
     DataSource.fetchTable('invoices',         { mode:'prod' }),
     DataSource.fetchTable('budget_week_raw',  { mode:'prod' }),
     DataSource.fetchTable('budget_month_raw', { mode:'prod' }),
     DataSource.fetchTable('budget_prices',    { mode:'prod' }),
-    DataSource.fetchTable('expenses',         { mode:'prod' }).catch(() => ({ cols:[], rows:[] })),
   ]);
   INV = parseGvizTable(inv);
   BW  = parseGvizTable(bw);
   BM  = parseGvizTable(bm);
   BP  = parseGvizTable(bp);
-  EXP = parseGvizTable(exp);
 
   document.getElementById('versionStamp').textContent =
-    `${INV.length.toLocaleString()} invoice lines · ${EXP.length.toLocaleString()} expense rows`;
+    `${INV.length.toLocaleString()} invoice lines`;
   fillPeriods();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('body').style.display = '';
