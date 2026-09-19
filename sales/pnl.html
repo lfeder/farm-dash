@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Movement</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="../lib/data-source.js?v=20260918a"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#1a1a2e; color:#e0e0e0;
+         height:100vh; display:flex; flex-direction:column; }
+  #header { background:#16213e; padding:12px 24px; display:flex; align-items:center; justify-content:space-between;
+            border-bottom:1px solid #0f3460; flex-wrap:wrap; gap:10px; }
+  #header h1 { font-size:1.3rem; color:#4ecca3; }
+  #header .info { font-size:0.8rem; color:#888; }
+  .ctl { padding:4px 10px; font-size:0.75rem; background:#0f3460; color:#ccc; border:1px solid #4ecca3;
+         border-radius:4px; cursor:pointer; }
+  .ctl.off { border-color:#555; color:#999; }
+  select.ctl { cursor:pointer; }
+  #loading { display:flex; align-items:center; justify-content:center; height:100%; font-size:1.1rem; color:#4ecca3; }
+  #body { flex:1; overflow-y:auto; padding:16px 24px 32px; display:flex; flex-direction:column; gap:16px; }
+
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .kpi { background:#16213e; border-radius:8px; padding:12px 14px; }
+  .kpi .k { font-size:0.7rem; color:#888; text-transform:uppercase; letter-spacing:0.08em; }
+  .kpi .v { font-size:1.5rem; font-weight:600; margin-top:3px; }
+  .kpi .s { font-size:0.75rem; color:#888; margin-top:2px; }
+
+  .panel { background:#16213e; border-radius:8px; padding:14px 16px; }
+  .panel h3 { font-size:0.9rem; color:#4ecca3; margin-bottom:10px; font-weight:600; }
+  .panel h3 span { color:#777; font-weight:400; font-size:0.8rem; }
+  .cols { display:grid; grid-template-columns:1fr; gap:16px; }
+  @media (min-width:1100px){ .cols { grid-template-columns:1fr 1fr; } }
+
+  table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+  th { text-align:left; padding:6px 8px; border-bottom:2px solid #0f3460; color:#4ecca3; font-weight:600;
+       white-space:nowrap; }
+  th.num, td.num { text-align:right; }
+  td { padding:5px 8px; border-bottom:1px solid rgba(15,52,96,0.5); white-space:nowrap; }
+  tbody tr:hover { background:#0f3460; }
+  tfoot td { border-top:2px solid #0f3460; border-bottom:none; font-weight:600; }
+  .pos { color:#4ecca3; } .neg { color:#e74c3c; } .dim { color:#777; }
+  .note { font-size:0.75rem; color:#777; margin-top:8px; line-height:1.5; }
+  .chartwrap { height:230px; position:relative; }
+  .empty { color:#666; font-size:0.9rem; padding:12px 0; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Sales Movement</h1>
+  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    <button id="btnWeek"  class="ctl"     onclick="setGrain('week')">Weekly</button>
+    <button id="btnMonth" class="ctl off" onclick="setGrain('month')">Monthly</button>
+    <select id="periodSel" class="ctl" onchange="render()"></select>
+    <button id="btnCmp" class="ctl" onclick="toggleCompare()">vs prior period</button>
+    <span class="info" id="versionStamp"></span>
+  </div>
+</div>
+
+<div id="loading">Loading…</div>
+<div id="body" style="display:none">
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="panel">
+    <h3>What moved the top line <span id="bridgeSub"></span></h3>
+    <div class="chartwrap"><canvas id="bridge"></canvas></div>
+    <div class="note">Volume is the change in cases valued at the old price. Price is the change in
+      average price applied to the cases actually sold. Together they account for the whole move; a
+      product with no sales in one of the two periods lands in New or Lost instead.</div>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <h3>By product</h3>
+      <div id="prodTable"></div>
+    </div>
+    <div class="panel">
+      <h3>By customer <span id="custSub"></span></h3>
+      <div id="custTable"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="costPanel">
+    <h3>Cost and margin <span>— farm level, monthly</span></h3>
+    <div id="costTable"></div>
+    <div class="note" id="costNote"></div>
+  </div>
+
+</div>
+
+<script>
+// ---------------------------------------------------------------- state
+let GRAIN = 'week';        // week | month
+let COMPARE = 'prior';     // prior | budget
+let INV = [], BW = [], BM = [], BP = [], EXP = [];
+let bridgeChart = null;
+
+const BUDGET_CODES = ['kr','kw','kf','jr','jw','jf','ok','oj','lr','lw','lf','wr','ef','ar','wf','af'];
+const money = n => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString();
+const num   = n => Math.round(n).toLocaleString();
+const sign  = n => n >= 0 ? 'pos' : 'neg';
+const delta = n => `<span class="${sign(n)}">${n >= 0 ? '+' : ''}${money(n)}</span>`;
+
+// ---------------------------------------------------------------- parsing
+function parseGvizTable(table) {
+  const cols = table.cols.map(c => c.label);
+  const intCols = new Set(['Cases','Year','Month','ISOYear','ISOWeek','DOW','Grade']);
+  const numCols = new Set(['Dollars','Pounds','Amount','EffectiveAmount','amount','effective_amount']);
+  return table.rows.map(r => {
+    const obj = {};
+    r.c.forEach((cell, i) => {
+      const col = cols[i];
+      if (!col) return;
+      if (!cell || cell.v === null || cell.v === undefined) { obj[col] = ''; return; }
+      if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
+        const dm = cell.v.match(/Date\((\d+),(\d+),(\d+)\)/);
+        if (dm) { obj[col] = cell.f || cell.v; obj[col + '_y'] = +dm[1]; obj[col + '_m'] = +dm[2] + 1; }
+      } else if (intCols.has(col) && typeof cell.v === 'number') { obj[col] = Math.round(cell.v); }
+      else if (numCols.has(col) && typeof cell.v === 'number') { obj[col] = cell.v; }
+      else { obj[col] = cell.v; }
+    });
+    return obj;
+  });
+}
+
+// ---------------------------------------------------------------- periods
+const key    = r => GRAIN === 'week' ? `${r.ISOYear}-W${String(r.ISOWeek).padStart(2,'0')}`
+                                     : `${r.Year}-M${String(r.Month).padStart(2,'0')}`;
+const label  = k => GRAIN === 'week' ? k.replace('-W',' week ') : k.replace('-M',' month ');
+
+function periods() {
+  return [...new Set(INV.filter(r => r.ProductCode && r.ProductCode !== 'Sales').map(key))]
+    .filter(Boolean).sort().reverse();
+}
+function priorOf(k) { const all = periods().slice().reverse(); const i = all.indexOf(k); return i > 0 ? all[i-1] : null; }
+
+// ---------------------------------------------------------------- aggregation
+function agg(periodKey, dim) {
+  const out = {};
+  for (const r of INV) {
+    if (!r.ProductCode || r.ProductCode === 'Sales') continue;
+    if (key(r) !== periodKey) continue;
+    const d = dim === 'product' ? r.ProductCode : (r.CustomerGroup || r.CustomerName || '(none)');
+    if (!out[d]) out[d] = { cases:0, dollars:0 };
+    out[d].cases   += (+r.Cases   || 0);
+    out[d].dollars += (+r.Dollars || 0);
+  }
+  return out;
+}
+
+/** Budget for a period, by product code (uppercase), as {cases, dollars}. */
+function budgetFor(periodKey) {
+  const [ys, rest] = periodKey.split('-');
+  const y = +ys, n = +rest.slice(1);
+  const rows = GRAIN === 'week' ? BW : BM;
+  const row = rows.find(r => +r.year === y && (GRAIN === 'week' ? +r.isoweek === n : +r.month === n));
+  const prices = BP.find(p => +p.year === y) || BP[BP.length - 1];
+  const out = {};
+  if (!row) return out;
+  for (const c of BUDGET_CODES) {
+    const cases = +row[c] || 0;
+    if (!cases) continue;
+    const price = prices ? (+prices[c] || 0) : 0;
+    out[c.toUpperCase()] = { cases, dollars: cases * price };
+  }
+  return out;
+}
+
+/** Two-way price/volume split between a base and a current set. */
+function decompose(base, curr) {
+  const keys = [...new Set([...Object.keys(base), ...Object.keys(curr)])];
+  const rows = [], tot = { volume:0, price:0, gained:0, lost:0, base:0, curr:0 };
+  for (const k of keys) {
+    const b = base[k] || { cases:0, dollars:0 }, c = curr[k] || { cases:0, dollars:0 };
+    const d = c.dollars - b.dollars;
+    let volume = 0, price = 0, gained = 0, lost = 0;
+    if (b.cases > 0 && c.cases > 0) {
+      const pb = b.dollars / b.cases, pc = c.dollars / c.cases;
+      volume = (c.cases - b.cases) * pb;
+      price  = (pc - pb) * c.cases;
+    } else if (b.cases === 0 && c.cases > 0) { gained = d; }
+    else if (c.cases === 0 && b.cases > 0)   { lost   = d; }
+    else { volume = d; }
+    rows.push({ k, b, c, d, volume, price, gained, lost });
+    tot.volume += volume; tot.price += price; tot.gained += gained; tot.lost += lost;
+    tot.base += b.dollars; tot.curr += c.dollars;
+  }
+  rows.sort((x, y) => Math.abs(y.d) - Math.abs(x.d));
+  return { rows, tot };
+}
+
+// ---------------------------------------------------------------- render
+function setGrain(g) {
+  GRAIN = g;
+  document.getElementById('btnWeek').className  = 'ctl' + (g === 'week'  ? '' : ' off');
+  document.getElementById('btnMonth').className = 'ctl' + (g === 'month' ? '' : ' off');
+  fillPeriods();
+  render();
+}
+function toggleCompare() {
+  COMPARE = COMPARE === 'prior' ? 'budget' : 'prior';
+  document.getElementById('btnCmp').textContent = COMPARE === 'prior' ? 'vs prior period' : 'vs budget';
+  render();
+}
+function fillPeriods() {
+  const sel = document.getElementById('periodSel'), ps = periods().slice(0, 40);
+  sel.innerHTML = ps.map(p => `<option value="${p}">${label(p)}</option>`).join('');
+}
+
+function render() {
+  const cur = document.getElementById('periodSel').value;
+  if (!cur) return;
+  const prior = priorOf(cur);
+  const curProd = agg(cur, 'product');
+  const baseProd = COMPARE === 'prior' ? (prior ? agg(prior, 'product') : {}) : budgetFor(cur);
+  const baseName = COMPARE === 'prior' ? (prior ? label(prior) : 'no prior period') : 'budget';
+
+  const { rows: pRows, tot } = decompose(baseProd, curProd);
+  const cases = Object.values(curProd).reduce((s, v) => s + v.cases, 0);
+
+  // KPIs
+  const budget = budgetFor(cur);
+  const budgetTot = Object.values(budget).reduce((s, v) => s + v.dollars, 0);
+  const priorTot = prior ? Object.values(agg(prior, 'product')).reduce((s, v) => s + v.dollars, 0) : 0;
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi"><div class="k">Revenue</div><div class="v">${money(tot.curr)}</div>
+      <div class="s">${label(cur)}</div></div>
+    <div class="kpi"><div class="k">vs prior</div><div class="v ${sign(tot.curr - priorTot)}">${priorTot ? (tot.curr - priorTot >= 0 ? '+' : '') + money(tot.curr - priorTot) : '—'}</div>
+      <div class="s">${priorTot ? money(priorTot) + ' then' : 'no prior period'}</div></div>
+    <div class="kpi"><div class="k">vs budget</div><div class="v ${sign(tot.curr - budgetTot)}">${budgetTot ? (tot.curr - budgetTot >= 0 ? '+' : '') + money(tot.curr - budgetTot) : '—'}</div>
+      <div class="s">${budgetTot ? money(budgetTot) + ' budgeted' : 'not budgeted'}</div></div>
+    <div class="kpi"><div class="k">Cases</div><div class="v">${num(cases)}</div>
+      <div class="s">${cases ? '$' + (tot.curr / cases).toFixed(2) + ' per case' : ''}</div></div>`;
+
+  document.getElementById('bridgeSub').textContent = `— ${baseName} → ${label(cur)}`;
+  document.getElementById('custSub').innerHTML = COMPARE === 'budget'
+    ? '— vs prior period; budget is not held by customer' : '';
+
+  drawBridge(tot, baseName, label(cur));
+
+  // by product
+  document.getElementById('prodTable').innerHTML = pRows.length ? `
+    <table><thead><tr>
+      <th>Product</th><th class="num">Cases</th><th class="num">Revenue</th>
+      <th class="num">Change</th><th class="num">Volume</th><th class="num">Price</th></tr></thead>
+    <tbody>${pRows.map(r => `<tr>
+      <td>${r.k}</td>
+      <td class="num">${num(r.c.cases)}<span class="dim"> / ${num(r.b.cases)}</span></td>
+      <td class="num">${money(r.c.dollars)}</td>
+      <td class="num">${delta(r.d)}</td>
+      <td class="num">${r.gained ? '<span class="dim">new</span>' : r.lost ? '<span class="dim">lost</span>' : delta(r.volume)}</td>
+      <td class="num">${r.gained || r.lost ? '' : delta(r.price)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>Total</td><td class="num">${num(cases)}</td><td class="num">${money(tot.curr)}</td>
+      <td class="num">${delta(tot.curr - tot.base)}</td><td class="num">${delta(tot.volume)}</td>
+      <td class="num">${delta(tot.price)}</td></tr></tfoot></table>` : '<div class="empty">No sales in this period.</div>';
+
+  // by customer — always against the prior period, never budget
+  const curCust = agg(cur, 'customer');
+  const baseCust = prior ? agg(prior, 'customer') : {};
+  const { rows: cRows, tot: cTot } = decompose(baseCust, curCust);
+  document.getElementById('custTable').innerHTML = cRows.length ? `
+    <table><thead><tr>
+      <th>Customer</th><th class="num">Revenue</th><th class="num">Change</th>
+      <th class="num">Volume</th><th class="num">Price</th></tr></thead>
+    <tbody>${cRows.map(r => `<tr>
+      <td>${r.k}</td><td class="num">${money(r.c.dollars)}</td><td class="num">${delta(r.d)}</td>
+      <td class="num">${r.gained ? '<span class="dim">new</span>' : r.lost ? '<span class="dim">lost</span>' : delta(r.volume)}</td>
+      <td class="num">${r.gained || r.lost ? '' : delta(r.price)}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td>Total</td><td class="num">${money(cTot.curr)}</td>
+      <td class="num">${delta(cTot.curr - cTot.base)}</td><td class="num">${delta(cTot.volume)}</td>
+      <td class="num">${delta(cTot.price)}</td></tr></tfoot></table>` : '<div class="empty">No sales in this period.</div>';
+
+  drawCost(cur, tot.curr);
+}
+
+function drawBridge(tot, fromName, toName) {
+  const steps = [
+    { l: fromName,  v: tot.base,  type: 'abs' },
+    { l: 'Volume',  v: tot.volume },
+    { l: 'Price',   v: tot.price },
+    { l: 'New',     v: tot.gained },
+    { l: 'Lost',    v: tot.lost },
+    { l: toName,    v: tot.curr,  type: 'abs' },
+  ].filter(s => s.type === 'abs' || Math.abs(s.v) > 0.5);
+
+  let run = 0; const bars = [], colors = [], levels = [];
+  for (const s of steps) {
+    if (s.type === 'abs') { bars.push([0, s.v]); colors.push('#4a90d9'); run = s.v; levels.push(s.v); }
+    else { bars.push([run, run + s.v]); colors.push(s.v >= 0 ? '#4ecca3' : '#e74c3c');
+           levels.push(run, run + s.v); run += s.v; }
+  }
+  // frame on the levels the bars actually reach, not on the zero floor the absolute bars sit on
+  const lo = Math.min(...levels), hi = Math.max(...levels);
+  const pad = Math.max((hi - lo) * 0.35, hi * 0.02, 1);
+  const yMin = Math.max(0, lo - pad), yMax = hi + pad;
+
+  if (bridgeChart) bridgeChart.destroy();
+  bridgeChart = new Chart(document.getElementById('bridge'), {
+    type: 'bar',
+    data: { labels: steps.map(s => s.l), datasets: [{ data: bars, backgroundColor: colors, borderWidth: 0 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => {
+          const s = steps[c.dataIndex];
+          return s.type === 'abs' ? money(s.v) : (s.v >= 0 ? '+' : '') + money(s.v);
+        } } },
+      },
+      scales: {
+        x: { ticks: { color: '#aaa', font: { size: 11 } }, grid: { display: false } },
+        // a waterfall zeroed on the axis hides every step: the moves are small next to the level,
+        // so the axis is framed on the range the bars actually span
+        y: { min: yMin, max: yMax,
+             ticks: { color: '#888', font: { size: 10 }, callback: v => '$' + (v / 1000).toFixed(0) + 'k' },
+             grid: { color: 'rgba(15,52,96,0.6)' } },
+      },
+    },
+  });
+}
+
+function drawCost(periodKey, revenue) {
+  const panel = document.getElementById('costPanel');
+  if (GRAIN !== 'month') { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+  const [ys, rest] = periodKey.split('-');
+  const y = +ys, m = +rest.slice(1);
+  const pm = m === 1 ? 12 : m - 1, py = m === 1 ? y - 1 : y;
+
+  const bucket = (yy, mm) => {
+    const o = {};
+    for (const e of EXP) {
+      if (+e.Year !== yy || +e.Month !== mm) continue;
+      const c = e.Macro || '(uncategorised)';
+      o[c] = (o[c] || 0) + (+e.EffectiveAmount || 0);
+    }
+    return o;
+  };
+  const now = bucket(y, m), was = bucket(py, pm);
+  const cats = [...new Set([...Object.keys(now), ...Object.keys(was)])].sort();
+  if (!cats.length) {
+    document.getElementById('costTable').innerHTML = '<div class="empty">No expenses loaded for this month.</div>';
+    document.getElementById('costNote').textContent = '';
+    return;
+  }
+  const tN = cats.reduce((s, c) => s + (now[c] || 0), 0), tW = cats.reduce((s, c) => s + (was[c] || 0), 0);
+  document.getElementById('costTable').innerHTML = `
+    <table><thead><tr><th>Category</th><th class="num">This month</th><th class="num">Prior</th>
+      <th class="num">Change</th></tr></thead>
+    <tbody>${cats.map(c => `<tr><td>${c}</td><td class="num">${money(now[c] || 0)}</td>
+      <td class="num dim">${money(was[c] || 0)}</td>
+      <td class="num">${delta((now[c] || 0) - (was[c] || 0))}</td></tr>`).join('')}</tbody>
+    <tfoot>
+      <tr><td>Total cost</td><td class="num">${money(tN)}</td><td class="num dim">${money(tW)}</td>
+        <td class="num">${delta(tN - tW)}</td></tr>
+      <tr><td>Revenue less cost</td><td class="num ${sign(revenue - tN)}">${money(revenue - tN)}</td>
+        <td class="num dim"></td><td class="num"></td></tr>
+    </tfoot></table>`;
+  document.getElementById('costNote').innerHTML =
+    'Cost carries no product or customer, so this is the whole farm and cannot be split the way the ' +
+    'tables above are. Only the Lettuce class is tagged &mdash; 91% of expense rows have no class at all &mdash; ' +
+    'so margin by product would be an allocation, not a measurement.';
+}
+
+// ---------------------------------------------------------------- boot
+async function load() {
+  const [inv, bw, bm, bp, exp] = await Promise.all([
+    DataSource.fetchTable('invoices',         { mode:'prod' }),
+    DataSource.fetchTable('budget_week_raw',  { mode:'prod' }),
+    DataSource.fetchTable('budget_month_raw', { mode:'prod' }),
+    DataSource.fetchTable('budget_prices',    { mode:'prod' }),
+    DataSource.fetchTable('expenses',         { mode:'prod' }).catch(() => ({ cols:[], rows:[] })),
+  ]);
+  INV = parseGvizTable(inv);
+  BW  = parseGvizTable(bw);
+  BM  = parseGvizTable(bm);
+  BP  = parseGvizTable(bp);
+  EXP = parseGvizTable(exp);
+
+  document.getElementById('versionStamp').textContent =
+    `${INV.length.toLocaleString()} invoice lines · ${EXP.length.toLocaleString()} expense rows`;
+  fillPeriods();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('body').style.display = '';
+  render();
+}
+document.addEventListener('DOMContentLoaded', load);
+</script>
+</body>
+</html>
