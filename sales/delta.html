@@ -41,6 +41,8 @@
   tfoot td { border-top:2px solid #0f3460; border-bottom:none; font-weight:600; }
   .pos { color:#4ecca3; } .neg { color:#e74c3c; } .dim { color:#777; }
   .empty { color:#666; font-size:0.9rem; padding:10px 0; }
+  tr.grp td { background:rgba(15,52,96,0.55); font-weight:600; border-bottom:1px solid #4ecca3; }
+  tr.sub td:first-child { padding-left:20px; color:#bbb; }
   th.sortable { cursor:pointer; user-select:none; }
   th.sortable:hover { color:#7fffd4; }
   .caret { font-size:0.65rem; margin-left:3px; }
@@ -62,13 +64,13 @@
 
   <div class="cols">
     <div class="panel sel">
-      <h3>Revenue by <span id="grainWord">week</span> <span class="dim" id="rangeLabel"></span></h3>
+      <h3>Revenue by <span id="grainWord">week</span></h3>
       <div id="periodTable"></div>
     </div>
-    <div class="panel"><h3>By product</h3><div id="prodTable"></div></div>
+    <div class="panel"><div id="prodTable"></div></div>
     <div class="panel">
-      <h3 style="display:flex;align-items:center;gap:10px;justify-content:space-between;">By customer
-        <button id="btnCustDim" class="ctl" onclick="toggleCustDim()">Customer group</button></h3>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+        <button id="btnCustDim" class="ctl" onclick="toggleCustDim()">Customer group</button></div>
       <div id="custTable"></div>
     </div>
   </div>
@@ -82,6 +84,12 @@ let PERIODS = [], START = null, END = null, pendingStart = null;
 let CUSTDIM = 'group';                                  // group | name
 const SORT = { prod: { col:'ddollars', dir:-1 }, cust: { col:'ddollars', dir:-1 },
                sel:  { col:'n',        dir: 1 } };
+
+// First letter is the crop: K Keiki, J Japanese, E English are cukes, and O is an
+// offgrade cuke. L greens, W cress, A arugula are the leafy side. Confirmed against
+// sales_product names, not guessed from the letters.
+const CUKE_LETTERS = new Set(['K', 'J', 'E', 'O']);
+const cropOf = code => CUKE_LETTERS.has(String(code)[0]) ? 'Cukes' : 'Lettuce & greens';
 
 const BUDGET_CODES = ['kr','kw','kf','jr','jw','jf','ok','oj','lr','lw','lf','wr','ef','ar','wf','af'];
 const money = n => (n < 0 ? '-' : '') + '$' + Math.abs(Math.round(n)).toLocaleString();
@@ -217,7 +225,22 @@ function periodTable() {
 }
 
 
-function table(base, curr, firstCol, which) {
+/** Rows under a crop heading, each crop carrying its own subtotal. */
+function groupedBody(rows, group, body, sum) {
+  const buckets = new Map();
+  for (const r of rows) {
+    const g = group(r.k);
+    if (!buckets.has(g)) buckets.set(g, []);
+    buckets.get(g).push(r);
+  }
+  return [...buckets.entries()].map(([name, rs]) => `
+    <tr class="grp"><td>${name}</td>
+      <td class="num">${num(sum(rs,'cases'))}</td><td class="num">${dCases(sum(rs,'dcases'))}</td>
+      <td class="num">${money(sum(rs,'dollars'))}</td><td class="num">${dMoney(sum(rs,'ddollars'))}</td></tr>
+    ${rs.map(r => `<tr class="sub"><td>${r.k}</td>${body(r)}</tr>`).join('')}`).join('');
+}
+
+function table(base, curr, firstCol, which, group) {
   const keys = [...new Set([...Object.keys(base), ...Object.keys(curr)])];
   const rows = keys.map(k => {
     const b = base[k] || { cases:0, dollars:0 }, c = curr[k] || { cases:0, dollars:0 };
@@ -228,30 +251,29 @@ function table(base, curr, firstCol, which) {
     ? st.dir * String(x.k).localeCompare(String(y.k))
     : st.dir * ((x[st.col] || 0) - (y[st.col] || 0)));
   if (!rows.length) return '<div class="empty">Nothing in either period.</div>';
-  const sum = f => rows.reduce((s, r) => s + r[f], 0);
+  const sum = (rs, f) => rs.reduce((s, r) => s + r[f], 0);
+  const body = r => `
+      <td class="num">${num(r.cases)}</td>
+      <td class="num">${dCases(r.dcases)}</td>
+      <td class="num">${money(r.dollars)}</td>
+      <td class="num">${dMoney(r.ddollars)}</td>`;
   const th = (col, text, cls) =>
     `<th class="${cls || ''} sortable" onclick="sortBy('${which}','${col}')">${text}` +
     (st.col === col ? `<span class="caret">${st.dir < 0 ? '\u25be' : '\u25b4'}</span>` : '') + '</th>';
   return `<table><thead><tr>
       ${th('name', firstCol)}${th('cases','Cases','num')}${th('dcases','\u0394 Cases','num')}
       ${th('dollars','Revenue','num')}${th('ddollars','\u0394 Revenue','num')}</tr></thead>
-    <tbody>${rows.map(r => `<tr>
-      <td>${r.k}</td>
-      <td class="num">${num(r.cases)}</td>
-      <td class="num">${dCases(r.dcases)}</td>
-      <td class="num">${money(r.dollars)}</td>
-      <td class="num">${dMoney(r.ddollars)}</td></tr>`).join('')}</tbody>
+    <tbody>${(group ? groupedBody(rows, group, body, sum) : rows.map(r => `<tr>
+      <td>${r.k}</td>${body(r)}</tr>`).join(''))}</tbody>
     <tfoot><tr><td>Total</td>
-      <td class="num">${num(sum('cases'))}</td><td class="num">${dCases(sum('dcases'))}</td>
-      <td class="num">${money(sum('dollars'))}</td><td class="num">${dMoney(sum('ddollars'))}</td>
+      <td class="num">${num(sum(rows,'cases'))}</td><td class="num">${dCases(sum(rows,'dcases'))}</td>
+      <td class="num">${money(sum(rows,'dollars'))}</td><td class="num">${dMoney(sum(rows,'ddollars'))}</td>
     </tr></tfoot></table>`;
 }
 
 function render() {
   if (!START || !END) return;
   const same = START === END;
-  document.getElementById('rangeLabel').textContent =
-    same ? `— ${label(END)}` : `— ${label(START)} → ${label(END)}`;
 
   const curProd = agg(END, 'product'), baseProd = same ? {} : agg(START, 'product');
   document.getElementById('grainWord').textContent = GRAIN === 'week' ? 'week' : 'month';
@@ -260,7 +282,8 @@ function render() {
   const box = document.querySelector('#periodTable .scroll'), edge = box && box.querySelector('td.edge');
   if (box && edge) box.scrollTop = Math.max(0, edge.offsetTop - box.clientHeight / 2);
 
-  document.getElementById('prodTable').innerHTML = table(baseProd, curProd, 'Product', 'prod');
+  document.getElementById('prodTable').innerHTML =
+    table(baseProd, curProd, 'Product', 'prod', cropOf);
   document.getElementById('custTable').innerHTML = table(
     same ? {} : agg(START, 'customer'), agg(END, 'customer'),
     CUSTDIM === 'group' ? 'Customer group' : 'Customer', 'cust');
