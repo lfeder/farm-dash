@@ -131,10 +131,25 @@ const key   = r => GRAIN === 'week' ? `${r.ISOYear}-W${String(r.ISOWeek).padStar
 const label = k => GRAIN === 'week' ? k.replace('-W',' wk ') : k.replace('-M',' m');
 const live  = r => r.ProductCode && r.ProductCode !== 'Sales';
 
+/** The period today falls in — still being invoiced, so never the default end. */
+function currentPeriodKey() {
+  const d = new Date();
+  if (GRAIN === 'month') return `${d.getFullYear()}-M${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));            // ISO: Thursday decides the year
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((t - yearStart) / 86400000 + 1) / 7);
+  return `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
 function buildPeriods() {
   PERIODS = [...new Set(INV.filter(live).map(key))].filter(Boolean).sort();
-  END = PERIODS[PERIODS.length - 1];
-  START = PERIODS[PERIODS.length - 2] || END;
+  // The in-progress period has only part of its invoices, so comparing into it
+  // reads as a collapse. It stays selectable, just not the default.
+  const settled = PERIODS.filter(p => p !== currentPeriodKey());
+  const pool = settled.length >= 2 ? settled : PERIODS;
+  END = pool[pool.length - 1];
+  START = pool[pool.length - 2] || END;
   pendingStart = null;
 }
 
