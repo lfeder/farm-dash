@@ -45,6 +45,7 @@
   tr.pickable:hover td { background:#0f3460; }
   tr.picked td { background:rgba(78,204,163,0.20); }
   tr.grp.picked td { background:rgba(78,204,163,0.32); }
+  tfoot tr.picked td { background:rgba(78,204,163,0.18); }
   .scope { font-size:0.72rem; color:#777; text-transform:uppercase; letter-spacing:0.08em; }
   .scope.on { color:#4ecca3; font-weight:600; }
   tr.grp td { background:rgba(15,52,96,0.55); font-weight:600; border-bottom:1px solid #4ecca3; }
@@ -176,6 +177,8 @@ function filterProduct(key) {
   render();
 }
 
+function clearProduct() { PRODFILTER = null; render(); }
+
 function toggleCustDim() {
   CUSTDIM = CUSTDIM === 'group' ? 'name' : 'group';
   document.getElementById('btnCustDim').textContent = CUSTDIM === 'group' ? 'Customer group' : 'Customer';
@@ -283,7 +286,8 @@ function table(base, curr, firstCol, which, group) {
       ${th('dollars','Revenue','num')}${th('ddollars','\u0394 Revenue','num')}</tr></thead>
     <tbody>${(group ? groupedBody(rows, group, body, sum) : rows.map(r => `<tr>
       <td>${r.k}</td>${body(r)}</tr>`).join(''))}</tbody>
-    <tfoot><tr><td>Total</td>
+    <tfoot><tr${group ? ` class="pickable${PRODFILTER ? '' : ' picked'}" onclick="clearProduct()"` : ''}>
+      <td>Total</td>
       <td class="num">${num(sum(rows,'cases'))}</td><td class="num">${dCases(sum(rows,'dcases'))}</td>
       <td class="num">${money(sum(rows,'dollars'))}</td><td class="num">${dMoney(sum(rows,'ddollars'))}</td>
     </tr></tfoot></table>`;
