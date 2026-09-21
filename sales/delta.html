@@ -41,6 +41,12 @@
   tfoot td { border-top:2px solid #0f3460; border-bottom:none; font-weight:600; }
   .pos { color:#4ecca3; } .neg { color:#e74c3c; } .dim { color:#777; }
   .empty { color:#666; font-size:0.9rem; padding:10px 0; }
+  tr.pickable { cursor:pointer; }
+  tr.pickable:hover td { background:#0f3460; }
+  tr.picked td { background:rgba(78,204,163,0.20); }
+  tr.grp.picked td { background:rgba(78,204,163,0.32); }
+  .scope { font-size:0.72rem; color:#777; text-transform:uppercase; letter-spacing:0.08em; }
+  .scope.on { color:#4ecca3; font-weight:600; }
   tr.grp td { background:rgba(15,52,96,0.55); font-weight:600; border-bottom:1px solid #4ecca3; }
   tr.sub td:first-child { padding-left:20px; color:#bbb; }
   th.sortable { cursor:pointer; user-select:none; }
@@ -69,7 +75,8 @@
     </div>
     <div class="panel"><div id="prodTable"></div></div>
     <div class="panel">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;">
+        <span id="custScope" class="scope">all products</span>
         <button id="btnCustDim" class="ctl" onclick="toggleCustDim()">Customer group</button></div>
       <div id="custTable"></div>
     </div>
@@ -81,8 +88,9 @@
 let GRAIN = 'week';
 let INV = [], BW = [], BM = [], BP = [];
 let PERIODS = [], START = null, END = null, pendingStart = null;
+let PRODFILTER = null;   // null = every product; else a product code or a crop name
 let CUSTDIM = 'group';                                  // group | name
-const SORT = { prod: { col:'ddollars', dir:-1 }, cust: { col:'ddollars', dir:-1 },
+const SORT = { prod: { col:'ddollars', dir:1 }, cust: { col:'ddollars', dir:1 },
                sel:  { col:'n',        dir: 1 } };
 
 // First letter is the crop: K Keiki, J Japanese, E English are cukes, and O is an
@@ -133,6 +141,8 @@ function agg(periodKey, dim) {
   const out = {};
   for (const r of INV) {
     if (!live(r) || key(r) !== periodKey) continue;
+    if (dim === 'customer' && PRODFILTER &&
+        r.ProductCode !== PRODFILTER && cropOf(r.ProductCode) !== PRODFILTER) continue;
     const d = dim === 'product' ? r.ProductCode
             : CUSTDIM === 'name' ? (r.CustomerName || '(none)')
             : (r.CustomerGroup || r.CustomerName || '(none)');
@@ -159,6 +169,12 @@ function budgetFor(periodKey) {
   return out;
 }
 const totalOf = (o, m) => Object.values(o).reduce((s, v) => s + v[m || 'dollars'], 0);
+
+/** Clicking a product or a crop narrows the customer table; clicking it again clears. */
+function filterProduct(key) {
+  PRODFILTER = PRODFILTER === key ? null : key;
+  render();
+}
 
 function toggleCustDim() {
   CUSTDIM = CUSTDIM === 'group' ? 'name' : 'group';
@@ -234,10 +250,12 @@ function groupedBody(rows, group, body, sum) {
     buckets.get(g).push(r);
   }
   return [...buckets.entries()].map(([name, rs]) => `
-    <tr class="grp"><td>${name}</td>
+    <tr class="grp pickable${PRODFILTER === name ? ' picked' : ''}"
+        onclick="filterProduct('${name}')"><td>${name}</td>
       <td class="num">${num(sum(rs,'cases'))}</td><td class="num">${dCases(sum(rs,'dcases'))}</td>
       <td class="num">${money(sum(rs,'dollars'))}</td><td class="num">${dMoney(sum(rs,'ddollars'))}</td></tr>
-    ${rs.map(r => `<tr class="sub"><td>${r.k}</td>${body(r)}</tr>`).join('')}`).join('');
+    ${rs.map(r => `<tr class="sub pickable${PRODFILTER === r.k ? ' picked' : ''}"
+       onclick="filterProduct('${r.k}')"><td>${r.k}</td>${body(r)}</tr>`).join('')}`).join('');
 }
 
 function table(base, curr, firstCol, which, group) {
@@ -287,6 +305,11 @@ function render() {
   document.getElementById('custTable').innerHTML = table(
     same ? {} : agg(START, 'customer'), agg(END, 'customer'),
     CUSTDIM === 'group' ? 'Customer group' : 'Customer', 'cust');
+  const scope = document.getElementById('custScope');
+  if (scope) {
+    scope.textContent = PRODFILTER ? PRODFILTER : 'all products';
+    scope.className = PRODFILTER ? 'scope on' : 'scope';
+  }
 }
 
 async function load() {
